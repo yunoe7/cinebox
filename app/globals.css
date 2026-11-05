@@ -184,3 +184,23 @@ footer{padding-top:23px}
 
 .poster-card .edit-btn{right:45px;color:#d4bd96;border-color:#4a443a;background:#171a20}
 .poster-card .edit-btn:hover{border-color:#b18e5e;color:#f0d5a8}
+
+
+/* Admin card actions: compact, quiet and aligned */
+.poster-card .heart-btn.edit-btn,
+.poster-card .heart-btn.delete-btn{
+  position:absolute;bottom:10px;width:29px;height:29px;display:grid;place-items:center;
+  padding:0;border:1px solid #343943;border-radius:7px;background:#15181deF;
+  color:#aeb2ba;box-shadow:0 3px 10px #0005;backdrop-filter:blur(8px);
+  transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease;
+}
+.poster-card .heart-btn.edit-btn{right:43px;color:#c7ad83}
+.poster-card .heart-btn.delete-btn{right:8px;color:#a9a1a0}
+.poster-card .heart-btn.edit-btn:hover{background:#292319;border-color:#8e724b;color:#f0d6aa;transform:translateY(-1px)}
+.poster-card .heart-btn.delete-btn:hover{background:#2a1c1b;border-color:#805149;color:#e7a69c;transform:translateY(-1px)}
+.poster-card .heart-btn:focus-visible{outline:2px solid #c7a878;outline-offset:2px}
+.poster-card .poster-open>strong{padding-right:78px}
+@media(max-width:520px){
+  .poster-card .heart-btn.edit-btn,.poster-card .heart-btn.delete-btn{width:27px;height:27px;bottom:9px}
+  .poster-card .heart-btn.edit-btn{right:40px}
+}
