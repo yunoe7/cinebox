@@ -93,3 +93,11 @@ footer{padding-top:23px}
 /* Remove decorative gold strokes that look like stray accents */
 .nav-item.active{box-shadow:none!important;border-left:1px solid #5b4932!important}
 .welcome .eyebrow:before,.section-head .eyebrow:before{display:none!important;content:none!important}
+
+
+/* Catalogue controls: quieter hierarchy and useful sorting */
+.catalogue-tools{display:flex;align-items:center;gap:12px}
+.result-count{font-size:8px;letter-spacing:1.5px;color:#777e89;white-space:nowrap}
+.sort-select{height:34px;max-width:155px;padding:0 27px 0 10px;border:1px solid #303640;border-radius:7px;background:#11141a;color:#bfc2c9;font-size:9px;outline:none}
+.sort-select:focus{border-color:#8c7657}
+@media(max-width:760px){.catalogue-tools{gap:6px;flex-wrap:wrap;justify-content:flex-end}.result-count{display:none}.sort-select{height:30px;max-width:115px;font-size:8px;padding-left:7px}.section-head{align-items:center;gap:8px}.filters button{font-size:8px}}
