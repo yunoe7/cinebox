@@ -281,3 +281,18 @@ footer{padding-top:23px}
 .confirm-delete{border-color:#94564d;background:linear-gradient(180deg,#86463e,#713a35);color:#fff2ef;box-shadow:0 4px 12px #6d302b26}
 .confirm-delete:hover{background:linear-gradient(180deg,#99534a,#80423b);border-color:#b06a60}
 @media(max-width:520px){.app-confirm-modal{padding:25px 22px 21px;border-radius:14px}.app-confirm-modal h2{font-size:22px}}
+
+
+.episode-line{display:flex;align-items:stretch;gap:6px}
+.episode-line .episode-row{flex:1;min-width:0}
+.episode-edit{width:34px;flex:none;display:grid;place-items:center;border:1px solid #343943;border-radius:7px;background:#171a20;color:#a99a7e;cursor:pointer;transition:background .16s,border-color .16s,color .16s}
+.episode-edit:hover{background:#28231b;border-color:#8b704b;color:#e3c595}
+.episode-edit-backdrop{z-index:130}
+.episode-edit-modal{width:min(410px,100%);padding:27px;border:1px solid #3b3e45;border-radius:14px;background:linear-gradient(150deg,#20232a,#121419 75%);box-shadow:0 28px 90px #000c}
+.episode-edit-modal h2{margin:8px 0 22px;font:650 22px Manrope,sans-serif;color:#f1eee8}
+.episode-edit-modal label{display:flex;flex-direction:column;gap:8px;margin:0 0 17px;color:#c9cbd0;font-size:11px;font-weight:600}
+.episode-edit-modal input{width:100%;height:42px;padding:0 12px;border:1px solid #343b45;border-radius:7px;background:#0e1116;color:#eee;font-size:12px}
+.episode-edit-modal input:focus{outline:none;border-color:#92764e;box-shadow:0 0 0 3px #d3b17d14}
+.episode-edit-modal .episode-file-label input{height:auto;padding:10px}
+.episode-edit-modal .confirm-actions{margin-top:22px}
+@media(max-width:520px){.episode-edit-modal{padding:22px}}
