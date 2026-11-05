@@ -161,7 +161,8 @@ export default function HomePage() {
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
-      genre: String(form.get("genre") || "À découvrir"),\n      collection: String(form.get("collection") || "").trim() || undefined,
+      genre: String(form.get("genre") || "À découvrir"),
+      collection: String(form.get("collection") || "").trim() || undefined,
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
       poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
