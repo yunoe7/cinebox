@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bookmark, Clapperboard, Film, FolderPlus, Heart, Home, Library,
-  ListVideo, Menu, Play, Plus, Search, Settings, Sparkles, Tv,
-  Upload, X, ChevronRight, Clock3, MoreHorizontal, Trash2, ShieldCheck
+  Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
+  Sparkles, Tv, Upload, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck
 } from "lucide-react";
 
 type Kind = "Film" | "Série" | "Vidéo";
