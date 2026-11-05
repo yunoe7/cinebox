@@ -38,6 +38,7 @@ export default function HomePage() {
   const [favorites, setFavorites] = useState<number[]>([2, 5]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
+  const [sortBy, setSortBy] = useState("recent");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Title | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -68,7 +69,7 @@ export default function HomePage() {
     const filterMatch = filter === "Tout" || item.kind === filter;
     const searchMatch = (item.name + " " + item.genre + " " + item.kind).toLowerCase().includes(query.toLowerCase());
     return pageMatch && filterMatch && searchMatch;
-  }), [titles, activePage, favorites, filter, query]);
+  }).sort((a, b) => sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : b.year - a.year), [titles, activePage, favorites, filter, query, sortBy]);
 
   const ongoing = titles.filter((item) => item.progress > 0);
   const toggleFavorite = (id: number) => setFavorites((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]);
@@ -151,7 +152,7 @@ export default function HomePage() {
 
           <section className="section-block catalogue" id="catalogue">
             <div className="section-head"><div><div className="eyebrow">À PORTÉE DE MAIN</div><h2>{activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>à explorer</em></h2></div>
-              <div className="filters">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + (f === "Série" ? "s" : "s")}</button>)}</div>
+              <div className="catalogue-tools"><span className="result-count">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option></select></div>
             </div>
             <div className="poster-grid">
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className="poster-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * .035, .25) }}>
