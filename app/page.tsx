@@ -278,13 +278,17 @@ export default function HomePage() {
                 {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
               </div>
             </section>
-            {collections.length > 0 && <section className="section-block streaming-row-section">
+            <section className="section-block streaming-row-section collections-section">
               <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
-              {collections.map(([name, items]) => <div className="collection-saga" key={name}>
+              {collections.length > 0 ? collections.map(([name, items]) => <div className="collection-saga" key={name}>
                 <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
-                <div className="streaming-row">{items.sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
-              </div>)}
-            </section>}
+                <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+              </div>) : <div className="collections-empty">
+                <div className="collections-empty-mark">✦</div>
+                <div><strong>Crée ta première collection</strong><p>Rassemble tes films et séries par saga : Harry Potter, Marvel, Star Wars…</p></div>
+                <button className="collection-create-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}>＋ Ajouter un titre à une collection</button>
+              </div>}
+            </section>
             {topTen.length > 0 && <section className="section-block streaming-row-section">
               <div className="section-head"><div><div className="eyebrow">LES INCONTOURNABLES DE VOTRE CINÉBOX</div><h2>Votre Top <em>10</em></h2></div><span className="subtle">Sélection de votre bibliothèque</span></div>
               <div className="streaming-row top-ten-row">{topTen.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
