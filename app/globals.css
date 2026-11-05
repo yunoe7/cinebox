@@ -223,3 +223,17 @@ footer{padding-top:23px}
 .poster-card .poster-open>strong{padding-right:52px}
 @keyframes cardMenuIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:520px){.poster-card .heart-btn.card-menu-trigger{width:31px;height:31px}.card-action-menu{width:170px}}
+
+
+/* Smaller, quieter card overflow control */
+.poster-card .heart-btn.card-menu-trigger{
+  width:24px;height:24px;border-radius:6px;border-color:#30343c;
+  background:#15171bdc;color:#a9a49b;box-shadow:none;
+}
+.poster-card .heart-btn.card-menu-trigger svg{width:14px;height:14px}
+.poster-card .heart-btn.card-menu-trigger:hover,
+.poster-card .heart-btn.card-menu-trigger[aria-expanded="true"]{
+  background:#242019;border-color:#786344;color:#ddc092;transform:none;
+}
+.card-action-menu{top:calc(100% + 8px)}
+@media(max-width:520px){.poster-card .heart-btn.card-menu-trigger{width:23px;height:23px}}
