@@ -87,6 +87,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Title | null>(null);
   const [selectedEpisodeUrl, setSelectedEpisodeUrl] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [addKind, setAddKind] = useState<Kind>("Film");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [ready, setReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -261,13 +262,14 @@ export default function HomePage() {
       <AnimatePresence>
         {showAdd && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}><motion.div className="modal add-modal" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setShowAdd(false)}><X/></button><div className="eyebrow">BIBLIOTHÈQUE PERSONNELLE</div><h2>Ajouter un <em>titre</em></h2><p className="modal-desc">Renseignez les informations essentielles, puis ajoutez vos médias.</p><form className="add-form" onSubmit={addTitle}>
           <label>Titre<input name="name" required placeholder="Ex. Le voyage intérieur"/></label>
-          <div className="form-row"><label>Type<select name="kind"><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue="2026"/></label></div>
+          <div className="form-row"><label>Type<select name="kind" value={addKind} onChange={(e) => setAddKind(e.target.value as Kind)}><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue="2026"/></label></div>
           <div className="form-row"><label>Genre<input name="genre" placeholder="Drame, aventure…"/></label><label>Durée<input name="duration" placeholder="1 h 45, 42 min…"/></label></div>
           <div className="form-row"><label>Nombre de saisons<input name="seasonCount" type="number" min="1" max="20" placeholder="1" defaultValue="1"/></label><label>Épisodes par saison<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
-          <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"}/></label>\n          <label className="upload-field"><Upload size={16}/><span>Vidéos des épisodes <small>Sélectionne plusieurs fichiers dans l’ordre des épisodes</small></span><input name="episodeVideos" type="file" accept="video/*" multiple/></label>
+          <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"}/></label>
+          <label className="upload-field"><Upload size={16}/><span>Vidéos des épisodes <small>Sélectionne plusieurs fichiers dans l’ordre des épisodes</small></span><input name="episodeVideos" type="file" accept="video/*" multiple/></label>
           <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…"/></label>
           <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
-          <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>MP4, WebM ou autre format pris en charge par votre navigateur</small></span><input ref={fileRef} type="file" accept="video/*"/></label>
+          {addKind !== "Série" && <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>Facultatif · MP4, WebM et formats pris en charge</small></span><input ref={fileRef} type="file" accept="video/*"/></label>}
           <button className="gold-btn full" type="submit">Ajouter à ma collection <ChevronRight size={16}/></button>
         </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
         {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}><motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setSelected(null)}><X/></button>
