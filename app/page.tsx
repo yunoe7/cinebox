@@ -118,6 +118,13 @@ export default function HomePage() {
       .slice(0, 4)
       .map(entry => entry.item);
   }, [titles, favorites]);
+  const homeGenres = useMemo(() => Array.from(new Set(titles.map(item => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [titles]);
+  const topTen = useMemo(() => [...titles].sort((a, b) => b.year - a.year).slice(0, 10), [titles]);
+  const homeRows = useMemo(() => [
+    { title: "Films à explorer", kicker: "LE GRAND ÉCRAN", items: titles.filter(item => item.kind === "Film").sort((a, b) => b.year - a.year).slice(0, 10) },
+    { title: "Séries à découvrir", kicker: "À SUIVRE", items: titles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
+    { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...titles].sort((a, b) => b.id - a.id).slice(0, 10) }
+  ].filter(row => row.items.length), [titles]);
   const openTitle = (item: Title) => {
     setSelectedEpisodeUrl(null);
     setSelectedEpisode(null);
@@ -253,6 +260,23 @@ export default function HomePage() {
             </div>
           </section>}
 
+          {activePage === "Accueil" && <>
+            <section className="streaming-genres section-block">
+              <div className="section-head"><div><div className="eyebrow">TROUVEZ VOTRE PROCHAINE HISTOIRE</div><h2>Explorer par <em>genre</em></h2></div></div>
+              <div className="genre-pills">
+                <button className={genreFilter === "Tous les genres" ? "active" : ""} onClick={() => setGenreFilter("Tous les genres")}>Tout voir</button>
+                {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
+              </div>
+            </section>
+            {topTen.length > 0 && <section className="section-block streaming-row-section">
+              <div className="section-head"><div><div className="eyebrow">LES INCONTOURNABLES DE VOTRE CINÉBOX</div><h2>Votre Top <em>10</em></h2></div><span className="subtle">Sélection de votre bibliothèque</span></div>
+              <div className="streaming-row top-ten-row">{topTen.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+            </section>}
+            {homeRows.map(row => <section className="section-block streaming-row-section" key={row.title}>
+              <div className="section-head"><div><div className="eyebrow">{row.kicker}</div><h2>{row.title}</h2></div><span className="subtle">{row.items.length} contenu{row.items.length > 1 ? "s" : ""}</span></div>
+              <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
+            </section>)}
+          </>}
           {activePage === "Administration" && <section className="admin-overview">
             <div className="admin-heading"><div><div className="eyebrow">ESPACE DE GESTION</div><h2><ShieldCheck size={19}/> Administration</h2><p>Gérez les titres de votre bibliothèque privée depuis un seul endroit.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
