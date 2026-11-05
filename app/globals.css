@@ -574,3 +574,10 @@ footer{color:#78808b}
 .discovery-play{flex:none;color:#cdb184}
 @media(max-width:1200px){.discovery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.discovery-grid{grid-template-columns:1fr}.discovery-card>img{width:52px;height:68px}}
+
+.genre-select{min-width:142px}
+.catalogue-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+@media(max-width:760px){
+  .catalogue-tools{gap:7px}
+  .genre-select{min-width:0;max-width:132px}
+}
