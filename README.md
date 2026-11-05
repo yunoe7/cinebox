@@ -1,21 +1,35 @@
 # CinéBox
 
-Plateforme de bibliothèque vidéo personnelle construite avec Next.js, React et TypeScript.
+Bibliothèque vidéo personnelle construite avec Next.js, React et TypeScript.
 
 ## Développement
 
-- `npm install`
-- `npm run dev`
+```bash
+npm install
+npm run dev
+```
+
+## Vérifications
+
+```bash
+npm run typecheck
+npm run build
+```
 
 ## Publication
 
-Le projet est relié à Vercel via le dépôt GitHub `yunoe7/cinebox`. Les commits poussés sur `main` déclenchent les déploiements configurés dans Vercel.
+Le dépôt GitHub est relié à Vercel. Les commits poussés sur `main` déclenchent les déploiements configurés dans le projet.
 
-## Fonctionnalités du prototype
+## Fonctionnalités
 
 - Catalogue de films, séries et vidéos
-- Recherche, filtres et favoris
-- Fiches de titres et lecture de fichiers vidéo locaux
-- Préférences du catalogue conservées dans le navigateur
+- Recherche, filtres, tri et favoris
+- Fiches détaillées et lecteur vidéo
+- Gestion des saisons et des épisodes
+- Reprise de lecture et progression
+- Administration des titres
+- Affiches et vidéos stockées localement dans le navigateur (IndexedDB)
 
-Les comptes utilisateurs, la base de données et le stockage vidéo distant restent à implémenter.
+## Limites actuelles
+
+Les données et les médias sont propres au navigateur et à l'appareil utilisés. Il n'y a pas encore de comptes, de base de données distante ni de synchronisation entre appareils.
