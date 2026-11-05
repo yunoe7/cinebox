@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
 import { initialTitles } from "../lib/cinebox/catalog";
+import DetailModal from "../components/cinebox/DetailModal";
 import VideoPlayer from "../components/cinebox/VideoPlayer";
 import type { Kind, Title } from "../lib/cinebox/types";
 import {
@@ -297,50 +298,54 @@ export default function HomePage() {
           <button className="gold-btn full" type="submit">{editingTitle ? "Enregistrer les modifications" : "Ajouter à ma collection"} <ChevronRight size={16}/></button>
         </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
         {editingEpisode && selected && <motion.div className="modal-backdrop episode-edit-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingEpisode(null); }}><motion.form className="episode-edit-modal" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} onSubmit={async (e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const title = String(form.get("episodeTitle") || "").trim() || `Épisode ${editingEpisode.episode}`; const file = (e.currentTarget.elements.namedItem("episodeFile") as HTMLInputElement)?.files?.[0]; const key = `${selected.id}:episode:${editingEpisode.season}:${editingEpisode.episode}`; if (file) await saveAsset(key, file); const videoUrl = file ? URL.createObjectURL(file) : undefined; const update = (item: Title): Title => ({ ...item, seasons: item.seasons?.map(season => season.number !== editingEpisode.season ? season : { ...season, episodes: season.episodes.map(ep => ep.number !== editingEpisode.episode ? ep : { ...ep, title, ...(videoUrl ? { videoUrl, currentTime: 0, progress: 0 } : {}) }) }) }); setTitles(old => old.map(item => item.id === selected.id ? update(item) : item)); setSelected(old => old && old.id === selected.id ? update(old) : old); setEditingEpisode(null); setNotice({ title: "Épisode mis à jour", message: "Les informations de l’épisode ont été enregistrées." }); window.setTimeout(() => setNotice(null), 3600); }}><div className="eyebrow">SAISON {editingEpisode.season} · ÉPISODE {editingEpisode.episode}</div><h2>Modifier l’épisode</h2><label>Titre de l’épisode<input name="episodeTitle" defaultValue={editingEpisode.title} autoFocus/></label><label className="episode-file-label">Remplacer la vidéo <input name="episodeFile" type="file" accept="video/*"/></label><div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={() => setEditingEpisode(null)}>Annuler</button><button type="submit" className="confirm-delete">Enregistrer</button></div></motion.form></motion.div>}
-        {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}><motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => { setSelected(null); setSelectedEpisodeUrl(null); setSelectedEpisode(null); }}><X/></button>
-          {(selectedEpisodeUrl || selected.videoUrl) ? <VideoPlayer
-            key={selectedEpisodeUrl || selected.videoUrl}
-            src={selectedEpisodeUrl || selected.videoUrl!}
-            resumeAt={selectedEpisode
-              ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
-              : selected.currentTime ?? 0}
-            onProgress={(second, progress) => {
-              if (selectedEpisode) {
-                const { season: seasonNumber, episode: episodeNumber } = selectedEpisode;
-                setTitles(old => old.map(item => item.id !== selected.id ? item : {
-                  ...item,
-                  seasons: item.seasons?.map(season => season.number !== seasonNumber ? season : {
-                    ...season,
-                    episodes: season.episodes.map(episode => episode.number === episodeNumber ? { ...episode, currentTime: second, progress } : episode)
-                  })
-                }));
-                setSelected(old => old && old.id === selected.id ? {
-                  ...old,
-                  seasons: old.seasons?.map(season => season.number !== seasonNumber ? season : {
-                    ...season,
-                    episodes: season.episodes.map(episode => episode.number === episodeNumber ? { ...episode, currentTime: second, progress } : episode)
-                  })
-                } : old);
-              } else {
-                setTitles(old => old.map(item => item.id === selected.id ? { ...item, currentTime: second, progress } : item));
-                setSelected(old => old && old.id === selected.id ? { ...old, currentTime: second, progress } : old);
-              }
-            }}
-            onEnded={() => {
-              if (!selectedEpisode || !selected.seasons) return;
-              const playable = selected.seasons.flatMap(season => season.episodes
-                .filter(episode => episode.videoUrl)
-                .map(episode => ({ season: season.number, episode: episode.number, url: episode.videoUrl! })));
-              const currentIndex = playable.findIndex(item => item.season === selectedEpisode.season && item.episode === selectedEpisode.episode);
-              const next = playable[currentIndex + 1];
-              if (next) {
-                setSelectedEpisode({ season: next.season, episode: next.episode });
-                setSelectedEpisodeUrl(next.url);
-              }
-            }}
-          /> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
-          <div className="detail-copy"><div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div><h2>{selected.name}</h2><div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div><p>{selected.description}</p>{selected.seasons?.map((season) => <section className="episode-panel" key={season.number}><h3>Saison {season.number}</h3><div className="episode-list">{season.episodes.map((episode) => <div className="episode-line" key={episode.number}><button className={`episode-row ${selectedEpisode?.season === season.number && selectedEpisode?.episode === episode.number ? "episode-active" : ""}`} type="button" disabled={!episode.videoUrl} onClick={() => { setSelectedEpisode({ season: season.number, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><span className="episode-number">{String(episode.number).padStart(2, "0")}</span><span className="episode-title-wrap"><span>{episode.title}</span>{(episode.progress || 0) > 0 && <i className="episode-progress"><b style={{ width: `${episode.progress}%` }}/></i>}</span><small>{episode.videoUrl ? (episode.progress ? `${episode.progress}% · reprendre` : "Lire") : "Vidéo absente"}</small></button>{activePage === "Administration" && <button className="episode-edit" title="Modifier cet épisode" aria-label={`Modifier ${episode.title}`} onClick={() => setEditingEpisode({ season: season.number, episode: episode.number, title: episode.title })}><Settings size={13}/></button>}</div>)}</div></section>)}<div className="detail-actions">{selected.videoUrl ? <span className="available"><Play size={14}/> Vidéo locale prête à lire</span> : <span className="unavailable">Fichier vidéo non associé</span>}<button className={`outline-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(selected.id)}><Heart size={15}/> {favorites.includes(selected.id) ? "Dans ma liste" : "Ajouter à ma liste"}</button></div></div>
-        </motion.div></motion.div>}
+        <DetailModal
+          selected={selected}
+          selectedEpisodeUrl={selectedEpisodeUrl}
+          selectedEpisode={selectedEpisode}
+          activePage={activePage}
+          favorites={favorites}
+          onClose={() => { setSelected(null); setSelectedEpisodeUrl(null); setSelectedEpisode(null); }}
+          onSelectEpisode={(season, episode, url) => {
+            setSelectedEpisode({ season, episode });
+            setSelectedEpisodeUrl(url || null);
+          }}
+          onEditEpisode={(season, episode, title) => setEditingEpisode({ season, episode, title })}
+          onToggleFavorite={toggleFavorite}
+          onProgress={(titleId, episodeSelection, second, progress) => {
+            if (episodeSelection) {
+              const { season: seasonNumber, episode: episodeNumber } = episodeSelection;
+              setTitles(old => old.map(item => item.id !== titleId ? item : {
+                ...item,
+                seasons: old.find(item => item.id === titleId)?.seasons?.map(season => season.number !== seasonNumber ? season : {
+                  ...season,
+                  episodes: season.episodes.map(episode => episode.number === episodeNumber ? { ...episode, currentTime: second, progress } : episode)
+                })
+              }));
+              setSelected(old => old && old.id === titleId ? {
+                ...old,
+                seasons: old.seasons?.map(season => season.number !== seasonNumber ? season : {
+                  ...season,
+                  episodes: season.episodes.map(episode => episode.number === episodeNumber ? { ...episode, currentTime: second, progress } : episode)
+                })
+              } : old);
+            } else {
+              setTitles(old => old.map(item => item.id === titleId ? { ...item, currentTime: second, progress } : item));
+              setSelected(old => old && old.id === titleId ? { ...old, currentTime: second, progress } : old);
+            }
+          }}
+          onEnded={(title, episodeSelection) => {
+            if (!episodeSelection || !title.seasons) return;
+            const playable = title.seasons.flatMap(season => season.episodes
+              .filter(episode => episode.videoUrl)
+              .map(episode => ({ season: season.number, episode: episode.number, url: episode.videoUrl! })));
+            const currentIndex = playable.findIndex(item => item.season === episodeSelection.season && item.episode === episodeSelection.episode);
+            const next = playable[currentIndex + 1];
+            if (next) {
+              setSelectedEpisode({ season: next.season, episode: next.episode });
+              setSelectedEpisodeUrl(next.url);
+            }
+          }}
+        />
       </AnimatePresence>
     </main>
   );
