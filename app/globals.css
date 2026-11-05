@@ -694,3 +694,36 @@ footer{color:#78808b}
  .genre-pills { gap:7px; }
  .genre-pills button { padding:8px 12px; }
 }
+
+
+/* Catalogue selects: neutral focus, no gold halo */
+.catalogue-tools .sort-select,
+.catalogue-tools .sort-select:focus,
+.catalogue-tools .sort-select:focus-visible {
+  border-color:#303742;
+  outline:none;
+  box-shadow:none;
+}
+.catalogue-tools .sort-select {
+  background-color:#15191f;
+  color:#d5d7dc;
+  border-radius:7px;
+  min-height:36px;
+  padding:0 30px 0 12px;
+  font-size:10px;
+  cursor:pointer;
+  color-scheme:dark;
+  transition:background-color .18s,border-color .18s;
+}
+.catalogue-tools .sort-select:hover {
+  background-color:#1a1f27;
+  border-color:#424955;
+}
+.catalogue-tools .sort-select option {
+  background:#15191f;
+  color:#e5e7eb;
+  padding:9px;
+}
+@media(max-width:760px) {
+  .catalogue-tools .sort-select { min-height:32px; }
+}
