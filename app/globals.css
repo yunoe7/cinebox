@@ -261,3 +261,23 @@ footer{padding-top:23px}
 .app-toast>button{display:grid;place-items:center;margin-left:auto;padding:5px;border:0;border-radius:5px;background:transparent;color:#858e88;cursor:pointer}
 .app-toast>button:hover{background:#ffffff0c;color:#fff}
 @media(max-width:520px){.app-confirm-modal{padding:23px}.app-toast{right:16px;bottom:16px}}
+
+
+/* Refined destructive confirmation modal */
+.app-confirm-modal{
+  width:min(430px,100%);padding:30px 30px 25px;border:1px solid #41434a;
+  border-radius:16px;background:radial-gradient(ellipse at 8% 0%,#29251f 0%,transparent 42%),linear-gradient(150deg,#1b1e24 0%,#121419 72%);
+  box-shadow:0 34px 100px #000d,0 1px 0 #ffffff12 inset;
+}
+.confirm-icon{width:42px;height:42px;margin-bottom:21px;border-radius:12px;border:1px solid #765247;background:linear-gradient(145deg,#35231f,#24191a);color:#e6a093;box-shadow:0 5px 18px #0005}
+.app-confirm-modal .eyebrow{margin-bottom:9px;color:#c6a878;font-size:9px;font-weight:700;letter-spacing:1.7px}
+.app-confirm-modal h2{margin:0 0 11px;font-size:24px;letter-spacing:-.8px;line-height:1.2}
+.app-confirm-modal p{max-width:345px;font-size:12px;line-height:1.75;color:#a5a8b0}
+.app-confirm-modal p strong{color:#ead9bd}
+.confirm-actions{gap:10px;margin-top:28px;padding-top:17px;border-top:1px solid #ffffff0c}
+.confirm-actions button{min-width:100px;padding:11px 16px;border-radius:8px;font-size:11px}
+.confirm-cancel{border-color:#414650;background:#20242b;color:#d8d9dd}
+.confirm-cancel:hover{background:#2a2f38;border-color:#59616d}
+.confirm-delete{border-color:#94564d;background:linear-gradient(180deg,#86463e,#713a35);color:#fff2ef;box-shadow:0 4px 12px #6d302b26}
+.confirm-delete:hover{background:linear-gradient(180deg,#99534a,#80423b);border-color:#b06a60}
+@media(max-width:520px){.app-confirm-modal{padding:25px 22px 21px;border-radius:14px}.app-confirm-modal h2{font-size:22px}}
