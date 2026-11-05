@@ -157,7 +157,8 @@ export default function HomePage() {
       poster: posterFile ? URL.createObjectURL(posterFile) : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
       progress: 0, duration: kind === "Série" && season ? `Saison ${season}` : String(form.get("duration") || "Non renseigné"),
-      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,\n      seasons: kind === "Série" ? [{ number: Number(season) || 1, episodes: Array.from({ length: Math.max(0, Math.min(100, Number(episodeCount) || episodeNames.length)) }, (_, index) => ({ number: index + 1, title: episodeNames[index] || `Épisode ${index + 1}` })) }] : undefined,
+      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,
+      seasons: kind === "Série" ? [{ number: Number(season) || 1, episodes: Array.from({ length: Math.max(0, Math.min(100, Number(episodeCount) || episodeNames.length)) }, (_, index) => ({ number: index + 1, title: episodeNames[index] || `Épisode ${index + 1}` })) }] : undefined,
       videoUrl: file ? URL.createObjectURL(file) : undefined
     };
     setTitles((old) => [newTitle, ...old]);
