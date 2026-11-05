@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
   Sparkles, Tv, Upload, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck
@@ -17,53 +18,6 @@ type Title = {
   videoUrl?: string;
 };
 
-
-const ASSET_DB = "cinebox-assets";
-function openAssetDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(ASSET_DB, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("files");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-async function saveAsset(key: string, file: Blob) {
-  const db = await openAssetDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction("files", "readwrite");
-    tx.objectStore("files").put(file, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-}
-async function loadAsset(key: string): Promise<Blob | undefined> {
-  const db = await openAssetDb();
-  const result = await new Promise<Blob | undefined>((resolve, reject) => {
-    const request = db.transaction("files", "readonly").objectStore("files").get(key);
-    request.onsuccess = () => resolve(request.result as Blob | undefined);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return result;
-}
-async function deleteAssets(id: number) {
-  const db = await openAssetDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction("files", "readwrite");
-    const store = tx.objectStore("files");
-    const keys = store.getAllKeys();
-    keys.onsuccess = () => {
-      keys.result.forEach(key => {
-        if (typeof key === "string" && key.startsWith(`${id}:`)) store.delete(key);
-      });
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
-  db.close();
-}
 
 const initialTitles: Title[] = [
   { id: 1, name: "Les heures dorées", kind: "Film", year: 2025, genre: "Drame", description: "Une photographe revient dans sa ville natale et découvre les secrets que sa famille a soigneusement gardés.", poster: "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=700&q=85", backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1800&q=85", progress: 62, duration: "1 h 48" },
