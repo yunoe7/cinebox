@@ -213,7 +213,7 @@ export default function HomePage() {
           <div className="crumb">CINÉBOX <span>/</span> <b>{activePage.toUpperCase()}</b></div>
           <div className="top-actions">
             <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans ma collection…"/></label>
-            <button className="add-btn" onClick={() => setShowAdd(true)}><Plus size={15}/> <span>Ajouter un titre</span></button>
+            <button className="add-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></button>
           </div>
         </header>
 
@@ -242,7 +242,7 @@ export default function HomePage() {
           </section>}
 
           {activePage === "Administration" && <section className="admin-overview">
-            <div className="admin-heading"><div><div className="eyebrow">ESPACE DE GESTION</div><h2><ShieldCheck size={19}/> Administration</h2><p>Gérez les titres de votre bibliothèque privée depuis un seul endroit.</p></div><button className="gold-btn" onClick={() => setShowAdd(true)}><Plus size={15}/> Ajouter un titre</button></div>
+            <div className="admin-heading"><div><div className="eyebrow">ESPACE DE GESTION</div><h2><ShieldCheck size={19}/> Administration</h2><p>Gérez les titres de votre bibliothèque privée depuis un seul endroit.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
               <div><span>TITRES AU TOTAL</span><strong>{titles.length}</strong></div>
               <div><span>FILMS</span><strong>{titles.filter(t => t.kind === "Film").length}</strong></div>
@@ -280,9 +280,9 @@ export default function HomePage() {
           <label>Titre<input name="name" required placeholder="Ex. Le voyage intérieur" defaultValue={editingTitle?.name || ""}/></label>
           <div className="form-row"><label>Type<select name="kind" value={addKind} onChange={(e) => setAddKind(e.target.value as Kind)}><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue={editingTitle?.year || 2026}/></label></div>
           <div className="form-row"><label>Genre<input name="genre" placeholder="Drame, aventure…" defaultValue={editingTitle?.genre || ""}/></label><label>Durée<input name="duration" placeholder="1 h 45, 42 min…" defaultValue={editingTitle?.duration || ""}/></label></div>
-          <div className="form-row"><label>Nombre de saisons<input name="seasonCount" type="number" min="1" max="20" placeholder="1" defaultValue="1"/></label><label>Épisodes par saison<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
-          <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"}/></label>
-          <label className="upload-field"><Upload size={16}/><span>Vidéos des épisodes <small>Sélectionne plusieurs fichiers dans l’ordre des épisodes</small></span><input name="episodeVideos" type="file" accept="video/*" multiple/></label>
+          {addKind === "Série" && <><div className="form-row"><label>Nombre de saisons<input name="seasonCount" type="number" min="1" max="20" placeholder="1" defaultValue={editingTitle?.seasons?.length || 1}/></label><label>Épisodes par saison<input name="episodeCount" type="number" min="1" placeholder="8" defaultValue={editingTitle?.seasons?.[0]?.episodes.length || ""}/></label></div>
+          <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"} defaultValue={editingTitle?.seasons?.flatMap(season => season.episodes.map(episode => episode.title)).join("\n") || ""}/></label>
+          <label className="upload-field"><Upload size={16}/><span>Vidéos des épisodes <small>Sélectionnez plusieurs fichiers dans l’ordre des épisodes</small></span><input name="episodeVideos" type="file" accept="video/*" multiple/></label></>}
           <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…" defaultValue={editingTitle?.description || ""}/></label>
           <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
           {addKind !== "Série" && <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>Facultatif · MP4, WebM et formats pris en charge</small></span><input ref={fileRef} type="file" accept="video/*"/></label>}
