@@ -302,3 +302,155 @@ footer{padding-top:23px}
 .app-confirm-backdrop{z-index:120}
 .episode-edit-backdrop{z-index:130}
 body:has(.modal-backdrop){overflow:hidden}
+
+
+/* CINÉBOX — restrained visual refresh */
+:root{
+  --bg:#090b0f;
+  --panel:#12151b;
+  --panel2:#191e26;
+  --text:#f1f2f3;
+  --muted:#9299a5;
+  --gold:#c7a878;
+  --gold2:#e3c99d;
+  --line:#292f39;
+}
+body{
+  background:
+    radial-gradient(ellipse at 78% 0%,#24201a33 0,transparent 32%),
+    linear-gradient(180deg,#0b0d11 0%,#090b0f 48%,#0b0d11 100%);
+}
+.sidebar{
+  background:#0e1116f2;
+  border-right-color:#252b34;
+  backdrop-filter:blur(22px);
+}
+.nav-item{
+  min-height:40px;
+  border-radius:7px;
+  color:#a4aab4;
+}
+.nav-item:hover{background:#1a1f27;color:#f0f1f2}
+.nav-item.active{
+  background:#1c2027;
+  border-color:#343b46;
+  color:#e5cda6;
+}
+.topbar{
+  background:#0b0d11eF;
+  border-bottom-color:#252b34;
+}
+.search{
+  background:#11151b;
+  border-color:#303743;
+  border-radius:7px;
+}
+.page-content{padding-top:34px}
+.welcome{margin-bottom:27px}
+.welcome h1{letter-spacing:-1.35px}
+.hero{
+  border-color:#343943;
+  border-radius:12px;
+  box-shadow:0 20px 52px #0008;
+}
+.hero-bg{filter:saturate(.62) contrast(1.04)}
+.hero-overlay{
+  background:linear-gradient(90deg,#090b0ff2 0%,#090b0fc9 38%,#090b0f36 78%,#090b0f12),
+  linear-gradient(0deg,#090b0f8c,transparent 58%);
+}
+.hero-tag{
+  border-color:#9b805b;
+  background:#111318a8;
+  box-shadow:none;
+}
+.hero h2{text-shadow:0 3px 18px #0009}
+.section-block{margin-bottom:45px}
+.section-head{margin-bottom:17px}
+.section-head h2{font-size:21px;letter-spacing:-.55px}
+.continue-card{
+  border-color:#2c333e;
+  border-radius:8px;
+  background:#141820;
+  box-shadow:none;
+}
+.continue-card:hover{
+  border-color:#65563f;
+  transform:translateY(-2px);
+  box-shadow:0 9px 24px #0005;
+}
+.continue-card img{box-shadow:none}
+.poster-grid{gap:23px 16px}
+.poster-card{
+  padding:6px 6px 12px;
+  border:1px solid transparent;
+  border-radius:9px;
+  background:transparent;
+  transition:background .18s,border-color .18s,transform .18s;
+}
+.poster-card:hover{
+  background:#11151b;
+  border-color:#343b45;
+  transform:translateY(-2px);
+  box-shadow:0 10px 26px #0005;
+}
+.poster-image{
+  border-color:#ffffff16;
+  border-radius:6px;
+  box-shadow:0 8px 20px #0006;
+}
+.poster-card:hover .poster-image{box-shadow:0 10px 24px #0008}
+.poster-image img{filter:saturate(.8) contrast(1.02)}
+.kind-chip{
+  border-color:#ffffff2b;
+  background:#101318e8;
+  color:#e5d6bd;
+}
+.poster-meta{color:#9299a4}
+.poster-open>strong{font-size:12px;letter-spacing:0}
+.heart-btn{
+  border-radius:7px;
+  background:#151920;
+  border-color:#353c47;
+}
+.filters{
+  background:#11151b;
+  border-color:#2d333d;
+  border-radius:7px;
+}
+.filters button{border-radius:5px}
+.filters button.selected{
+  background:#25231f;
+  border-color:#65563f;
+  box-shadow:none;
+  color:#e6cea7;
+}
+.admin-overview{
+  border-color:#303743;
+  border-radius:10px;
+  background:#141820;
+  box-shadow:none;
+}
+.admin-stats>div{
+  border-color:#303743;
+  border-radius:7px;
+  background:#10141a;
+}
+footer{border-color:#252b34}
+.detail-modal{
+  border-color:#343b45;
+  border-radius:11px;
+}
+.modal,.add-modal{
+  border-color:#3a414c;
+  border-radius:11px;
+}
+@media(min-width:1500px){
+  .poster-grid{gap:25px 18px}
+}
+@media(max-width:760px){
+  .page-content{padding-top:24px}
+  .poster-card:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .hero-bg{animation:none}
+}
