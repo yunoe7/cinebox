@@ -124,3 +124,12 @@ footer{padding-top:23px}
 .upload-field{min-height:58px}
 .upload-field input[type=file]{max-width:165px;color:#9fa4ad;font-size:9px}
 .upload-field input[type=file]::file-selector-button{border:1px solid #4b4438;background:#25221c;color:#e2c89e;border-radius:5px;padding:7px;margin-right:7px;font-size:9px;cursor:pointer}
+
+
+/* Series seasons and episode list */
+.episode-panel{margin:22px 0 4px;padding:16px;border:1px solid #343a43;border-radius:9px;background:linear-gradient(135deg,#191d24,#111419)}
+.episode-panel h3{margin:0 0 12px;color:#e7cca0;font:650 13px Manrope;letter-spacing:.3px}
+.episode-list{display:grid;gap:6px}
+.episode-row{display:flex;align-items:center;gap:12px;min-height:42px;padding:8px 10px;border:1px solid #2c323b;border-radius:6px;background:#101318;color:#e4e1da;font-size:11px}
+.episode-number{display:grid;place-items:center;width:27px;height:27px;border-radius:5px;background:#2a241b;color:#e5c895;font:700 10px Manrope}
+.episode-row small{margin-left:auto;color:#818894;font-size:8px;letter-spacing:1px;text-transform:uppercase}
