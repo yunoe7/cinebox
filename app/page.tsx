@@ -120,7 +120,16 @@ export default function HomePage() {
   }, [titles, favorites]);
   const homeGenres = useMemo(() => Array.from(new Set(titles.map(item => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [titles]);
   const topTen = useMemo(() => [...titles].filter(item => (item.viewCount || 0) > 0).sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year).slice(0, 10), [titles]);
-  const collections = useMemo(() => {\n    const groups = new Map<string, Title[]>();\n    titles.forEach(item => { const name = item.collection?.trim(); if (name) groups.set(name, [...(groups.get(name) || []), item]); });\n    return Array.from(groups.entries()).filter(([, items]) => items.length > 0).sort((a, b) => b[1].length - a[1].length);\n  }, [titles]);\n  const homeRows = useMemo(() => [
+  const collections = useMemo(() => {
+    const groups = new Map<string, Title[]>();
+    titles.forEach(item => {
+      const name = item.collection?.trim();
+      if (name) groups.set(name, [...(groups.get(name) || []), item]);
+    });
+    return Array.from(groups.entries())
+      .sort((a, b) => b[1].length - a[1].length);
+  }, [titles]);
+  const homeRows = useMemo(() => [
     { title: "Films à explorer", kicker: "LE GRAND ÉCRAN", items: titles.filter(item => item.kind === "Film").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: titles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...titles].sort((a, b) => b.id - a.id).slice(0, 10) }
