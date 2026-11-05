@@ -133,3 +133,27 @@ footer{padding-top:23px}
 .episode-row{display:flex;align-items:center;gap:12px;min-height:42px;padding:8px 10px;border:1px solid #2c323b;border-radius:6px;background:#101318;color:#e4e1da;font-size:11px}
 .episode-number{display:grid;place-items:center;width:27px;height:27px;border-radius:5px;background:#2a241b;color:#e5c895;font:700 10px Manrope}
 .episode-row small{margin-left:auto;color:#818894;font-size:8px;letter-spacing:1px;text-transform:uppercase}
+
+
+/* Add-title form: restrained, editorial and practical */
+.add-modal{width:min(760px,100%);padding:34px 38px 28px;background:#12151a;border:1px solid #343a43;border-radius:12px;box-shadow:0 28px 90px #000c}
+.add-modal h2{font-size:32px;letter-spacing:-1.1px;margin:8px 0 5px}
+.add-modal h2 em{font-size:35px;color:#d8bd91}
+.add-modal .modal-desc{margin:0 0 24px;color:#9299a4;font-size:12px}
+.add-form{display:grid;grid-template-columns:1fr 1fr;column-gap:16px;row-gap:0}
+.add-form>label:first-child,.add-form>label:nth-last-of-type(4),.add-form>label:nth-last-of-type(3),.add-form>label:nth-last-of-type(2),.add-form>label:nth-last-of-type(1),.add-form>.gold-btn{grid-column:1/-1}
+.add-form label{font-size:11px!important;font-weight:600;color:#c7cbd1!important;margin-bottom:15px!important}
+.add-form input,.add-form select,.add-form textarea{height:43px;margin-top:7px;padding:0 13px;background:#0d1014;border:1px solid #303741;border-radius:6px;color:#e8e8e8;font-size:12px;transition:border-color .18s,box-shadow .18s}
+.add-form textarea{height:auto;min-height:82px;padding:12px 13px;line-height:1.55;resize:vertical}
+.add-form input:focus,.add-form select:focus,.add-form textarea:focus{border-color:#a88b60;box-shadow:0 0 0 3px #d3b17d12}
+.add-form .form-row{display:contents}
+.add-form .form-row>label{grid-column:span 1}
+.add-form .upload-field{display:flex!important;min-height:66px;padding:12px 14px;border:1px dashed #555044;border-radius:7px;background:#17191d;align-items:center;gap:12px}
+.add-form .upload-field>svg{color:#d0b17e;flex:none}
+.add-form .upload-field span{font-size:11px}
+.add-form .upload-field small{font-size:10px;color:#858c96;font-weight:400}
+.add-form .upload-field input{height:auto;max-width:190px;margin:0 0 0 auto;padding:0;border:0;background:transparent;font-size:10px;box-shadow:none}
+.add-form .upload-field input::file-selector-button{padding:8px 10px;border:1px solid #48433a;border-radius:5px;background:#22231f;color:#e2c99f;font-size:10px}
+.add-form .gold-btn.full{margin-top:5px;height:44px;justify-content:center;gap:10px}
+.add-modal .local-note{margin-top:13px;padding-top:12px;border-top:1px solid #292e36;color:#777f8a;font-size:10px}
+@media(max-width:620px){.add-modal{padding:28px 19px 20px}.add-form{grid-template-columns:1fr}.add-form .form-row>label{grid-column:1/-1}.add-form>label:first-child,.add-form>label:nth-last-of-type(4),.add-form>label:nth-last-of-type(3),.add-form>label:nth-last-of-type(2),.add-form>label:nth-last-of-type(1),.add-form>.gold-btn{grid-column:1}.add-form .upload-field{flex-wrap:wrap}.add-form .upload-field input{width:100%;max-width:none;margin:5px 0 0 28px}.add-modal h2{font-size:28px}}
