@@ -183,6 +183,8 @@ export default function HomePage() {
     if (posterRef.current) posterRef.current.value = "";
     setActivePage("Accueil");
     setFilter("Tout");
+    setNotice({ title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » est prêt dans votre collection.` });
+    window.setTimeout(() => setNotice(null), 3600);
   };
 
   const pageTitle = activePage === "Accueil" ? <>Le plaisir de <em>choisir.</em></> :
