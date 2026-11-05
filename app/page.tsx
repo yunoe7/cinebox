@@ -119,7 +119,7 @@ export default function HomePage() {
       .map(entry => entry.item);
   }, [titles, favorites]);
   const homeGenres = useMemo(() => Array.from(new Set(titles.map(item => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [titles]);
-  const topTen = useMemo(() => [...titles].sort((a, b) => b.year - a.year).slice(0, 10), [titles]);
+  const topTen = useMemo(() => [...titles].filter(item => (item.viewCount || 0) > 0).sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year).slice(0, 10), [titles]);
   const homeRows = useMemo(() => [
     { title: "Films à explorer", kicker: "LE GRAND ÉCRAN", items: titles.filter(item => item.kind === "Film").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: titles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
@@ -366,6 +366,7 @@ export default function HomePage() {
           }}
           onEditEpisode={(season, episode, title) => setEditingEpisode({ season, episode, title })}
           onToggleFavorite={toggleFavorite}
+          onView={(titleId) => setTitles(old => old.map(item => item.id === titleId ? { ...item, viewCount: (item.viewCount || 0) + 1 } : item))}
           onProgress={(titleId, episodeSelection, second, progress) => {
             if (episodeSelection) {
               const { season: seasonNumber, episode: episodeNumber } = episodeSelection;
