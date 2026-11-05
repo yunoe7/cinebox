@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 type Kind = "Film" | "Série" | "Vidéo";
+type Season = { number: number; episodes: { number: number; title: string }[] };
 type Title = {
   id: number; name: string; kind: Kind; year: number; genre: string;
   description: string; poster: string; backdrop: string; progress: number;
