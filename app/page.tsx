@@ -145,6 +145,21 @@ export default function HomePage() {
   }).sort((a, b) => sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : b.year - a.year), [titles, activePage, favorites, filter, query, sortBy]);
 
   const ongoing = titles.filter((item) => item.progress > 0);
+  const personalizedPicks = useMemo(() => {
+    const favoriteGenres = favorites
+      .map(id => titles.find(item => item.id === id)?.genre)
+      .filter((genre): genre is string => Boolean(genre));
+    const genreCounts = favoriteGenres.reduce<Record<string, number>>((counts, genre) => {
+      counts[genre] = (counts[genre] || 0) + 1;
+      return counts;
+    }, {});
+    return titles
+      .filter(item => !favorites.includes(item.id) && item.progress === 0)
+      .map(item => ({ item, score: genreCounts[item.genre] || 0 }))
+      .sort((a, b) => b.score - a.score || b.item.year - a.item.year)
+      .slice(0, 4)
+      .map(entry => entry.item);
+  }, [titles, favorites]);
   const toggleFavorite = (id: number) => setFavorites((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]);
 
   const addTitle = (event: React.FormEvent<HTMLFormElement>) => {
@@ -253,6 +268,17 @@ export default function HomePage() {
             <div className="continue-grid">
               {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => setSelected(item)}><img src={item.poster} alt=""/><div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
               {!ongoing.length && <div className="empty-mini">Vos lectures en cours apparaîtront ici.</div>}
+            </div>
+          </section>}
+
+          {activePage === "Accueil" && personalizedPicks.length > 0 && <section className="section-block discovery-block">
+            <div className="section-head"><div><div className="eyebrow">SELON VOS ENVIES</div><h2>À découvrir <em>ensuite</em></h2></div><span className="subtle">Une sélection issue de vos favoris</span></div>
+            <div className="discovery-grid">
+              {personalizedPicks.map(item => <button className="discovery-card" key={item.id} onClick={() => setSelected(item)}>
+                <img src={item.poster} alt="" loading="lazy"/>
+                <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
+                <Play className="discovery-play" size={16}/>
+              </button>)}
             </div>
           </section>}
 
