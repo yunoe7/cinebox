@@ -120,7 +120,7 @@ export default function HomePage() {
   }, [titles, favorites]);
   const homeGenres = useMemo(() => Array.from(new Set(titles.map(item => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [titles]);
   const topTen = useMemo(() => [...titles].filter(item => (item.viewCount || 0) > 0).sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year).slice(0, 10), [titles]);
-  const homeRows = useMemo(() => [
+  const collections = useMemo(() => {\n    const groups = new Map<string, Title[]>();\n    titles.forEach(item => { const name = item.collection?.trim(); if (name) groups.set(name, [...(groups.get(name) || []), item]); });\n    return Array.from(groups.entries()).filter(([, items]) => items.length > 0).sort((a, b) => b[1].length - a[1].length);\n  }, [titles]);\n  const homeRows = useMemo(() => [
     { title: "Films à explorer", kicker: "LE GRAND ÉCRAN", items: titles.filter(item => item.kind === "Film").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: titles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...titles].sort((a, b) => b.id - a.id).slice(0, 10) }
@@ -152,7 +152,7 @@ export default function HomePage() {
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
-      genre: String(form.get("genre") || "À découvrir"),
+      genre: String(form.get("genre") || "À découvrir"),\n      collection: String(form.get("collection") || "").trim() || undefined,
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
       poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
@@ -268,6 +268,13 @@ export default function HomePage() {
                 {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
               </div>
             </section>
+            {collections.length > 0 && <section className="section-block streaming-row-section">
+              <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
+              {collections.map(([name, items]) => <div className="collection-saga" key={name}>
+                <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
+                <div className="streaming-row">{items.sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+              </div>)}
+            </section>}
             {topTen.length > 0 && <section className="section-block streaming-row-section">
               <div className="section-head"><div><div className="eyebrow">LES INCONTOURNABLES DE VOTRE CINÉBOX</div><h2>Votre Top <em>10</em></h2></div><span className="subtle">Sélection de votre bibliothèque</span></div>
               <div className="streaming-row top-ten-row">{topTen.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
