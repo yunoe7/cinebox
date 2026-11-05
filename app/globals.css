@@ -735,3 +735,13 @@ footer{color:#78808b}
 .collection-saga-heading{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
 .collection-saga-heading strong{font:600 15px Manrope,sans-serif;color:#eee}
 .collection-saga-heading span{font-size:10px;color:#858c96}
+
+
+.collections-empty{display:flex;align-items:center;gap:15px;flex-wrap:wrap;padding:20px 22px;border:1px dashed #343b45;border-radius:11px;background:linear-gradient(110deg,#14181e,#111419)}
+.collections-empty-mark{width:42px;height:42px;display:grid;place-items:center;flex:none;border-radius:10px;background:#24221d;color:#c7a878;font-size:20px}
+.collections-empty>div:nth-child(2){flex:1;min-width:190px}
+.collections-empty strong{display:block;color:#e9e6df;font:600 13px Manrope,sans-serif}
+.collections-empty p{margin:5px 0 0;color:#9299a5;font-size:11px;line-height:1.5}
+.collection-create-btn{min-height:36px;padding:0 13px;border:1px solid #414751;border-radius:7px;background:#1a1f26;color:#e5e1d8;font-size:10px;font-weight:600;cursor:pointer;transition:background .18s,border-color .18s}
+.collection-create-btn:hover{background:#232932;border-color:#626b78}
+@media(max-width:620px){.collections-empty{align-items:flex-start}.collection-create-btn{width:100%}}
