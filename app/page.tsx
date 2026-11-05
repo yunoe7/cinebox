@@ -104,7 +104,7 @@ export default function HomePage() {
   return (
     <main className="app-shell">
       <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
-        <a className="brand" href="#"><span className="brand-mark">C<span>.</span></span><span>CINÉBOX</span></a>
+        <a className="brand" href="#"><span className="brand-mark"><Clapperboard size={21} strokeWidth={1.55}/><i/></span><span className="brand-word">CINÉBOX<small>PRIVATE CINEMA</small></span></a>
         <div className="side-label">VOTRE ESPACE</div>
         <nav className="side-nav">
           {navItems.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); setMobileMenu(false); }}><Icon size={17}/><span>{label}</span>{label === "Ma liste" && <small>{favorites.length}</small>}</button>)}
