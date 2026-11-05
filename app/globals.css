@@ -22,3 +22,70 @@
 .search{height:43px;border-radius:8px;background:linear-gradient(110deg,#15181e,#101217);border-color:#343944;box-shadow:inset 0 1px 0 #ffffff08}
 .search:focus-within{border-color:#b18e5e;box-shadow:0 0 0 3px #d3b17d18,0 5px 18px #0004}
 @media(max-width:760px){.brand{gap:0;padding-left:5px}.brand-word{display:none}.brand-mark{width:42px;height:42px}.add-btn{height:39px;padding:0 9px;gap:6px}.add-btn svg{width:25px;height:25px}}
+
+
+/* CINÉBOX — second art direction pass */
+:root{--gold:#d5b47f;--gold2:#f2d9ae}
+.page-content{max-width:1660px}
+.welcome{margin-bottom:30px}
+.welcome .eyebrow:before,.section-head .eyebrow:before{content:'';display:inline-block;width:19px;height:1px;background:linear-gradient(90deg,var(--gold),transparent);vertical-align:middle;margin:0 8px 3px 0}
+.hero{height:440px;border-radius:16px;border-color:#554632;box-shadow:0 26px 70px #0009,0 0 0 1px #d5b47f0a}
+.hero-bg{background-image:linear-gradient(90deg,#0a0b0e22,#0a0b0e00),url('https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1900&q=90');background-position:center 43%;filter:saturate(.74) contrast(1.06);animation:hero-drift 28s ease-in-out infinite alternate}
+@keyframes hero-drift{from{transform:scale(1.02) translateX(0)}to{transform:scale(1.09) translateX(-1.2%)}}
+.hero-overlay{background:linear-gradient(90deg,rgba(7,8,11,.98) 0%,rgba(7,8,11,.88) 34%,rgba(7,8,11,.32) 72%,rgba(7,8,11,.12)),linear-gradient(0deg,rgba(7,8,11,.7),transparent 55%)}
+.hero-copy{max-width:540px;left:6.5%}
+.hero-tag{border-color:#b79561;background:linear-gradient(100deg,#211a11cc,#15151566);box-shadow:inset 0 1px #ffffff18;letter-spacing:2.1px}
+.hero h2{font-size:54px;line-height:1.04;text-shadow:0 5px 24px #0008}
+.hero h2 em{font-size:60px}
+.hero-copy>p{max-width:390px;color:#e0ddd6}
+.hero-foot{padding:9px 12px;border:1px solid #ffffff24;border-radius:6px;background:#0b0c0d77;backdrop-filter:blur(12px);letter-spacing:2px}
+.section-block{margin-bottom:54px}
+.section-head{margin-bottom:22px}
+.section-head h2{font-size:23px}
+.continue-card{padding:10px;border-radius:11px;background:linear-gradient(125deg,#1b1e25,#111319 70%);border-color:#303640;box-shadow:0 7px 20px #0003}
+.continue-card img{width:76px;height:88px;object-fit:cover;border-radius:6px;box-shadow:0 5px 16px #0008}
+.continue-info small{letter-spacing:1.4px}
+.continue-info b{font-size:12px}
+.continue-play{width:34px;height:34px;padding:9px;border:1px solid #796345;border-radius:50%;background:#282116;transition:.2s}
+.continue-card:hover .continue-play{background:#dfc08f;color:#17120c;transform:scale(1.06)}
+.poster-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:29px 18px}
+.poster-card{padding:7px 7px 14px;border-radius:12px}
+.poster-image{height:278px;border:1px solid #ffffff12;border-radius:8px;box-shadow:0 14px 30px #0008;isolation:isolate}
+.poster-image:before{content:'';position:absolute;z-index:1;inset:0;border-radius:inherit;background:linear-gradient(145deg,#ffffff12,transparent 28%,transparent 72%,#0005);pointer-events:none}
+.poster-image img{filter:saturate(.86) contrast(1.03)}
+.poster-card:hover .poster-image{box-shadow:0 20px 38px #000b,0 0 0 1px #b99562}
+.kind-chip{top:12px;left:12px;padding:6px 9px;border-color:#e6d1ae40;background:#101115d9;color:#e8d2ae;letter-spacing:1.25px;text-transform:uppercase}
+.poster-meta{margin-top:14px;color:#b1a38f;font-size:9px;letter-spacing:.25px}
+.poster-open>strong{font-size:13px;letter-spacing:-.1px;margin-top:7px}
+.heart-btn{width:32px;height:32px;right:8px;bottom:10px;background:#171a20ed;backdrop-filter:blur(8px)}
+.heart-btn.is-fav{box-shadow:0 0 15px #d3b17d20}
+.filters{padding:4px;border-radius:9px;background:#101318;border-color:#303640}
+.filters button{padding:8px 13px}
+.filters button.selected{background:linear-gradient(135deg,#352b1d,#211c15);border-color:#806747;box-shadow:inset 0 1px #ffffff0c,0 2px 8px #0005;color:#f1d6a9}
+footer{padding-top:23px}
+.modal{border-color:#66543b;box-shadow:0 35px 110px #000,0 0 0 1px #d3b17d12}
+.detail-modal{border-color:#5b4a34;box-shadow:0 35px 110px #000,0 0 40px #d3b17d0a}
+.detail-backdrop{position:relative}
+.detail-backdrop:after{content:'CINÉBOX ORIGINALS';position:absolute;top:20px;left:25px;padding:7px 10px;border:1px solid #e6d0a45c;border-radius:4px;background:#0b0d10a8;color:#efd8b2;font-size:8px;letter-spacing:2px}
+@media(min-width:1500px){.poster-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.poster-image{height:300px}}
+@media(max-width:1200px){.poster-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.poster-image{height:245px}}
+@media(max-width:760px){
+.mobile-menu{display:grid;place-items:center;width:36px;height:36px;border:1px solid #303640;border-radius:8px;background:#15181e;color:#e7d0aa}
+.sidebar{transition:transform .25s,width .25s;box-shadow:12px 0 30px #0007}
+.sidebar-open{width:230px;padding:20px 14px;transform:translateX(0)}
+.sidebar-open .brand>span:last-child,.sidebar-open .brand-word,.sidebar-open .side-label,.sidebar-open .sidebar-bottom,.sidebar-open .nav-item span,.sidebar-open .nav-item small{display:block}
+.sidebar-open .brand{gap:12px;padding:0 7px 45px}
+.sidebar-open .brand-mark{width:42px;height:42px}
+.sidebar-open .side-label{padding:0 10px 14px}
+.sidebar-open .nav-item{justify-content:flex-start;padding:13px}
+.sidebar-open .sidebar-bottom{margin-top:auto}
+.sidebar-open .side-note{display:block}
+.sidebar-open .profile{display:flex}
+.sidebar-open:after{content:'';position:fixed;left:230px;top:0;width:100vw;height:100vh;background:#0009;z-index:-1}
+.hero{height:360px}
+.hero-copy{left:7%;right:5%}
+.hero h2{font-size:40px}
+.hero h2 em{font-size:45px}
+.poster-image{height:clamp(160px,46vw,245px)}
+}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
