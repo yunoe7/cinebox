@@ -88,8 +88,8 @@ export default function HomePage() {
           const restored = await Promise.all(records.map(async (item) => {
             const posterBlob = await loadAsset(`${item.id}:poster`).catch(() => undefined);
             const videoBlob = await loadAsset(`${item.id}:video`).catch(() => undefined);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const blob = await loadAsset(\`\${item.id}:episode:\${season.number}:\${episode.number}\`).catch(() => undefined); return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined }; })) })));
-            const firstEpisodeBlob = item.kind === "Série" ? await loadAsset(\`\${item.id}:episode:1:1\`).catch(() => undefined) : undefined;
+            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const blob = await loadAsset(`${item.id}:episode:${season.number}:${episode.number}`).catch(() => undefined); return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined }; })) })));
+            const firstEpisodeBlob = item.kind === "Série" ? await loadAsset(`${item.id}:episode:1:1`).catch(() => undefined) : undefined;
             const generatedPoster = !posterBlob && firstEpisodeBlob ? await createVideoThumbnail(firstEpisodeBlob) : undefined;
             return {
               ...item,
