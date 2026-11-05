@@ -173,7 +173,22 @@ export default function HomePage() {
       backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
       progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${editingTitle?.seasons?.length || seasonCount} saison${(editingTitle?.seasons?.length || seasonCount) > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
       episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
-      seasons: kind === "Série" ? (editingTitle?.seasons || Array.from({ length: seasonCount }, (_, seasonIndex) => ({ number: seasonIndex + 1, episodes: Array.from({ length: perSeason }, (_, episodeIndex) => { const fileIndex = seasonIndex * perSeason + episodeIndex; return { number: episodeIndex + 1, title: episodeNames[fileIndex] || `Épisode ${episodeIndex + 1}`, videoUrl: episodeFiles[fileIndex] ? URL.createObjectURL(episodeFiles[fileIndex]) : undefined }; }) }))) : undefined,
+      seasons: kind === "Série" ? Array.from({ length: seasonCount }, (_, seasonIndex) => {
+        const oldSeason = editingTitle?.seasons?.find(season => season.number === seasonIndex + 1);
+        return { number: seasonIndex + 1, episodes: Array.from({ length: perSeason }, (_, episodeIndex) => {
+          const fileIndex = seasonIndex * perSeason + episodeIndex;
+          const oldEpisode = oldSeason?.episodes.find(episode => episode.number === episodeIndex + 1);
+          const uploadedFile = episodeFiles[fileIndex];
+          return {
+            ...(oldEpisode || {}),
+            number: episodeIndex + 1,
+            title: episodeNames[fileIndex] || oldEpisode?.title || `Épisode ${episodeIndex + 1}`,
+            videoUrl: uploadedFile ? URL.createObjectURL(uploadedFile) : oldEpisode?.videoUrl,
+            currentTime: uploadedFile ? 0 : oldEpisode?.currentTime,
+            progress: uploadedFile ? 0 : oldEpisode?.progress
+          };
+        }) };
+      }) : undefined,
       videoUrl: file ? URL.createObjectURL(file) : editingTitle?.videoUrl
     };
     if (editingTitle) setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item)); else setTitles(old => [newTitle, ...old]);
