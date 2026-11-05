@@ -142,7 +142,8 @@ export default function HomePage() {
     const posterFile = posterRef.current?.files?.[0];
     const kind = form.get("kind") as Kind;
     const season = String(form.get("season") || "").trim();
-    const episodeCount = String(form.get("episodeCount") || "").trim();\n    const episodeNames = String(form.get("episodeTitles") || "").split("\\n").map((line) => line.trim()).filter(Boolean);
+    const episodeCount = String(form.get("episodeCount") || "").trim();
+    const episodeNames = String(form.get("episodeTitles") || "").split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean);
     const name = String(form.get("name") || "").trim();
     if (!name) return;
     const newId = Date.now();
