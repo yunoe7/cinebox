@@ -296,3 +296,9 @@ footer{padding-top:23px}
 .episode-edit-modal .episode-file-label input{height:auto;padding:10px}
 .episode-edit-modal .confirm-actions{margin-top:22px}
 @media(max-width:520px){.episode-edit-modal{padding:22px}}
+
+/* Keep every modal above catalogue card controls */
+.modal-backdrop{z-index:100}
+.app-confirm-backdrop{z-index:120}
+.episode-edit-backdrop{z-index:130}
+body:has(.modal-backdrop){overflow:hidden}
