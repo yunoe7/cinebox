@@ -316,7 +316,7 @@ export default function HomePage() {
               const { season: seasonNumber, episode: episodeNumber } = episodeSelection;
               setTitles(old => old.map(item => item.id !== titleId ? item : {
                 ...item,
-                seasons: old.find(item => item.id === titleId)?.seasons?.map(season => season.number !== seasonNumber ? season : {
+                seasons: item.seasons?.map(season => season.number !== seasonNumber ? season : {
                   ...season,
                   episodes: season.episodes.map(episode => episode.number === episodeNumber ? { ...episode, currentTime: second, progress } : episode)
                 })
