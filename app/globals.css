@@ -454,3 +454,109 @@ footer{border-color:#252b34}
 @media(prefers-reduced-motion:reduce){
   .hero-bg{animation:none}
 }
+
+
+/* CINÉBOX — signature visual refinement */
+:root{
+  --surface:#12161d;
+  --surface-raised:#181d25;
+  --stroke:#2d3540;
+  --stroke-soft:#242b34;
+  --ink:#f2f1ed;
+  --muted-ink:#9aa1ac;
+}
+::selection{background:#b995624d;color:#fff}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid #c9aa79;outline-offset:3px;
+}
+.topbar{box-shadow:0 8px 28px #0002}
+.crumb{font-size:9px;letter-spacing:2px}
+.page-content{padding-bottom:42px}
+.welcome h1{font-size:clamp(29px,3vw,38px);line-height:1.12}
+.welcome .eyebrow{color:#b5a184}
+.hero{
+  isolation:isolate;
+  min-height:420px;
+  border:1px solid #3a3d42;
+  background:#11151b;
+}
+.hero:after{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  border-radius:inherit;
+  background:linear-gradient(115deg,#ffffff0b,transparent 30%,transparent 75%,#ffffff08);
+}
+.hero-bg{transform-origin:center;filter:saturate(.68) contrast(1.08)}
+.hero-copy{z-index:1}
+.hero-kicker{color:#d6c3a4}
+.hero-tag{font-weight:700}
+.hero h2{max-width:560px;line-height:1.02}
+.hero-copy>p{max-width:420px;text-wrap:pretty}
+.gold-btn{box-shadow:0 5px 18px #0005}
+.gold-btn:hover{box-shadow:0 8px 24px #0007}
+.hero-foot{z-index:1}
+.section-head{align-items:center}
+.section-head .eyebrow{color:#a18f72}
+.section-head h2{font-size:22px}
+.section-head .subtle{letter-spacing:.2px}
+.continue-card{
+  position:relative;overflow:hidden;
+  background:linear-gradient(120deg,#181d25,#11151b);
+  border-color:#303742;
+}
+.continue-card:after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(110deg,#ffffff08,transparent 40%);
+  opacity:0;transition:opacity .2s;
+}
+.continue-card:hover:after{opacity:1}
+.continue-info b{font-size:12px}
+.continue-info>span{color:#a6acb5}
+.poster-grid{align-items:start}
+.poster-card{overflow:visible}
+.poster-image{background:#151922}
+.poster-image img{transition:transform .65s cubic-bezier(.2,.75,.25,1),filter .3s}
+.poster-card:hover .poster-image img{transform:scale(1.045);filter:saturate(.98) contrast(1.05)}
+.poster-image:after{opacity:.72;transition:opacity .25s}
+.poster-card:hover .poster-image:after{opacity:1}
+.poster-meta{font-size:9px;letter-spacing:.35px}
+.poster-open>strong{font-size:13px;line-height:1.35}
+.kind-chip{font-size:7px;font-weight:700;letter-spacing:1.35px}
+.poster-play svg{background:#090b0f35}
+.poster-card .card-menu-wrap{bottom:10px}
+.poster-card .heart-btn.card-menu-trigger{transition:opacity .18s,background .18s,border-color .18s,color .18s}
+.card-action-menu{backdrop-filter:blur(18px)}
+.filters{box-shadow:inset 0 1px #ffffff05}
+.filters button{font-weight:600}
+.sort-select{background-color:#11151b;border-color:#303742}
+.admin-overview{position:relative;overflow:hidden}
+.admin-overview:after{
+  content:"";position:absolute;top:0;right:0;width:220px;height:100%;
+  background:radial-gradient(ellipse at top right,#c4a16b0c,transparent 68%);
+  pointer-events:none;
+}
+.admin-stats strong{font-size:26px;letter-spacing:-.8px}
+.detail-copy{background:linear-gradient(180deg,#12161d,#101319)}
+.detail-copy h2{letter-spacing:-.8px}
+.detail-copy p{max-width:650px}
+.episode-panel{border-color:#303742;background:#141820}
+.episode-row{transition:background .16s,border-color .16s,transform .16s}
+.episode-row:not(:disabled):hover{transform:translateX(2px)}
+.modal-backdrop{background:#050609d9}
+.modal,.detail-modal,.add-modal{box-shadow:0 34px 110px #000c,0 1px #ffffff0b inset}
+.upload-field{transition:border-color .18s,background .18s}
+.upload-field:focus-within{border-color:#a58a62;background:#1b1c1d}
+footer{color:#78808b}
+@media(min-width:1500px){
+  .page-content{padding-left:5.5%;padding-right:5.5%}
+  .hero{min-height:455px}
+}
+@media(max-width:760px){
+  .hero{min-height:350px}
+  .hero-copy{max-width:90%}
+  .section-head h2{font-size:19px}
+  .poster-open>strong{font-size:12px}
+  .continue-card:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .poster-image img,.episode-row,.continue-card:after{transition:none}
+}
