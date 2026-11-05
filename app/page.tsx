@@ -102,7 +102,13 @@ export default function HomePage() {
     const timer = window.setInterval(() => setHeroIndex(index => (index + 1) % featuredTitles.length), 7000);
     return () => window.clearInterval(timer);
   }, [featuredTitles.length]);
-  const ongoing = titles.filter((item) => item.progress > 0);
+  const ongoing = titles.map(item => {
+    const watchedEpisodes = (item.seasons || []).flatMap(season => season.episodes)
+      .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100);
+    if (item.progress > 0 || watchedEpisodes.length === 0) return item;
+    const latestEpisode = [...watchedEpisodes].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0))[0];
+    return { ...item, progress: latestEpisode.progress || 0, currentTime: latestEpisode.currentTime || 0 };
+  }).filter(item => item.progress > 0);
   const personalizedPicks = useMemo(() => {
     const favoriteGenres = favorites
       .map(id => titles.find(item => item.id === id)?.genre)
