@@ -560,3 +560,17 @@ footer{color:#78808b}
 @media(prefers-reduced-motion:reduce){
   .poster-image img,.episode-row,.continue-card:after{transition:none}
 }
+
+
+/* Personal discovery row */
+.discovery-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.discovery-card{display:flex;align-items:center;gap:12px;min-width:0;padding:9px;background:#12151a;border:1px solid #292e37;border-radius:9px;color:inherit;text-align:left;transition:border-color .2s,transform .2s,background .2s}
+.discovery-card:hover{border-color:#786448;background:#171a20;transform:translateY(-2px)}
+.discovery-card>img{width:58px;height:76px;flex:none;object-fit:cover;border-radius:5px;background:#20242b}
+.discovery-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}
+.discovery-copy small{font-size:8px;letter-spacing:.7px;color:#b99c70}
+.discovery-copy strong{font:650 11px Manrope,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.discovery-copy i{font-style:normal;font-size:9px;color:#858b96}
+.discovery-play{flex:none;color:#cdb184}
+@media(max-width:1200px){.discovery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.discovery-grid{grid-template-columns:1fr}.discovery-card>img{width:52px;height:68px}}
