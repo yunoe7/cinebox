@@ -10,6 +10,38 @@ import TitleEditor from "../components/cinebox/TitleEditor";
 import { AppToast, DeleteConfirmation } from "../components/cinebox/FeedbackDialogs";
 import VideoPlayer from "../components/cinebox/VideoPlayer";
 import type { Kind, Title } from "../lib/cinebox/types";
+async function createVideoThumbnail(blob: Blob): Promise<Blob | undefined> {
+  const url = URL.createObjectURL(blob);
+  const video = document.createElement("video");
+  video.muted = true;
+  video.preload = "auto";
+  video.src = url;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error("Vidéo illisible"));
+    });
+    video.currentTime = Math.min(5, Math.max(0, (video.duration || 1) * 0.1));
+    await new Promise<void>(resolve => {
+      video.onseeked = () => resolve();
+      window.setTimeout(resolve, 1500);
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob | undefined>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.86));
+  } catch {
+    return undefined;
+  } finally {
+    URL.revokeObjectURL(url);
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
   Sparkles, Tv, Upload, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck
@@ -56,11 +88,13 @@ export default function HomePage() {
           const restored = await Promise.all(records.map(async (item) => {
             const posterBlob = await loadAsset(`${item.id}:poster`).catch(() => undefined);
             const videoBlob = await loadAsset(`${item.id}:video`).catch(() => undefined);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const blob = await loadAsset(`${item.id}:episode:${season.number}:${episode.number}`).catch(() => undefined); return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined }; })) })));
+            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const blob = await loadAsset(\`\${item.id}:episode:\${season.number}:\${episode.number}\`).catch(() => undefined); return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined }; })) })));
+            const firstEpisodeBlob = item.kind === "Série" ? await loadAsset(\`\${item.id}:episode:1:1\`).catch(() => undefined) : undefined;
+            const generatedPoster = !posterBlob && firstEpisodeBlob ? await createVideoThumbnail(firstEpisodeBlob) : undefined;
             return {
               ...item,
               seasons,
-              poster: posterBlob ? URL.createObjectURL(posterBlob) : item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster,
+              poster: posterBlob ? URL.createObjectURL(posterBlob) : generatedPoster ? URL.createObjectURL(generatedPoster) : item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster,
               videoUrl: videoBlob ? URL.createObjectURL(videoBlob) : undefined
             };
           }));
