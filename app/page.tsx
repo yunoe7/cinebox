@@ -16,6 +16,48 @@ type Title = {
   videoUrl?: string;
 };
 
+
+const ASSET_DB = "cinebox-assets";
+function openAssetDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ASSET_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("files");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function saveAsset(key: string, file: Blob) {
+  const db = await openAssetDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("files", "readwrite");
+    tx.objectStore("files").put(file, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+async function loadAsset(key: string): Promise<Blob | undefined> {
+  const db = await openAssetDb();
+  const result = await new Promise<Blob | undefined>((resolve, reject) => {
+    const request = db.transaction("files", "readonly").objectStore("files").get(key);
+    request.onsuccess = () => resolve(request.result as Blob | undefined);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return result;
+}
+async function deleteAssets(id: number) {
+  const db = await openAssetDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("files", "readwrite");
+    tx.objectStore("files").delete(`${id}:poster`);
+    tx.objectStore("files").delete(`${id}:video`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
 const initialTitles: Title[] = [
   { id: 1, name: "Les heures dorées", kind: "Film", year: 2025, genre: "Drame", description: "Une photographe revient dans sa ville natale et découvre les secrets que sa famille a soigneusement gardés.", poster: "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=700&q=85", backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1800&q=85", progress: 62, duration: "1 h 48" },
   { id: 2, name: "Dernier signal", kind: "Série", year: 2026, genre: "Thriller", description: "Une opératrice de nuit reçoit un appel qui ne devrait pas exister. Au bout du fil, quelqu'un connaît son avenir.", poster: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=700&q=85", backdrop: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=1800&q=85", progress: 28, duration: "Saison 1", episodes: "8 épisodes" },
@@ -48,18 +90,35 @@ export default function HomePage() {
   const posterRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("cinebox-titles");
-      const savedFavs = localStorage.getItem("cinebox-favorites");
-      if (saved) setTitles(JSON.parse(saved));
-      if (savedFavs) setFavorites(JSON.parse(savedFavs));
-    } catch { /* use demo library */ }
-    setReady(true);
+    let cancelled = false;
+    async function restoreLibrary() {
+      try {
+        const saved = localStorage.getItem("cinebox-titles");
+        const savedFavs = localStorage.getItem("cinebox-favorites");
+        if (saved) {
+          const records: Title[] = JSON.parse(saved);
+          const restored = await Promise.all(records.map(async (item) => {
+            const posterBlob = await loadAsset(`${item.id}:poster`).catch(() => undefined);
+            const videoBlob = await loadAsset(`${item.id}:video`).catch(() => undefined);
+            return {
+              ...item,
+              poster: posterBlob ? URL.createObjectURL(posterBlob) : item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster,
+              videoUrl: videoBlob ? URL.createObjectURL(videoBlob) : undefined
+            };
+          }));
+          if (!cancelled) setTitles(restored);
+        }
+        if (savedFavs && !cancelled) setFavorites(JSON.parse(savedFavs));
+      } catch { /* use demo library */ }
+      if (!cancelled) setReady(true);
+    }
+    restoreLibrary();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (ready) {
-      localStorage.setItem("cinebox-titles", JSON.stringify(titles));
+      localStorage.setItem("cinebox-titles", JSON.stringify(titles.map(({ videoUrl, ...item }) => ({ ...item, poster: item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster }))));
       localStorage.setItem("cinebox-favorites", JSON.stringify(favorites));
     }
   }, [titles, favorites, ready]);
@@ -85,8 +144,11 @@ export default function HomePage() {
     const episodeCount = String(form.get("episodeCount") || "").trim();
     const name = String(form.get("name") || "").trim();
     if (!name) return;
+    const newId = Date.now();
+    if (posterFile) void saveAsset(`${newId}:poster`, posterFile).catch(() => alert("Impossible de sauvegarder cette affiche dans le navigateur."));
+    if (file) void saveAsset(`${newId}:video`, file).catch(() => alert("Impossible de sauvegarder cette vidéo dans le navigateur."));
     const newTitle: Title = {
-      id: Date.now(), name, kind,
+      id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
@@ -176,7 +238,7 @@ export default function HomePage() {
             <div className="poster-grid">
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className="poster-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * .035, .25) }}>
                 <button className="poster-open" onClick={() => setSelected(item)} aria-label={`Ouvrir ${item.name}`}><div className="poster-image"><img src={item.poster} alt={item.name} loading="lazy"/><span className="kind-chip">{item.kind}</span><span className="poster-play"><Play size={20} fill="currentColor"/></span></div><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong></button>
-                {activePage === "Administration" ? <button className="heart-btn delete-btn" onClick={() => { setTitles(old => old.filter(t => t.id !== item.id)); setFavorites(old => old.filter(id => id !== item.id)); }} aria-label={`Supprimer ${item.name}`} title="Supprimer ce titre"><Trash2 size={15}/></button> : <button className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label="Favori"><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
+                {activePage === "Administration" ? <button className="heart-btn delete-btn" onClick={() => { if (confirm(`Supprimer « ${item.name} » de votre bibliothèque ?`)) { setTitles(old => old.filter(t => t.id !== item.id)); setFavorites(old => old.filter(id => id !== item.id)); void deleteAssets(item.id); } }} aria-label={`Supprimer ${item.name}`} title="Supprimer ce titre"><Trash2 size={15}/></button> : <button className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label="Favori"><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
               </motion.article>)}
               {!visibleTitles.length && <div className="empty-state">Aucun titre trouvé. Essayez un autre filtre ou ajoutez un contenu.</div>}
             </div>
