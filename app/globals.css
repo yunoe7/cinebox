@@ -4,3 +4,21 @@
 @media(max-width:1200px){.poster-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.continue-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.poster-image{height:235px}}
 @media(max-width:760px){.sidebar{width:66px;padding:20px 8px}.brand{padding:0 7px 45px}.brand>span:last-child,.side-label,.sidebar-bottom,.nav-item span,.nav-item small{display:none}.side-nav{gap:8px}.nav-item{justify-content:center;padding:13px 5px}.main-area{margin-left:66px}.topbar{height:65px;padding:0 14px}.mobile-menu{display:none}.crumb{display:none}.top-actions{gap:8px}.search{width:min(42vw,180px);height:36px}.search input{font-size:10px}.add-btn{font-size:0;width:38px;padding:0;justify-content:center}.add-btn span{display:none}.page-content{padding:25px 16px}.welcome{align-items:start}.welcome h1{font-size:26px}.welcome h1 em{font-size:29px}.welcome>p{display:none}.hero{height:340px;margin-bottom:38px}.hero-copy{left:7%;right:5%}.hero h2{font-size:36px}.hero h2 em{font-size:40px}.hero-copy>p{font-size:11px}.continue-grid{grid-template-columns:1fr}.poster-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 7px}.poster-card{padding:5px 5px 10px}.poster-image{height:clamp(150px,43vw,230px)}.section-head h2{font-size:17px}.filters{gap:0}.filters button{padding:6px 7px;font-size:9px}.subtle{display:none}.detail-backdrop{height:230px}.detail-copy{padding:20px}.detail-copy h2{font-size:23px}}
 @media(max-width:390px){.search{width:125px}.welcome h1{font-size:23px}.hero{height:305px}.hero h2{font-size:31px}.hero-copy>p{font-size:10px}.filters button{padding:6px 5px}.hero-tag{margin-top:20px}}
+
+
+/* CINÉBOX SIGNATURE PASS — cinematic identity and primary actions */
+.brand{gap:14px;padding-left:7px;padding-bottom:58px;letter-spacing:0}
+.brand-mark{position:relative;width:43px;height:43px;border-radius:13px 13px 13px 5px;border:1px solid #9b8058;background:linear-gradient(145deg,#40311f 0%,#211c16 48%,#111318 100%);color:#f0d6aa;box-shadow:inset 0 1px #ffffff24,0 7px 22px #0008,0 0 24px #c49a5a14;display:grid;place-items:center}
+.brand-mark:before{content:'';position:absolute;inset:4px;border:1px solid #d5b77c35;border-radius:9px 9px 9px 3px;pointer-events:none}
+.brand-mark svg{filter:drop-shadow(0 2px 4px #0009)}
+.brand-mark i{position:absolute;width:5px;height:5px;border-radius:50%;background:#e6c48b;right:-4px;bottom:-4px;box-shadow:0 0 0 3px #101216,0 0 12px #d6b477}
+.brand-word{display:flex;flex-direction:column;gap:4px;font:800 14px Manrope,sans-serif;letter-spacing:3.3px;color:#f4f0e8}
+.brand-word small{font:600 7px 'DM Sans',sans-serif;letter-spacing:2.25px;color:#b39a73}
+.add-btn{position:relative;isolation:isolate;overflow:hidden;height:43px;padding:0 17px 0 10px;gap:10px;border:1px solid #e7c998;border-radius:8px;background:linear-gradient(145deg,#f1d7aa 0%,#d9b77f 48%,#bd965e 100%);box-shadow:inset 0 1px 0 #fff9,inset 0 -1px 0 #8f6d43aa,0 7px 20px #0006,0 0 0 1px #d3b17d20;color:#21190f;font:800 10px Manrope,sans-serif;letter-spacing:.15px;transition:transform .22s,box-shadow .22s,filter .22s}
+.add-btn:before{content:'';position:absolute;z-index:-1;inset:0;background:linear-gradient(110deg,transparent 20%,#fff8 48%,transparent 70%);transform:translateX(-130%);transition:transform .55s}
+.add-btn:hover{transform:translateY(-2px);filter:brightness(1.06);box-shadow:inset 0 1px 0 #fff,0 10px 25px #0008,0 0 22px #d3b17d28}
+.add-btn:hover:before{transform:translateX(130%)}
+.add-btn svg{width:27px;height:27px;padding:6px;border-radius:6px;background:#2a2116;color:#f2d7a8;box-shadow:inset 0 1px #ffffff2b,0 2px 6px #0004;stroke-width:2}
+.search{height:43px;border-radius:8px;background:linear-gradient(110deg,#15181e,#101217);border-color:#343944;box-shadow:inset 0 1px 0 #ffffff08}
+.search:focus-within{border-color:#b18e5e;box-shadow:0 0 0 3px #d3b17d18,0 5px 18px #0004}
+@media(max-width:760px){.brand{gap:0;padding-left:5px}.brand-word{display:none}.brand-mark{width:42px;height:42px}.add-btn{height:39px;padding:0 9px;gap:6px}.add-btn svg{width:25px;height:25px}}
