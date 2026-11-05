@@ -12,7 +12,7 @@ type Kind = "Film" | "Série" | "Vidéo";
 type Title = {
   id: number; name: string; kind: Kind; year: number; genre: string;
   description: string; poster: string; backdrop: string; progress: number;
-  duration: string; episodes?: string; currentTime?: number;
+  duration: string; episodes?: string; seasons?: Season[]; currentTime?: number;
   videoUrl?: string;
 };
 
@@ -142,7 +142,7 @@ export default function HomePage() {
     const posterFile = posterRef.current?.files?.[0];
     const kind = form.get("kind") as Kind;
     const season = String(form.get("season") || "").trim();
-    const episodeCount = String(form.get("episodeCount") || "").trim();
+    const episodeCount = String(form.get("episodeCount") || "").trim();\n    const episodeNames = String(form.get("episodeTitles") || "").split("\\n").map((line) => line.trim()).filter(Boolean);
     const name = String(form.get("name") || "").trim();
     if (!name) return;
     const newId = Date.now();
@@ -156,7 +156,7 @@ export default function HomePage() {
       poster: posterFile ? URL.createObjectURL(posterFile) : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
       progress: 0, duration: kind === "Série" && season ? `Saison ${season}` : String(form.get("duration") || "Non renseigné"),
-      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,
+      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,\n      seasons: kind === "Série" ? [{ number: Number(season) || 1, episodes: Array.from({ length: Math.max(0, Math.min(100, Number(episodeCount) || episodeNames.length)) }, (_, index) => ({ number: index + 1, title: episodeNames[index] || `Épisode ${index + 1}` })) }] : undefined,
       videoUrl: file ? URL.createObjectURL(file) : undefined
     };
     setTitles((old) => [newTitle, ...old]);
@@ -254,14 +254,14 @@ export default function HomePage() {
           <div className="form-row"><label>Type<select name="kind"><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue="2026"/></label></div>
           <div className="form-row"><label>Genre<input name="genre" placeholder="Drame, aventure…"/></label><label>Durée<input name="duration" placeholder="1 h 45, 42 min…"/></label></div>
           <div className="form-row"><label>Saison (si série)<input name="season" type="number" min="1" placeholder="1"/></label><label>Nombre d’épisodes<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
-          <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…"/></label>
+          <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"}/></label>\n          <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…"/></label>
           <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
           <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>MP4, WebM ou autre format pris en charge par votre navigateur</small></span><input ref={fileRef} type="file" accept="video/*"/></label>
           <button className="gold-btn full" type="submit">Ajouter à ma collection <ChevronRight size={16}/></button>
         </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
         {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}><motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setSelected(null)}><X/></button>
           {selected.videoUrl ? <video className="detail-video" src={selected.videoUrl} controls autoPlay onLoadedMetadata={(e) => { const video = e.currentTarget; if (selected.currentTime && selected.currentTime < (video.duration || Infinity) - 3) video.currentTime = selected.currentTime; }} onTimeUpdate={(e) => { const video = e.currentTarget; const second = Math.floor(video.currentTime); if (second - lastSavedSecond.current >= 5) { lastSavedSecond.current = second; const progress = video.duration ? Math.min(99, Math.round((video.currentTime / video.duration) * 100)) : selected.progress; setTitles(old => old.map(item => item.id === selected.id ? { ...item, currentTime: second, progress } : item)); setSelected(old => old && old.id === selected.id ? { ...old, currentTime: second, progress } : old); } }} onPause={(e) => { const video = e.currentTarget; const second = Math.floor(video.currentTime); const progress = video.duration ? Math.min(99, Math.round((video.currentTime / video.duration) * 100)) : selected.progress; setTitles(old => old.map(item => item.id === selected.id ? { ...item, currentTime: second, progress } : item)); setSelected(old => old && old.id === selected.id ? { ...old, currentTime: second, progress } : old); }}/> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
-          <div className="detail-copy"><div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div><h2>{selected.name}</h2><div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div><p>{selected.description}</p><div className="detail-actions">{selected.videoUrl ? <span className="available"><Play size={14}/> Vidéo locale prête à lire</span> : <span className="unavailable">Fichier vidéo non associé</span>}<button className={`outline-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(selected.id)}><Heart size={15}/> {favorites.includes(selected.id) ? "Dans ma liste" : "Ajouter à ma liste"}</button></div></div>
+          <div className="detail-copy"><div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div><h2>{selected.name}</h2><div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div><p>{selected.description}</p>{selected.seasons?.map((season) => <section className="episode-panel" key={season.number}><h3>Saison {season.number}</h3><div className="episode-list">{season.episodes.map((episode) => <div className="episode-row" key={episode.number}><span className="episode-number">{String(episode.number).padStart(2, "0")}</span><span>{episode.title}</span><small>Épisode</small></div>)}</div></section>)}<div className="detail-actions">{selected.videoUrl ? <span className="available"><Play size={14}/> Vidéo locale prête à lire</span> : <span className="unavailable">Fichier vidéo non associé</span>}<button className={`outline-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(selected.id)}><Heart size={15}/> {favorites.includes(selected.id) ? "Dans ma liste" : "Ajouter à ma liste"}</button></div></div>
         </motion.div></motion.div>}
       </AnimatePresence>
     </main>
