@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bookmark, Clapperboard, Film, FolderPlus, Heart, Home, Library,
   ListVideo, Menu, Play, Plus, Search, Settings, Sparkles, Tv,
-  Upload, X, ChevronRight, Clock3, MoreHorizontal
+  Upload, X, ChevronRight, Clock3, MoreHorizontal, Trash2, ShieldCheck
 } from "lucide-react";
 
 type Kind = "Film" | "Série" | "Vidéo";
@@ -30,7 +30,7 @@ const initialTitles: Title[] = [
 const navItems = [
   { label: "Accueil", icon: Home }, { label: "Films", icon: Film },
   { label: "Séries", icon: Tv }, { label: "Vidéos", icon: Clapperboard },
-  { label: "Ma liste", icon: Heart }
+  { label: "Ma liste", icon: Heart }, { label: "Administration", icon: Settings }
 ];
 
 export default function HomePage() {
@@ -64,7 +64,7 @@ export default function HomePage() {
   }, [titles, favorites, ready]);
 
   const visibleTitles = useMemo(() => titles.filter((item) => {
-    const pageMatch = activePage === "Accueil" ||
+    const pageMatch = activePage === "Accueil" || activePage === "Administration" ||
       (activePage === "Ma liste" ? favorites.includes(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
     const filterMatch = filter === "Tout" || item.kind === filter;
     const searchMatch = (item.name + " " + item.genre + " " + item.kind).toLowerCase().includes(query.toLowerCase());
@@ -100,6 +100,7 @@ export default function HomePage() {
 
   const pageTitle = activePage === "Accueil" ? <>Le plaisir de <em>choisir.</em></> :
     activePage === "Ma liste" ? <>Vos histoires <em>préférées.</em></> :
+    activePage === "Administration" ? <>Gérez votre <em>bibliothèque.</em></> :
     <>Explorez les <em>{activePage.toLowerCase()}.</em></>;
 
   return (
@@ -150,14 +151,25 @@ export default function HomePage() {
             </div>
           </section>}
 
+          {activePage === "Administration" && <section className="admin-overview">
+            <div className="admin-heading"><div><div className="eyebrow">ESPACE DE GESTION</div><h2><ShieldCheck size={19}/> Administration</h2><p>Gérez les titres de votre bibliothèque privée depuis un seul endroit.</p></div><button className="gold-btn" onClick={() => setShowAdd(true)}><Plus size={15}/> Ajouter un titre</button></div>
+            <div className="admin-stats">
+              <div><span>TITRES AU TOTAL</span><strong>{titles.length}</strong></div>
+              <div><span>FILMS</span><strong>{titles.filter(t => t.kind === "Film").length}</strong></div>
+              <div><span>SÉRIES</span><strong>{titles.filter(t => t.kind === "Série").length}</strong></div>
+              <div><span>VIDÉOS</span><strong>{titles.filter(t => t.kind === "Vidéo").length}</strong></div>
+            </div>
+            <div className="admin-hint">Astuce : utilisez les filtres ci-dessous pour afficher un type de contenu, puis supprimez un titre avec l’icône corbeille.</div>
+          </section>}
+
           <section className="section-block catalogue" id="catalogue">
-            <div className="section-head"><div><div className="eyebrow">À PORTÉE DE MAIN</div><h2>{activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>à explorer</em></h2></div>
+            <div className="section-head"><div><div className="eyebrow">{activePage === "Administration" ? "GESTION DES CONTENUS" : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Administration" ? "Tous les titres" : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Administration" ? "à gérer" : "à explorer"}</em></h2></div>
               <div className="catalogue-tools"><span className="result-count">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option></select></div>
             </div>
             <div className="poster-grid">
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className="poster-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * .035, .25) }}>
                 <button className="poster-open" onClick={() => setSelected(item)} aria-label={`Ouvrir ${item.name}`}><div className="poster-image"><img src={item.poster} alt={item.name} loading="lazy"/><span className="kind-chip">{item.kind}</span><span className="poster-play"><Play size={20} fill="currentColor"/></span></div><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong></button>
-                <button className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label="Favori"><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
+                {activePage === "Administration" ? <button className="heart-btn delete-btn" onClick={() => { setTitles(old => old.filter(t => t.id !== item.id)); setFavorites(old => old.filter(id => id !== item.id)); }} aria-label={`Supprimer ${item.name}`} title="Supprimer ce titre"><Trash2 size={15}/></button> : <button className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label="Favori"><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
               </motion.article>)}
               {!visibleTitles.length && <div className="empty-state">Aucun titre trouvé. Essayez un autre filtre ou ajoutez un contenu.</div>}
             </div>
