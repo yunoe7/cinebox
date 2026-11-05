@@ -278,6 +278,13 @@ export default function HomePage() {
                 {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
               </div>
             </section>
+            {ongoing.length > 0 && <section className="section-block streaming-row-section">
+              <div className="section-head"><div><div className="eyebrow">REPRENEZ LÀ OÙ VOUS EN ÉTIEZ</div><h2>Continuer à <em>regarder</em></h2></div><span className="subtle">{ongoing.length} en cours</span></div>
+              <div className="streaming-row">{[...ongoing].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0)).map(item => <button className="streaming-card continue-card" key={item.id} onClick={() => openTitle(item)}>
+                <span className="continue-card-poster"><img src={item.poster} alt="" loading="lazy"/><span className="continue-progress-track"><span style={{ width: `${Math.max(3, Math.min(100, item.progress))}%` }}/></span></span>
+                <span className="streaming-card-info"><small>REPRENDRE · {Math.round(item.progress)} %</small><strong>{item.name}</strong></span>
+              </button>)}</div>
+            </section>}
             <section className="section-block streaming-row-section collections-section">
               <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
               {collections.length > 0 ? collections.map(([name, items]) => <div className="collection-saga" key={name}>
