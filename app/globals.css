@@ -117,3 +117,10 @@ footer{padding-top:23px}
 .delete-btn{color:#b8a49a;border-color:#443b38}
 .delete-btn:hover{color:#e3a69b;border-color:#87584e;background:#291b1a}
 @media(max-width:760px){.admin-overview{padding:16px}.admin-heading{align-items:flex-start;flex-direction:column}.admin-heading .gold-btn{align-self:stretch;justify-content:center}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+.detail-facts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 3px}
+.detail-facts span{padding:6px 9px;border:1px solid #343a43;border-radius:5px;background:#191d24;color:#c7b18e;font-size:9px;letter-spacing:.35px}
+.upload-field{min-height:58px}
+.upload-field input[type=file]{max-width:165px;color:#9fa4ad;font-size:9px}
+.upload-field input[type=file]::file-selector-button{border:1px solid #4b4438;background:#25221c;color:#e2c89e;border-radius:5px;padding:7px;margin-right:7px;font-size:9px;cursor:pointer}
