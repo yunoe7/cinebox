@@ -101,3 +101,19 @@ footer{padding-top:23px}
 .sort-select{height:34px;max-width:155px;padding:0 27px 0 10px;border:1px solid #303640;border-radius:7px;background:#11141a;color:#bfc2c9;font-size:9px;outline:none}
 .sort-select:focus{border-color:#8c7657}
 @media(max-width:760px){.catalogue-tools{gap:6px;flex-wrap:wrap;justify-content:flex-end}.result-count{display:none}.sort-select{height:30px;max-width:115px;font-size:8px;padding-left:7px}.section-head{align-items:center;gap:8px}.filters button{font-size:8px}}
+
+
+/* Private admin area */
+.admin-overview{margin:0 0 35px;padding:23px;border:1px solid #303640;border-radius:12px;background:linear-gradient(135deg,#171a20,#101217 75%);box-shadow:0 12px 30px #0003}
+.admin-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.admin-heading h2{display:flex;align-items:center;gap:9px;font:650 20px Manrope;margin:9px 0 5px}
+.admin-heading h2 svg{color:#c5a575}
+.admin-heading p{margin:0;color:#9297a2;font-size:11px}
+.admin-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:23px}
+.admin-stats>div{padding:15px;border:1px solid #2c323b;border-radius:8px;background:#0e1116}
+.admin-stats span{display:block;color:#858b96;font-size:8px;letter-spacing:1.3px}
+.admin-stats strong{display:block;margin-top:8px;font:650 24px Manrope;color:#e9d3ae}
+.admin-hint{margin-top:14px;color:#858b96;font-size:9px;line-height:1.6}
+.delete-btn{color:#b8a49a;border-color:#443b38}
+.delete-btn:hover{color:#e3a69b;border-color:#87584e;background:#291b1a}
+@media(max-width:760px){.admin-overview{padding:16px}.admin-heading{align-items:flex-start;flex-direction:column}.admin-heading .gold-btn{align-self:stretch;justify-content:center}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
