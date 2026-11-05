@@ -745,3 +745,11 @@ footer{color:#78808b}
 .collection-create-btn{min-height:36px;padding:0 13px;border:1px solid #414751;border-radius:7px;background:#1a1f26;color:#e5e1d8;font-size:10px;font-weight:600;cursor:pointer;transition:background .18s,border-color .18s}
 .collection-create-btn:hover{background:#232932;border-color:#626b78}
 @media(max-width:620px){.collections-empty{align-items:flex-start}.collection-create-btn{width:100%}}
+
+
+/* Continue watching shelf */
+.continue-card-poster{position:relative;display:block;overflow:hidden;border-radius:11px;background:#1b1b1b}
+.continue-card-poster>img{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;transition:transform .22s,filter .22s}
+.continue-card:hover .continue-card-poster>img{transform:scale(1.025);filter:brightness(1.08)}
+.continue-progress-track{position:absolute;left:9px;right:9px;bottom:9px;height:3px;border-radius:99px;background:rgba(255,255,255,.38);overflow:hidden}
+.continue-progress-track>span{display:block;height:100%;border-radius:99px;background:#c5a66b}
