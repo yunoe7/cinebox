@@ -228,7 +228,7 @@ export default function HomePage() {
               <div><span>SÉRIES</span><strong>{titles.filter(t => t.kind === "Série").length}</strong></div>
               <div><span>VIDÉOS</span><strong>{titles.filter(t => t.kind === "Vidéo").length}</strong></div>
             </div>
-            <div className="admin-hint">Astuce : utilisez les filtres ci-dessous pour afficher un type de contenu, puis supprimez un titre avec l’icône corbeille.</div>
+            <div className="admin-hint">Les affiches et vidéos importées sont conservées sur cet appareil, même après fermeture du navigateur. La synchronisation en ligne viendra ensuite.</div>
           </section>}
 
           <section className="section-block catalogue" id="catalogue">
@@ -257,7 +257,7 @@ export default function HomePage() {
           <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
           <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>MP4, WebM ou autre format pris en charge par votre navigateur</small></span><input ref={fileRef} type="file" accept="video/*"/></label>
           <button className="gold-btn full" type="submit">Ajouter à ma collection <ChevronRight size={16}/></button>
-        </form><p className="local-note">Pour cette première version, les titres et fichiers restent enregistrés dans ce navigateur uniquement.</p></motion.div></motion.div>}
+        </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
         {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}><motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setSelected(null)}><X/></button>
           {selected.videoUrl ? <video className="detail-video" src={selected.videoUrl} controls autoPlay/> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
           <div className="detail-copy"><div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div><h2>{selected.name}</h2><div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div><p>{selected.description}</p><div className="detail-actions">{selected.videoUrl ? <span className="available"><Play size={14}/> Vidéo locale prête à lire</span> : <span className="unavailable">Fichier vidéo non associé</span>}<button className={`outline-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(selected.id)}><Heart size={15}/> {favorites.includes(selected.id) ? "Dans ma liste" : "Ajouter à ma liste"}</button></div></div>
