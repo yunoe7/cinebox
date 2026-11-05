@@ -83,6 +83,7 @@ export default function HomePage() {
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
   const [genreFilter, setGenreFilter] = useState("Tous les genres");
+  const [heroIndex, setHeroIndex] = useState(0);
   const [sortBy, setSortBy] = useState("recent");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Title | null>(null);
@@ -147,6 +148,13 @@ export default function HomePage() {
     return pageMatch && filterMatch && genreMatch && searchMatch;
   }).sort((a, b) => sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : b.year - a.year), [titles, activePage, favorites, filter, genreFilter, query, sortBy]);
 
+  const featuredTitles = useMemo(() => [...titles].sort((a, b) => b.year - a.year).slice(0, 5), [titles]);
+  const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
+  useEffect(() => {
+    if (featuredTitles.length < 2) return;
+    const timer = window.setInterval(() => setHeroIndex(index => (index + 1) % featuredTitles.length), 7000);
+    return () => window.clearInterval(timer);
+  }, [featuredTitles.length]);
   const ongoing = titles.filter((item) => item.progress > 0);
   const personalizedPicks = useMemo(() => {
     const favoriteGenres = favorites
@@ -253,17 +261,25 @@ export default function HomePage() {
         <div className="page-content">
           <div className="welcome"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1></div><p>Un espace à vous. <span>Des histoires à l’infini.</span></p></div>
 
-          {activePage === "Accueil" && <section className="hero">
-            <div className="hero-bg"/>
+          {activePage === "Accueil" && activeFeatured && <section className="hero hero-carousel" aria-label="Sélection à la une">
+            <div className="hero-bg" style={{ backgroundImage: `url("${activeFeatured.backdrop || activeFeatured.poster}")` }}/>
             <div className="hero-overlay"/>
-            <div className="hero-copy">
+            <div className="hero-copy" key={activeFeatured.id}>
               <div className="hero-kicker"><i/> À LA UNE <span/> SÉLECTION CINÉBOX</div>
-              <div className="hero-tag">LE PLAISIR DU GRAND ÉCRAN</div>
-              <h2>Les histoires<br/>nous <em>rapprochent.</em></h2>
-              <p>Le grand écran, votre façon de le vivre.<br/>Explorez votre collection et laissez-vous surprendre.</p>
-              <button className="gold-btn" onClick={() => document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" })}>Explorer la collection <ChevronRight size={15}/></button>
+              <div className="hero-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
+              <h2>{activeFeatured.name}</h2>
+              <div className="hero-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
+              <p>{activeFeatured.description}</p>
+              <div className="hero-actions">
+                <button className="gold-btn" onClick={() => setSelected(activeFeatured)}><Play size={14} fill="currentColor"/> Lecture</button>
+                <button className="hero-info-btn" onClick={() => setSelected(activeFeatured)}><span>ⓘ</span> Plus d'infos</button>
+              </div>
             </div>
-            <div className="hero-foot">01 <span/> 03</div>
+            <div className="hero-controls">
+              <button aria-label="Titre précédent" onClick={() => setHeroIndex(index => (index - 1 + featuredTitles.length) % featuredTitles.length)}><ChevronRight size={15} className="hero-prev-icon"/></button>
+              <div className="hero-dots">{featuredTitles.map((item, index) => <button key={item.id} aria-label={`Afficher ${item.name}`} aria-current={index === heroIndex ? "true" : undefined} className={index === heroIndex ? "active" : ""} onClick={() => setHeroIndex(index)}/>)}</div>
+              <button aria-label="Titre suivant" onClick={() => setHeroIndex(index => (index + 1) % featuredTitles.length)}><ChevronRight size={15}/></button>
+            </div>
           </section>}
 
           {activePage === "Accueil" && <section className="section-block">
