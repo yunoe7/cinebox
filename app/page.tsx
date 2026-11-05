@@ -82,6 +82,7 @@ export default function HomePage() {
   const [favorites, setFavorites] = useState<number[]>([2, 5]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
+  const [genreFilter, setGenreFilter] = useState("Tous les genres");
   const [sortBy, setSortBy] = useState("recent");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Title | null>(null);
@@ -140,9 +141,11 @@ export default function HomePage() {
     const pageMatch = activePage === "Accueil" || activePage === "Administration" ||
       (activePage === "Ma liste" ? favorites.includes(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
     const filterMatch = filter === "Tout" || item.kind === filter;
-    const searchMatch = (item.name + " " + item.genre + " " + item.kind).toLowerCase().includes(query.toLowerCase());
-    return pageMatch && filterMatch && searchMatch;
-  }).sort((a, b) => sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : b.year - a.year), [titles, activePage, favorites, filter, query, sortBy]);
+    const genreMatch = genreFilter === "Tous les genres" || item.genre === genreFilter;
+    const searchable = [item.name, item.genre, item.kind, item.description, String(item.year), ...(item.seasons || []).flatMap(season => season.episodes.map(episode => episode.title))].join(" ").toLocaleLowerCase("fr");
+    const searchMatch = searchable.includes(query.trim().toLocaleLowerCase("fr"));
+    return pageMatch && filterMatch && genreMatch && searchMatch;
+  }).sort((a, b) => sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : b.year - a.year), [titles, activePage, favorites, filter, genreFilter, query, sortBy]);
 
   const ongoing = titles.filter((item) => item.progress > 0);
   const personalizedPicks = useMemo(() => {
@@ -295,7 +298,7 @@ export default function HomePage() {
 
           <section className="section-block catalogue" id="catalogue">
             <div className="section-head"><div><div className="eyebrow">{activePage === "Administration" ? "GESTION DES CONTENUS" : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Administration" ? "Tous les titres" : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Administration" ? "à gérer" : "à explorer"}</em></h2></div>
-              <div className="catalogue-tools"><span className="result-count">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option></select></div>
+              <div className="catalogue-tools"><span className="result-count">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(titles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option></select></div>
             </div>
             <div className="poster-grid">
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className="poster-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * .035, .25) }}>
