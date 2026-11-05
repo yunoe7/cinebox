@@ -7,10 +7,12 @@ type VideoPlayerProps = {
   resumeAt: number;
   onProgress: (second: number, progress: number) => void;
   onEnded: () => void;
+  onView: () => void;
 };
 
-export default function VideoPlayer({ src, resumeAt, onProgress, onEnded }: VideoPlayerProps) {
+export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView }: VideoPlayerProps) {
   const lastSavedSecond = useRef(0);
+  const countedView = useRef(false);
 
   const saveProgress = (video: HTMLVideoElement, force = false) => {
     const second = Math.floor(video.currentTime);
@@ -28,6 +30,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded }: Vide
       src={src}
       controls
       autoPlay
+      onPlay={() => { if (!countedView.current) { countedView.current = true; onView(); } }}
       onLoadedMetadata={(event) => {
         const video = event.currentTarget;
         if (resumeAt > 3 && resumeAt < (video.duration || Infinity) - 3) {
