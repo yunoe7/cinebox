@@ -147,15 +147,16 @@ export default function HomePage() {
     const episodeFiles = Array.from(document.querySelector<HTMLInputElement>('input[name="episodeVideos"]')?.files || []);
     const posterFile = posterRef.current?.files?.[0];
     const kind = form.get("kind") as Kind;
-    const season = String(form.get("season") || "").trim();
-    const episodeCount = String(form.get("episodeCount") || "").trim();
+    const seasonCount = Math.max(1, Math.min(20, Number(form.get("seasonCount")) || 1));
+    const episodeCount = Math.max(0, Math.min(100, Number(form.get("episodeCount")) || 0));
     const episodeNames = String(form.get("episodeTitles") || "").split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean);
     const name = String(form.get("name") || "").trim();
     if (!name) return;
     const newId = Date.now();
     if (posterFile) void saveAsset(`${newId}:poster`, posterFile).catch(() => alert("Impossible de sauvegarder cette affiche dans le navigateur."));
     if (file) void saveAsset(`${newId}:video`, file).catch(() => alert("Impossible de sauvegarder cette vidéo dans le navigateur."));
-    episodeFiles.forEach((episodeFile, index) => { void saveAsset(`${newId}:episode:${Number(season) || 1}:${index + 1}`, episodeFile).catch(() => alert(`Impossible de sauvegarder la vidéo de l’épisode ${index + 1}.`)); });
+    const perSeason = episodeCount || Math.ceil(Math.max(episodeNames.length, episodeFiles.length) / seasonCount);
+    episodeFiles.forEach((episodeFile, index) => { const seasonNumber = Math.floor(index / Math.max(1, perSeason)) + 1; const episodeNumber = index % Math.max(1, perSeason) + 1; void saveAsset(`${newId}:episode:${seasonNumber}:${episodeNumber}`, episodeFile).catch(() => alert(`Impossible de sauvegarder la vidéo de l’épisode ${index + 1}.`)); });
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
@@ -163,9 +164,9 @@ export default function HomePage() {
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
       poster: posterFile ? URL.createObjectURL(posterFile) : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
-      progress: 0, duration: kind === "Série" && season ? `Saison ${season}` : String(form.get("duration") || "Non renseigné"),
-      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,
-      seasons: kind === "Série" ? [{ number: Number(season) || 1, episodes: Array.from({ length: Math.max(0, Math.min(100, Number(episodeCount) || episodeNames.length || episodeFiles.length)) }, (_, index) => ({ number: index + 1, title: episodeNames[index] || `Épisode ${index + 1}`, videoUrl: episodeFiles[index] ? URL.createObjectURL(episodeFiles[index]) : undefined })) }] : undefined,
+      progress: 0, duration: kind === "Série" ? `${seasonCount} saison${seasonCount > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
+      episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
+      seasons: kind === "Série" ? Array.from({ length: seasonCount }, (_, seasonIndex) => ({ number: seasonIndex + 1, episodes: Array.from({ length: perSeason }, (_, episodeIndex) => { const fileIndex = seasonIndex * perSeason + episodeIndex; return { number: episodeIndex + 1, title: episodeNames[fileIndex] || `Épisode ${episodeIndex + 1}`, videoUrl: episodeFiles[fileIndex] ? URL.createObjectURL(episodeFiles[fileIndex]) : undefined }; }) })) : undefined,
       videoUrl: file ? URL.createObjectURL(file) : undefined
     };
     setTitles((old) => [newTitle, ...old]);
@@ -262,7 +263,7 @@ export default function HomePage() {
           <label>Titre<input name="name" required placeholder="Ex. Le voyage intérieur"/></label>
           <div className="form-row"><label>Type<select name="kind"><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue="2026"/></label></div>
           <div className="form-row"><label>Genre<input name="genre" placeholder="Drame, aventure…"/></label><label>Durée<input name="duration" placeholder="1 h 45, 42 min…"/></label></div>
-          <div className="form-row"><label>Saison (si série)<input name="season" type="number" min="1" placeholder="1"/></label><label>Nombre d’épisodes<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
+          <div className="form-row"><label>Nombre de saisons<input name="seasonCount" type="number" min="1" max="20" placeholder="1" defaultValue="1"/></label><label>Épisodes par saison<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
           <label>Titres des épisodes (un par ligne)<textarea name="episodeTitles" rows={3} placeholder={"Épisode 1 — Le début\\nÉpisode 2 — La suite"}/></label>\n          <label className="upload-field"><Upload size={16}/><span>Vidéos des épisodes <small>Sélectionne plusieurs fichiers dans l’ordre des épisodes</small></span><input name="episodeVideos" type="file" accept="video/*" multiple/></label>
           <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…"/></label>
           <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
