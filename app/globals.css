@@ -281,3 +281,17 @@ footer{padding-top:23px}
 .confirm-delete{border-color:#94564d;background:linear-gradient(180deg,#86463e,#713a35);color:#fff2ef;box-shadow:0 4px 12px #6d302b26}
 .confirm-delete:hover{background:linear-gradient(180deg,#99534a,#80423b);border-color:#b06a60}
 @media(max-width:520px){.app-confirm-modal{padding:25px 22px 21px;border-radius:14px}.app-confirm-modal h2{font-size:22px}}
+
+
+/* Quiet, editorial brand mark and primary action */
+.brand{gap:11px;padding-left:5px}
+.brand-mark{width:36px;height:36px;border:1px solid #65543b;border-radius:9px;background:#17191d;box-shadow:none;color:#d5b783}
+.brand-mark svg{width:18px;height:18px;filter:none;stroke-width:1.45}
+.brand-mark i{display:none}
+.brand-word{font-size:13px;letter-spacing:2.7px;gap:3px}
+.brand-word small{font-size:6.5px;letter-spacing:2px;color:#93836a}
+.add-btn{height:38px;padding:0 14px 0 9px;gap:9px;border:1px solid #5e5039;border-radius:7px;background:#1a1b1d;box-shadow:inset 0 1px 0 #ffffff09;color:#e2c99e;font-size:10px;font-weight:650;letter-spacing:.05px}
+.add-btn:before{display:none}
+.add-btn svg{width:15px;height:15px;stroke-width:1.8}
+.add-btn:hover{transform:translateY(-1px);filter:none;background:#24231f;border-color:#8a714c;box-shadow:0 4px 14px #0005}
+.add-btn:active{transform:translateY(0);background:#171819}
