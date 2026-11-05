@@ -622,3 +622,48 @@ footer{color:#78808b}
   .hero-carousel .hero-bg{animation:none}
   .hero-carousel .hero-copy{animation:none}
 }
+
+
+/* Larger, more confident hero actions */
+.hero-carousel .hero-actions{gap:14px;margin-top:22px}
+.hero-carousel .hero-actions .gold-btn,
+.hero-carousel .hero-actions .hero-info-btn{
+  min-height:56px;
+  padding:0 25px;
+  border-radius:8px;
+  gap:11px;
+  font:700 14px Manrope,sans-serif;
+  letter-spacing:.05px;
+}
+.hero-carousel .hero-actions .gold-btn{
+  min-width:156px;
+  justify-content:center;
+  background:linear-gradient(135deg,#f0d3a0,#c6a16a);
+  color:#17130d;
+  box-shadow:0 7px 22px #0006,inset 0 1px #fff8;
+}
+.hero-carousel .hero-actions .gold-btn svg{width:18px;height:18px}
+.hero-carousel .hero-actions .hero-info-btn{
+  min-width:158px;
+  justify-content:center;
+  background:rgba(30,32,37,.9);
+  border:1px solid #ffffff30;
+  color:#f1eee8;
+  box-shadow:0 5px 18px #0004,inset 0 1px #ffffff0a;
+}
+.hero-carousel .hero-actions .hero-info-btn span{font-size:17px;line-height:1}
+.hero-carousel .hero-actions .gold-btn:hover,
+.hero-carousel .hero-actions .hero-info-btn:hover{
+  transform:translateY(-2px);
+  filter:brightness(1.07);
+}
+@media(max-width:760px){
+  .hero-carousel .hero-actions{gap:9px;margin-top:17px;flex-wrap:wrap}
+  .hero-carousel .hero-actions .gold-btn,
+  .hero-carousel .hero-actions .hero-info-btn{
+    min-height:48px;
+    min-width:0;
+    padding:0 17px;
+    font-size:12px;
+  }
+}
