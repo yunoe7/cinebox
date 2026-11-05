@@ -204,3 +204,22 @@ footer{padding-top:23px}
   .poster-card .heart-btn.edit-btn,.poster-card .heart-btn.delete-btn{width:27px;height:27px;bottom:9px}
   .poster-card .heart-btn.edit-btn{right:40px}
 }
+
+
+/* Editorial overflow menu for catalogue management */
+.poster-card .card-menu-wrap{position:absolute;right:8px;bottom:9px;z-index:30}
+.poster-card .heart-btn.card-menu-trigger{position:relative;inset:auto;width:34px;height:34px;display:grid;place-items:center;padding:0;border:1px solid #343943;border-radius:9px;background:#191c22;color:#c8c2b8;box-shadow:0 3px 10px #0006;transition:background .18s,border-color .18s,color .18s,transform .18s}
+.poster-card .heart-btn.card-menu-trigger:hover,.poster-card .heart-btn.card-menu-trigger[aria-expanded="true"]{background:#28231b;border-color:#92764e;color:#e6c797;transform:translateY(-1px)}
+.card-menu-wrap .menu-dismiss{position:fixed;inset:0;z-index:1;border:0;background:transparent;cursor:default}
+.card-action-menu{position:absolute;z-index:2;right:0;top:calc(100% + 11px);width:184px;padding:5px;border:1px solid #353943;border-radius:11px;background:linear-gradient(145deg,#20232b,#15171d);box-shadow:0 16px 38px #000b,0 1px #ffffff0c inset;animation:cardMenuIn .14s ease-out}
+.card-action-menu:before{content:"";position:absolute;right:12px;top:-5px;width:9px;height:9px;background:#20232b;border-left:1px solid #353943;border-top:1px solid #353943;transform:rotate(45deg)}
+.card-action-menu button{position:relative;display:flex;align-items:center;gap:11px;width:100%;padding:11px 12px;border:0;border-radius:7px;background:transparent;color:#e5e2dc;text-align:left;font:500 12px Manrope,sans-serif;cursor:pointer;transition:background .15s,color .15s}
+.card-action-menu button+button{border-top:1px solid #ffffff0b}
+.card-action-menu button svg{color:#d2b17e}
+.card-action-menu button:hover{background:#ffffff0b;color:#fff}
+.card-action-menu button.danger{color:#e7a29a}
+.card-action-menu button.danger svg{color:#e58c81}
+.card-action-menu button.danger:hover{background:#6d302b25;color:#ffb0a6}
+.poster-card .poster-open>strong{padding-right:52px}
+@keyframes cardMenuIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:520px){.poster-card .heart-btn.card-menu-trigger{width:31px;height:31px}.card-action-menu{width:170px}}
