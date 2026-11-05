@@ -19,11 +19,12 @@ type DetailModalProps = {
   onToggleFavorite: (id: number) => void;
   onProgress: (titleId: number, episode: SelectedEpisode | null, second: number, progress: number) => void;
   onEnded: (title: Title, episode: SelectedEpisode | null) => void;
+  onView: (titleId: number) => void;
 };
 
 export default function DetailModal({
   selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites,
-  onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded
+  onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView
 }: DetailModalProps) {
   return (
     <AnimatePresence>
@@ -38,6 +39,7 @@ export default function DetailModal({
               : selected.currentTime ?? 0}
             onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)}
             onEnded={() => onEnded(selected, selectedEpisode)}
+            onView={() => onView(selected.id)}
           /> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
           <div className="detail-copy">
             <div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div>
