@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
 import { initialTitles } from "../lib/cinebox/catalog";
 import DetailModal from "../components/cinebox/DetailModal";
+import EpisodeEditor from "../components/cinebox/EpisodeEditor";
 import VideoPlayer from "../components/cinebox/VideoPlayer";
 import type { Kind, Title } from "../lib/cinebox/types";
 import {
@@ -297,7 +298,31 @@ export default function HomePage() {
           {addKind !== "Série" && <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>Facultatif · MP4, WebM et formats pris en charge</small></span><input ref={fileRef} type="file" accept="video/*"/></label>}
           <button className="gold-btn full" type="submit">{editingTitle ? "Enregistrer les modifications" : "Ajouter à ma collection"} <ChevronRight size={16}/></button>
         </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
-        {editingEpisode && selected && <motion.div className="modal-backdrop episode-edit-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingEpisode(null); }}><motion.form className="episode-edit-modal" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} onSubmit={async (e) => { e.preventDefault(); const form = new FormData(e.currentTarget); const title = String(form.get("episodeTitle") || "").trim() || `Épisode ${editingEpisode.episode}`; const file = (e.currentTarget.elements.namedItem("episodeFile") as HTMLInputElement)?.files?.[0]; const key = `${selected.id}:episode:${editingEpisode.season}:${editingEpisode.episode}`; if (file) await saveAsset(key, file); const videoUrl = file ? URL.createObjectURL(file) : undefined; const update = (item: Title): Title => ({ ...item, seasons: item.seasons?.map(season => season.number !== editingEpisode.season ? season : { ...season, episodes: season.episodes.map(ep => ep.number !== editingEpisode.episode ? ep : { ...ep, title, ...(videoUrl ? { videoUrl, currentTime: 0, progress: 0 } : {}) }) }) }); setTitles(old => old.map(item => item.id === selected.id ? update(item) : item)); setSelected(old => old && old.id === selected.id ? update(old) : old); setEditingEpisode(null); setNotice({ title: "Épisode mis à jour", message: "Les informations de l’épisode ont été enregistrées." }); window.setTimeout(() => setNotice(null), 3600); }}><div className="eyebrow">SAISON {editingEpisode.season} · ÉPISODE {editingEpisode.episode}</div><h2>Modifier l’épisode</h2><label>Titre de l’épisode<input name="episodeTitle" defaultValue={editingEpisode.title} autoFocus/></label><label className="episode-file-label">Remplacer la vidéo <input name="episodeFile" type="file" accept="video/*"/></label><div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={() => setEditingEpisode(null)}>Annuler</button><button type="submit" className="confirm-delete">Enregistrer</button></div></motion.form></motion.div>}
+        <EpisodeEditor
+          selected={selected}
+          editingEpisode={editingEpisode}
+          onClose={() => setEditingEpisode(null)}
+          onSave={async (target, file) => {
+            if (!selected) return;
+            const key = `${selected.id}:episode:${target.season}:${target.episode}`;
+            if (file) await saveAsset(key, file);
+            const videoUrl = file ? URL.createObjectURL(file) : undefined;
+            const update = (item: Title): Title => ({
+              ...item,
+              seasons: item.seasons?.map(season => season.number !== target.season ? season : {
+                ...season,
+                episodes: season.episodes.map(episode => episode.number !== target.episode ? episode : {
+                  ...episode, title: target.title, ...(videoUrl ? { videoUrl, currentTime: 0, progress: 0 } : {})
+                })
+              })
+            });
+            setTitles(old => old.map(item => item.id === selected.id ? update(item) : item));
+            setSelected(old => old && old.id === selected.id ? update(old) : old);
+            setEditingEpisode(null);
+            setNotice({ title: "Épisode mis à jour", message: "Les informations de l’épisode ont été enregistrées." });
+            window.setTimeout(() => setNotice(null), 3600);
+          }}
+        />
         <DetailModal
           selected={selected}
           selectedEpisodeUrl={selectedEpisodeUrl}
