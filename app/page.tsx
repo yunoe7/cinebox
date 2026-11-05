@@ -12,7 +12,7 @@ type Kind = "Film" | "Série" | "Vidéo";
 type Title = {
   id: number; name: string; kind: Kind; year: number; genre: string;
   description: string; poster: string; backdrop: string; progress: number;
-  duration: string; episodes?: string;
+  duration: string; episodes?: string; currentTime?: number;
   videoUrl?: string;
 };
 
@@ -88,6 +88,7 @@ export default function HomePage() {
   const [ready, setReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const posterRef = useRef<HTMLInputElement>(null);
+  const lastSavedSecond = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,7 +260,7 @@ export default function HomePage() {
           <button className="gold-btn full" type="submit">Ajouter à ma collection <ChevronRight size={16}/></button>
         </form><p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p></motion.div></motion.div>}
         {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}><motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setSelected(null)}><X/></button>
-          {selected.videoUrl ? <video className="detail-video" src={selected.videoUrl} controls autoPlay/> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
+          {selected.videoUrl ? <video className="detail-video" src={selected.videoUrl} controls autoPlay onLoadedMetadata={(e) => { const video = e.currentTarget; if (selected.currentTime && selected.currentTime < (video.duration || Infinity) - 3) video.currentTime = selected.currentTime; }} onTimeUpdate={(e) => { const video = e.currentTarget; const second = Math.floor(video.currentTime); if (second - lastSavedSecond.current >= 5) { lastSavedSecond.current = second; const progress = video.duration ? Math.min(99, Math.round((video.currentTime / video.duration) * 100)) : selected.progress; setTitles(old => old.map(item => item.id === selected.id ? { ...item, currentTime: second, progress } : item)); setSelected(old => old && old.id === selected.id ? { ...old, currentTime: second, progress } : old); } }} onPause={(e) => { const video = e.currentTarget; const second = Math.floor(video.currentTime); const progress = video.duration ? Math.min(99, Math.round((video.currentTime / video.duration) * 100)) : selected.progress; setTitles(old => old.map(item => item.id === selected.id ? { ...item, currentTime: second, progress } : item)); setSelected(old => old && old.id === selected.id ? { ...old, currentTime: second, progress } : old); }}/> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
           <div className="detail-copy"><div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div><h2>{selected.name}</h2><div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div><p>{selected.description}</p><div className="detail-actions">{selected.videoUrl ? <span className="available"><Play size={14}/> Vidéo locale prête à lire</span> : <span className="unavailable">Fichier vidéo non associé</span>}<button className={`outline-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(selected.id)}><Heart size={15}/> {favorites.includes(selected.id) ? "Dans ma liste" : "Ajouter à ma liste"}</button></div></div>
         </motion.div></motion.div>}
       </AnimatePresence>
