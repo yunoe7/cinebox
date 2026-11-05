@@ -175,3 +175,8 @@ footer{padding-top:23px}
 .episode-progress b{display:block;height:100%;background:#c7a878;border-radius:4px}
 .episode-row:disabled{opacity:.55;cursor:not-allowed}
 .episode-row:not(:disabled):hover{border-color:#786344;background:#191a1b}
+
+
+.episode-row.episode-active{border-color:#9b8058;background:linear-gradient(90deg,#2a241b,#17191d);box-shadow:inset 3px 0 #d3b17d}
+.episode-row.episode-active .episode-number{background:#d5b47f;color:#17130d}
+.episode-row.episode-active>small{color:#e5c895}
