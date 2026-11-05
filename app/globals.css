@@ -667,3 +667,30 @@ footer{color:#78808b}
     font-size:12px;
   }
 }
+
+
+/* Streaming-style discovery rows */
+.streaming-genres { margin-top:26px; }
+.genre-pills { display:flex; flex-wrap:wrap; gap:9px; }
+.genre-pills button { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.035); color:var(--text,#f5f2ed); border-radius:999px; padding:9px 16px; font:inherit; font-size:12px; cursor:pointer; transition:background .2s,border-color .2s,color .2s; }
+.genre-pills button:hover,.genre-pills button.active { border-color:rgba(196,160,91,.65); background:rgba(196,160,91,.13); color:#e5c88e; }
+.streaming-row-section { min-width:0; }
+.streaming-row { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(150px,19%); gap:16px; overflow-x:auto; padding:3px 2px 14px; scrollbar-width:thin; scrollbar-color:rgba(196,160,91,.35) transparent; }
+.streaming-card { min-width:0; position:relative; display:flex; flex-direction:column; gap:10px; padding:0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.streaming-card > img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:11px; background:#1b1b1b; transition:transform .22s,filter .22s; }
+.streaming-card:hover > img { transform:translateY(-4px); filter:brightness(1.08); }
+.streaming-card-info { display:flex; flex-direction:column; gap:5px; }
+.streaming-card-info small { color:#a9a39a; font-size:10px; letter-spacing:.04em; }
+.streaming-card-info strong { color:#f4f0e8; font-size:13px; line-height:1.35; }
+.top-ten-row { grid-auto-columns:minmax(190px,24%); }
+.top-ten-card { display:grid; grid-template-columns:56px minmax(0,1fr); align-items:end; gap:8px; }
+.top-ten-number { font-size:clamp(64px,8vw,108px); line-height:.82; font-weight:800; letter-spacing:-.09em; color:transparent; -webkit-text-stroke:2px #c5a66b; text-shadow:0 5px 24px rgba(0,0,0,.4); }
+.top-ten-card > img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:10px; }
+.top-ten-card .streaming-card-info { grid-column:1 / -1; }
+@media(max-width:700px) {
+ .streaming-row { grid-auto-columns:minmax(128px,42%); gap:12px; }
+ .top-ten-row { grid-auto-columns:minmax(165px,58%); }
+ .top-ten-card { grid-template-columns:48px minmax(0,1fr); }
+ .genre-pills { gap:7px; }
+ .genre-pills button { padding:8px 12px; }
+}
