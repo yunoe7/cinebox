@@ -45,6 +45,7 @@ export default function HomePage() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [ready, setReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const posterRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -78,22 +79,28 @@ export default function HomePage() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const file = fileRef.current?.files?.[0];
+    const posterFile = posterRef.current?.files?.[0];
+    const kind = form.get("kind") as Kind;
+    const season = String(form.get("season") || "").trim();
+    const episodeCount = String(form.get("episodeCount") || "").trim();
     const name = String(form.get("name") || "").trim();
     if (!name) return;
     const newTitle: Title = {
-      id: Date.now(), name, kind: form.get("kind") as Kind,
+      id: Date.now(), name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
-      poster: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
+      poster: posterFile ? URL.createObjectURL(posterFile) : "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
-      progress: 0, duration: "Non renseigné",
+      progress: 0, duration: kind === "Série" && season ? `Saison ${season}` : String(form.get("duration") || "Non renseigné"),
+      episodes: kind === "Série" && episodeCount ? `${episodeCount} épisodes` : undefined,
       videoUrl: file ? URL.createObjectURL(file) : undefined
     };
     setTitles((old) => [newTitle, ...old]);
     setShowAdd(false);
     event.currentTarget.reset();
     if (fileRef.current) fileRef.current.value = "";
+    if (posterRef.current) posterRef.current.value = "";
     setActivePage("Accueil");
     setFilter("Tout");
   };
@@ -179,11 +186,13 @@ export default function HomePage() {
       </section>
 
       <AnimatePresence>
-        {showAdd && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}><motion.div className="modal" initial={{ y: 18, scale: .98 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setShowAdd(false)}><X/></button><div className="eyebrow">AGRANDIR VOTRE COLLECTION</div><h2>Ajouter un <em>titre.</em></h2><p className="modal-desc">Ajoutez une fiche et, si vous le souhaitez, un fichier vidéo depuis votre appareil.</p><form onSubmit={addTitle}>
+        {showAdd && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}><motion.div className="modal" initial={{ y: 18, scale: .98 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}><button className="close-btn" onClick={() => setShowAdd(false)}><X/></button><div className="eyebrow">AGRANDIR VOTRE COLLECTION</div><h2>Ajouter un <em>titre.</em></h2><p className="modal-desc">Ajoutez les informations du titre, son affiche et éventuellement son fichier vidéo.</p><form onSubmit={addTitle}>
           <label>Titre<input name="name" required placeholder="Ex. Le voyage intérieur"/></label>
           <div className="form-row"><label>Type<select name="kind"><option>Film</option><option>Série</option><option>Vidéo</option></select></label><label>Année<input name="year" type="number" min="1900" max="2099" defaultValue="2026"/></label></div>
-          <label>Genre<input name="genre" placeholder="Drame, aventure…"/></label>
+          <div className="form-row"><label>Genre<input name="genre" placeholder="Drame, aventure…"/></label><label>Durée<input name="duration" placeholder="1 h 45, 42 min…"/></label></div>
+          <div className="form-row"><label>Saison (si série)<input name="season" type="number" min="1" placeholder="1"/></label><label>Nombre d’épisodes<input name="episodeCount" type="number" min="1" placeholder="8"/></label></div>
           <label>Résumé<textarea name="description" rows={3} placeholder="Quelques mots sur ce titre…"/></label>
+          <label className="upload-field"><Upload size={16}/><span>Affiche du titre <small>Image JPG, PNG ou WebP depuis votre appareil</small></span><input ref={posterRef} type="file" accept="image/png,image/jpeg,image/webp"/></label>
           <label className="upload-field"><Upload size={16}/><span>Fichier vidéo <small>MP4, WebM ou autre format pris en charge par votre navigateur</small></span><input ref={fileRef} type="file" accept="video/*"/></label>
           <button className="gold-btn full" type="submit">Ajouter à ma collection <ChevronRight size={16}/></button>
         </form><p className="local-note">Pour cette première version, les titres et fichiers restent enregistrés dans ce navigateur uniquement.</p></motion.div></motion.div>}
