@@ -61,6 +61,7 @@ export default function HomePage() {
               ...item,
               seasons,
               poster: posterBlob ? URL.createObjectURL(posterBlob) : item.poster.startsWith("blob:") || item.poster.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.poster,
+              backdrop: item.backdrop?.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.backdrop || "",
               videoUrl: videoBlob ? URL.createObjectURL(videoBlob) : undefined
             };
           }));
@@ -197,7 +198,7 @@ export default function HomePage() {
       collection: String(form.get("collection") || "").trim() || undefined,
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
       poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "",
-      backdrop: editingTitle?.backdrop || "",
+      backdrop: editingTitle?.backdrop?.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : editingTitle?.backdrop || "",
       progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${seasonCount} saison${seasonCount > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
       episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
       seasons: kind === "Série" ? Array.from({ length: seasonCount }, (_, seasonIndex) => {
