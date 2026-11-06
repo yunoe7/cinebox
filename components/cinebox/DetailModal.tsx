@@ -73,7 +73,7 @@ export default function DetailModal({
             onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)}
             onEnded={() => onEnded(selected, selectedEpisode)}
             onView={() => onView(selected.id)}
-          /> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
+          /> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.poster}")` }}/>}
           <div className="detail-copy">
             <div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div>
             <h2 id="detail-modal-title">{selected.name}</h2>
