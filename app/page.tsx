@@ -287,7 +287,14 @@ export default function HomePage() {
         </header>
 
         <div className="page-content">
-          <div className="welcome"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1></div><p>Un espace à vous. <span>Des histoires à l’infini.</span></p></div>
+          <div className="welcome welcome-redesign"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1><p className="welcome-subtitle">Votre cinéma privé, soigneusement composé.</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>
+          {activePage === "Accueil" && <section className="library-overview" aria-label="Aperçu de votre bibliothèque">
+            <div className="library-overview-intro"><span className="overview-mark"><Clapperboard size={18}/></span><div><small>VOTRE ESPACE CINÉMA</small><strong>La collection, en un regard</strong></div></div>
+            <div className="overview-stat"><strong>{titles.length.toString().padStart(2,"0")}</strong><span>TITRES</span></div>
+            <div className="overview-stat"><strong>{titles.filter(item => item.kind === "Film").length.toString().padStart(2,"0")}</strong><span>FILMS</span></div>
+            <div className="overview-stat"><strong>{titles.filter(item => item.kind === "Série").length.toString().padStart(2,"0")}</strong><span>SÉRIES</span></div>
+            <div className="overview-stat"><strong>{favorites.length.toString().padStart(2,"0")}</strong><span>FAVORIS</span></div>
+          </section>}
 
           {activePage === "Accueil" && activeFeatured && <section className="hero hero-carousel" aria-label="Sélection à la une">
             <div className="hero-bg" style={{ backgroundImage: activeFeatured.poster || activeFeatured.backdrop ? `url("${activeFeatured.poster || activeFeatured.backdrop}")` : "none" }}/>
