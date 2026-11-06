@@ -79,12 +79,12 @@ export default function DetailModal({
             <h2 id="detail-modal-title">{selected.name}</h2>
             <div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div>
             <p>{selected.description}</p>
-            {selected.seasons?.map((season) => <section className="episode-panel" key={season.number}>
+            {selected.seasons?.map((season) => <section className="episode-panel" key={season.number} aria-label={`Épisodes de la saison ${season.number}`}>
               <h3>Saison {season.number}</h3>
               <div className="episode-list">{season.episodes.map((episode) => <div className="episode-line" key={episode.number}>
-                <button className={`episode-row ${selectedEpisode?.season === season.number && selectedEpisode?.episode === episode.number ? "episode-active" : ""}`} type="button" disabled={!episode.videoUrl} onClick={() => onSelectEpisode(season.number, episode.number, episode.videoUrl || "")}>
+                <button className={`episode-row ${selectedEpisode?.season === season.number && selectedEpisode?.episode === episode.number ? "episode-active" : ""}`} type="button" aria-pressed={selectedEpisode?.season === season.number && selectedEpisode?.episode === episode.number} disabled={!episode.videoUrl} onClick={() => onSelectEpisode(season.number, episode.number, episode.videoUrl || "")}>
                   {episode.thumbnailUrl ? <img className="episode-thumbnail" src={episode.thumbnailUrl} alt="" /> : <span className="episode-number">{String(episode.number).padStart(2, "0")}</span>}
-                  <span className="episode-title-wrap"><span>{episode.title}</span>{(episode.progress || 0) > 0 && <i className="episode-progress"><b style={{ width: `${episode.progress}%` }}/></i>}</span>
+                  <span className="episode-title-wrap"><span>{episode.title}</span>{(episode.progress || 0) > 0 && <i className="episode-progress" aria-hidden="true"><b style={{ width: `${episode.progress}%` }}/></i>}</span>
                   <small>{episode.videoUrl ? ((episode.progress || 0) >= 100 ? "Terminé" : episode.progress ? `${episode.progress}% · reprendre` : "Lire") : "Vidéo absente"}</small>
                 </button>
                 {activePage === "Administration" && <button className="episode-edit" title="Modifier cet épisode" aria-label={`Modifier ${episode.title}`} onClick={() => onEditEpisode(season.number, episode.number, episode.title)}><Settings size={13}/></button>}
