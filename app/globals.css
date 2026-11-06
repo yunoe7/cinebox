@@ -857,3 +857,47 @@ footer{color:#78808b}
  .detail-bottom-actions{align-items:flex-start;flex-direction:column}
  .detail-page-close{margin:12px -48px -48px 0}
 }
+
+
+/* Dedicated local episode watching page */
+.episode-watch-page{background:#0d0e11}
+.episode-watch-top{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0;border-bottom:1px solid #303640}
+.episode-watch-player{display:flex;align-items:center;justify-content:center;min-width:0;min-height:300px;padding:22px;background:#050607}
+.episode-watch-player .detail-video{display:block;width:100%;max-height:68vh;aspect-ratio:16/9;object-fit:contain;background:#000}
+.episode-watch-sidebar{padding:26px 22px;border-left:1px solid #303640;background:#111318}
+.episode-watch-title-card{display:flex;align-items:center;gap:12px;margin:16px 0 25px}
+.episode-watch-title-card img{width:62px;height:88px;object-fit:cover;border:1px solid #353b45;border-radius:4px}
+.episode-watch-title-card>div{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0}
+.episode-watch-title-card strong{color:#f1eee8;font-size:13px}
+.episode-watch-title-card small{color:#969da8;font-size:10px}
+.episode-watch-title-card button{display:flex;align-items:center;gap:3px;padding:0;border:0;background:none;color:#d4b27e;font-size:10px}
+.episode-watch-sidebar h3,.episode-watch-synopsis h3{margin:20px 0 10px;color:#eee7dc;font-size:12px}
+.episode-watch-sidebar dl{display:grid;gap:9px;margin:0}
+.episode-watch-sidebar dl div{display:flex;justify-content:space-between;gap:10px}
+.episode-watch-sidebar dt{color:#8f96a1;font-size:10px}
+.episode-watch-sidebar dd{margin:0;color:#ded6c9;font-size:10px;text-align:right}
+.episode-watch-sidebar p,.episode-watch-synopsis p{margin:0;color:#aeb4bd;font-size:11px;line-height:1.75}
+.episode-watch-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:20px 26px;border-bottom:1px solid #303640;background:#12151a}
+.episode-watch-controls>div:first-child{margin-right:auto}
+.episode-watch-controls h2{margin:5px 0 0;color:#f2ede4;font-size:16px}
+.episode-watch-picker{display:flex;align-items:center;gap:8px;padding:0 10px;height:37px;border:1px solid #3b424d;border-radius:5px;color:#c9b18d;background:#191d24}
+.episode-watch-picker select{max-width:180px;border:0;outline:0;background:transparent;color:#eee;font-size:10px}
+.episode-watch-picker option{background:#191d24;color:#eee}
+.episode-next-button{display:flex;align-items:center;gap:8px;height:37px;padding:0 14px;border:1px solid #a98b61;border-radius:5px;background:#d7b986;color:#17130d;font-size:11px;font-weight:700}
+.episode-watch-synopsis{padding:22px 26px 28px}
+.episode-watch-synopsis h3{margin-top:0}
+@media(max-width:850px){
+ .episode-watch-top{grid-template-columns:1fr}
+ .episode-watch-player{min-height:0;padding:10px}
+ .episode-watch-player .detail-video{max-height:55vh}
+ .episode-watch-sidebar{border-left:0;border-top:1px solid #303640;padding:18px}
+ .episode-watch-sidebar h3{margin-top:15px}
+}
+@media(max-width:600px){
+ .episode-watch-controls{padding:16px;gap:9px}
+ .episode-watch-controls>div:first-child{flex-basis:100%}
+ .episode-watch-controls h2{font-size:14px}
+ .episode-watch-synopsis{padding:18px 16px}
+ .episode-watch-picker{flex:1}
+ .episode-watch-picker select{max-width:none;width:100%}
+}
