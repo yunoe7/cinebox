@@ -1516,3 +1516,18 @@ body{background:var(--cinema-ink)}
 @keyframes magic-shimmer-pass{0%,62%{left:-45%;opacity:0}70%{opacity:1}100%{left:125%;opacity:0}}
 .magic-shimmer-button.add-btn{height:41px;min-height:41px;padding:0 15px}
 @media(prefers-reduced-motion:reduce){.magic-shimmer-sheen{animation:none;display:none}}
+
+
+/* Aceternity-inspired interaction polish: quiet spotlight, crisp focus, cinematic depth */
+.poster-card{transform-origin:center bottom;will-change:transform}
+.poster-card:focus-within{outline:1px solid rgba(214,189,148,.55);outline-offset:3px}
+.poster-image{position:relative;isolation:isolate}
+.poster-image:before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;border:1px solid rgba(255,255,255,.08);border-radius:inherit;transition:border-color .25s,box-shadow .25s}
+.poster-card:hover .poster-image:before{border-color:rgba(226,199,153,.52);box-shadow:inset 0 0 0 1px rgba(226,199,153,.12)}
+.poster-card:hover .poster-image img{filter:brightness(1.07) saturate(1.04)}
+.poster-play{backdrop-filter:blur(2px)}
+.poster-play svg{background:rgba(12,13,15,.38);box-shadow:0 5px 24px rgba(0,0,0,.32)}
+.hero-carousel .hero-copy{animation:cinema-copy-in .65s cubic-bezier(.2,.75,.25,1) both}
+@keyframes cinema-copy-in{from{opacity:0;transform:translateY(calc(-48% + 14px))}to{opacity:1;transform:translateY(-48%)}}
+.nav-item:focus-visible,.gold-btn:focus-visible,.hero-info-btn:focus-visible,.genre-pills button:focus-visible,.poster-open:focus-visible{outline:2px solid #d6bd94;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.hero-carousel .hero-copy{animation:none}.poster-card{will-change:auto}}
