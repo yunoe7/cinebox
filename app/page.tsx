@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { deleteAsset, deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
+import { deleteAsset, deleteAssets, deleteAssetsExcept, loadAsset, saveAsset } from "../lib/cinebox/storage";
 import { initialTitles } from "../lib/cinebox/catalog";
 import DetailModal from "../components/cinebox/DetailModal";
 import EpisodeEditor from "../components/cinebox/EpisodeEditor";
@@ -253,7 +253,23 @@ export default function HomePage() {
       }) : undefined,
       videoUrl: file ? URL.createObjectURL(file) : editingTitle?.videoUrl
     };
-    if (editingTitle) setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item)); else setTitles(old => [newTitle, ...old]);
+    if (editingTitle) {
+      const retainedAssets = new Set<string>();
+      if (!posterFile && editingTitle.poster) retainedAssets.add(`${newId}:poster`);
+      if (file || editingTitle.videoUrl) retainedAssets.add(`${newId}:video`);
+      if (kind === "Série") {
+        newTitle.seasons?.forEach(season => season.episodes.forEach(episode => {
+          if (!episode.videoUrl) return;
+          const key = `${newId}:episode:${season.number}:${episode.number}`;
+          retainedAssets.add(key);
+          const fileIndex = (season.number - 1) * perSeason + (episode.number - 1);
+          if (!episodeFiles[fileIndex]) retainedAssets.add(`${key}:thumbnail`);
+        }));
+        if (!(episodeFiles.length && episodeFiles[0])) retainedAssets.add(`${newId}:poster-thumbnail`);
+      }
+      await deleteAssetsExcept(newId, retainedAssets).catch(() => setNotice({ title: "Nettoyage incomplet", message: "Le titre est enregistré, mais certains anciens fichiers n’ont pas pu être supprimés." }));
+      setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item));
+    } else setTitles(old => [newTitle, ...old]);
     setEditingTitle(null);
     setShowAdd(false);
     formElement.reset();
