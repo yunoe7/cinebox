@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Heart, Play, Settings, X } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
@@ -26,11 +27,20 @@ export default function DetailModal({
   selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites,
   onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView
 }: DetailModalProps) {
+  useEffect(() => {
+    if (!selected) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selected, onClose]);
+
   return (
     <AnimatePresence>
       {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <motion.div className="detail-modal" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}>
-          <button className="close-btn" onClick={onClose}><X/></button>
+        <motion.div className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}>
+          <button className="close-btn" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
           {(selectedEpisodeUrl || selected.videoUrl) ? <VideoPlayer
             key={selectedEpisodeUrl || selected.videoUrl}
             src={selectedEpisodeUrl || selected.videoUrl!}
@@ -43,7 +53,7 @@ export default function DetailModal({
           /> : <div className="detail-backdrop" style={{ backgroundImage: `linear-gradient(0deg,#111318 0%,transparent 100%),url("${selected.backdrop}")` }}/>}
           <div className="detail-copy">
             <div className="eyebrow">{selected.kind.toUpperCase()} · {selected.year} · {selected.genre.toUpperCase()}</div>
-            <h2>{selected.name}</h2>
+            <h2 id="detail-modal-title">{selected.name}</h2>
             <div className="detail-facts"><span>{selected.duration}</span>{selected.episodes && <span>{selected.episodes}</span>}</div>
             <p>{selected.description}</p>
             {selected.seasons?.map((season) => <section className="episode-panel" key={season.number}>
