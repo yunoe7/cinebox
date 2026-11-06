@@ -3,43 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { deleteAsset, deleteAssets, deleteAssetsExcept, loadAsset, saveAsset } from "../lib/cinebox/storage";
-import { initialTitles } from "../lib/cinebox/catalog";
 import DetailModal from "../components/cinebox/DetailModal";
 import EpisodeEditor from "../components/cinebox/EpisodeEditor";
 import TitleEditor from "../components/cinebox/TitleEditor";
 import { AppToast, DeleteConfirmation } from "../components/cinebox/FeedbackDialogs";
 import type { Kind, Title } from "../lib/cinebox/types";
-async function createVideoThumbnail(blob: Blob): Promise<Blob | undefined> {
-  const url = URL.createObjectURL(blob);
-  const video = document.createElement("video");
-  video.muted = true;
-  video.preload = "auto";
-  video.src = url;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      video.onloadeddata = () => resolve();
-      video.onerror = () => reject(new Error("Vidéo illisible"));
-    });
-    video.currentTime = Math.min(5, Math.max(0, (video.duration || 1) * 0.1));
-    await new Promise<void>(resolve => {
-      video.onseeked = () => resolve();
-      window.setTimeout(resolve, 1500);
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 360;
-    const context = canvas.getContext("2d");
-    if (!context) return undefined;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob | undefined>(resolve => canvas.toBlob(blob => resolve(blob ?? undefined), "image/jpeg", 0.86));
-  } catch {
-    return undefined;
-  } finally {
-    URL.revokeObjectURL(url);
-    video.removeAttribute("src");
-    video.load();
-  }
-}
 
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
@@ -53,7 +21,7 @@ const navItems = [
 ];
 
 export default function HomePage() {
-  const [titles, setTitles] = useState<Title[]>(initialTitles);
+  const [titles, setTitles] = useState<Title[]>([]);
   const [favorites, setFavorites] = useState<number[]>([2, 5]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
@@ -87,14 +55,12 @@ export default function HomePage() {
           const restored = await Promise.all(records.map(async (item) => {
             const posterBlob = await loadAsset(`${item.id}:poster`).catch(() => undefined);
             const videoBlob = await loadAsset(`${item.id}:video`).catch(() => undefined);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const key = `${item.id}:episode:${season.number}:${episode.number}`; const blob = await loadAsset(key).catch(() => undefined); let thumbnail = await loadAsset(`${key}:thumbnail`).catch(() => undefined); if (blob && !thumbnail) { thumbnail = await createVideoThumbnail(blob); if (thumbnail) await saveAsset(`${key}:thumbnail`, thumbnail).catch(() => undefined); } return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined, thumbnailUrl: thumbnail ? URL.createObjectURL(thumbnail) : undefined }; })) })));
-            const firstEpisodeBlob = item.kind === "Série" ? await loadAsset(`${item.id}:episode:1:1`).catch(() => undefined) : undefined;
-            let generatedPoster = !posterBlob ? await loadAsset(`${item.id}:poster-thumbnail`).catch(() => undefined) : undefined;
-            if (!posterBlob && firstEpisodeBlob && !generatedPoster) { generatedPoster = await createVideoThumbnail(firstEpisodeBlob); if (generatedPoster) await saveAsset(`${item.id}:poster-thumbnail`, generatedPoster).catch(() => undefined); }
+            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const key = `${item.id}:episode:${season.number}:${episode.number}`; const blob = await loadAsset(key).catch(() => undefined); return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined, thumbnailUrl: undefined }; })) })));
+            await deleteAsset(`${item.id}:poster-thumbnail`).catch(() => undefined);
             return {
               ...item,
               seasons,
-              poster: posterBlob ? URL.createObjectURL(posterBlob) : generatedPoster ? URL.createObjectURL(generatedPoster) : item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster,
+              poster: posterBlob ? URL.createObjectURL(posterBlob) : item.poster.startsWith("blob:") || item.poster.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.poster,
               videoUrl: videoBlob ? URL.createObjectURL(videoBlob) : undefined
             };
           }));
@@ -112,7 +78,7 @@ export default function HomePage() {
     if (ready) {
       localStorage.setItem("cinebox-titles", JSON.stringify(titles.map(({ videoUrl, ...item }) => ({
         ...item,
-        poster: item.poster.startsWith("blob:") ? "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80" : item.poster,
+        poster: item.poster.startsWith("blob:") || item.poster.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.poster,
         seasons: item.seasons?.map(season => ({ ...season, episodes: season.episodes.map(({ videoUrl: episodeVideoUrl, ...episode }) => episode) }))
       }))));
       localStorage.setItem("cinebox-favorites", JSON.stringify(favorites));
@@ -224,22 +190,14 @@ export default function HomePage() {
       window.setTimeout(() => setNotice(null), 4500);
       return;
     }
-    const thumbnailSource = file || episodeFiles[0];
-    let generatedPoster: Blob | undefined;
-    if (!posterFile && thumbnailSource) {
-      generatedPoster = await createVideoThumbnail(thumbnailSource);
-      if (generatedPoster) {
-        await saveAsset(`${newId}:poster-thumbnail`, generatedPoster).catch(() => undefined);
-      }
-    }
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       collection: String(form.get("collection") || "").trim() || undefined,
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
-      poster: posterFile ? URL.createObjectURL(posterFile) : generatedPoster ? URL.createObjectURL(generatedPoster) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
-      backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
+      poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "",
+      backdrop: editingTitle?.backdrop || "",
       progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${seasonCount} saison${seasonCount > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
       episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
       seasons: kind === "Série" ? Array.from({ length: seasonCount }, (_, seasonIndex) => {
@@ -272,7 +230,7 @@ export default function HomePage() {
           const fileIndex = (season.number - 1) * perSeason + (episode.number - 1);
           if (!episodeFiles[fileIndex]) retainedAssets.add(`${key}:thumbnail`);
         }));
-        if (!generatedPoster && !(episodeFiles.length && episodeFiles[0])) retainedAssets.add(`${newId}:poster-thumbnail`);
+        
       }
       await deleteAssetsExcept(newId, retainedAssets).catch(() => setNotice({ title: "Nettoyage incomplet", message: "Le titre est enregistré, mais certains anciens fichiers n’ont pas pu être supprimés." }));
       setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item));
@@ -465,19 +423,13 @@ export default function HomePage() {
             const key = `${selected.id}:episode:${target.season}:${target.episode}`;
             if (file) { try { await saveAsset(key, file); } catch { setNotice({ title: "Sauvegarde impossible", message: "La vidéo de cet épisode n’a pas pu être enregistrée. Réessayez." }); return; } }
             const videoUrl = file ? URL.createObjectURL(file) : undefined;
-            const thumbnail = file ? await createVideoThumbnail(file) : undefined;
-            if (thumbnail) await saveAsset(`${key}:thumbnail`, thumbnail).catch(() => undefined);
-            else if (file) await deleteAsset(`${key}:thumbnail`).catch(() => undefined);
-            if (file && target.season === 1 && target.episode === 1) {
-              await deleteAsset(`${selected.id}:poster-thumbnail`).catch(() => undefined);
-            }
-            const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined;
+            if (file) await deleteAsset(`${key}:thumbnail`).catch(() => undefined);
             const update = (item: Title): Title => ({
               ...item,
               seasons: item.seasons?.map(season => season.number !== target.season ? season : {
                 ...season,
                 episodes: season.episodes.map(episode => episode.number !== target.episode ? episode : {
-                  ...episode, title: target.title, ...(videoUrl ? { videoUrl, thumbnailUrl, currentTime: 0, progress: 0 } : {})
+                  ...episode, title: target.title, ...(videoUrl ? { videoUrl, thumbnailUrl: undefined, currentTime: 0, progress: 0 } : {})
                 })
               })
             });
