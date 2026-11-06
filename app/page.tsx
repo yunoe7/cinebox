@@ -293,6 +293,16 @@ export default function HomePage() {
     activePage === "Administration" ? <>Gérez votre <em>bibliothèque.</em></> :
     <>Explorez les <em>{activePage.toLowerCase()}.</em></>;
 
+  if (!ready) {
+    return (
+      <main className="app-shell app-loading" aria-label="Chargement de votre bibliothèque">
+        <div className="app-loading-brand"><span className="brand-mark"><Clapperboard size={21} strokeWidth={1.55}/><i/></span><span className="brand-word">CINÉBOX<small>PRIVATE CINEMA</small></span></div>
+        <div className="app-loading-indicator"><span/><span/><span/></div>
+        <p>Préparation de votre cinéma personnel…</p>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
