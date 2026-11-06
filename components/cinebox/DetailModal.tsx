@@ -19,6 +19,8 @@ type DetailModalProps = {
 
 export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites, onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView }: DetailModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [activeTab, setActiveTab] = useState<"details" | "episodes">("details");
   const [playing, setPlaying] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -29,11 +31,11 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); previous?.focus(); };
-  }, [selected?.id, onClose]);
+  }, [selected?.id]);
 
   if (!selected) return null;
   const episodes = selected.seasons?.flatMap(season => season.episodes.filter(ep => ep.videoUrl).map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl! }))) || [];
