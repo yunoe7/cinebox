@@ -30,6 +30,9 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
       src={src}
       controls
       autoPlay
+      playsInline
+      preload="metadata"
+      aria-label="Lecteur vidéo"
       onPlay={() => { if (!countedView.current) { countedView.current = true; onView(); } }}
       onLoadedMetadata={(event) => {
         const video = event.currentTarget;
@@ -38,6 +41,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
         }
       }}
       onTimeUpdate={(event) => saveProgress(event.currentTarget)}
+      onSeeked={(event) => saveProgress(event.currentTarget, true)}
       onPause={(event) => saveProgress(event.currentTarget, true)}
       onEnded={onEnded}
     />
