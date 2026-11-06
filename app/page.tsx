@@ -490,6 +490,17 @@ export default function HomePage() {
           }}
           onEnded={(title, episodeSelection) => {
             if (!episodeSelection || !title.seasons) return;
+            const markEpisodeComplete = (item: Title): Title => ({
+              ...item,
+              seasons: item.seasons?.map(season => season.number !== episodeSelection.season ? season : {
+                ...season,
+                episodes: season.episodes.map(episode => episode.number !== episodeSelection.episode
+                  ? episode
+                  : { ...episode, progress: 100 })
+              })
+            });
+            setTitles(old => old.map(item => item.id === title.id ? markEpisodeComplete(item) : item));
+            setSelected(old => old && old.id === title.id ? markEpisodeComplete(old) : old);
             const playable = title.seasons.flatMap(season => season.episodes
               .filter(episode => episode.videoUrl)
               .map(episode => ({ season: season.number, episode: episode.number, url: episode.videoUrl! })));
