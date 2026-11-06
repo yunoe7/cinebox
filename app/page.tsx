@@ -32,7 +32,7 @@ async function createVideoThumbnail(blob: Blob): Promise<Blob | undefined> {
     const context = canvas.getContext("2d");
     if (!context) return undefined;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob | undefined>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.86));
+    return await new Promise<Blob | undefined>(resolve => canvas.toBlob(blob => resolve(blob ?? undefined), "image/jpeg", 0.86));
   } catch {
     return undefined;
   } finally {
