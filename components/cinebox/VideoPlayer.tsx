@@ -16,8 +16,9 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
   const lastDuration = useRef(0);
 
   const saveProgress = (video: HTMLVideoElement, force = false) => {
+    if (!Number.isFinite(video.currentTime) || video.currentTime < 0) return;
     const second = Math.floor(video.currentTime);
-    if (!force && second - lastSavedSecond.current < 5) return;
+    if (!force && Math.abs(second - lastSavedSecond.current) < 5) return;
     lastSavedSecond.current = second;
     if (Number.isFinite(video.duration) && video.duration > 0) lastDuration.current = video.duration;
     const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : lastDuration.current;
@@ -44,6 +45,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
         }
       }}
       onTimeUpdate={(event) => saveProgress(event.currentTarget)}
+      onRateChange={(event) => saveProgress(event.currentTarget, true)}
       onSeeked={(event) => saveProgress(event.currentTarget, true)}
       onPause={(event) => saveProgress(event.currentTarget, true)}
       onEnded={(event) => {
