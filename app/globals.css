@@ -918,3 +918,23 @@ footer{color:#78808b}
 .artwork-empty{display:block;width:100%;height:100%;min-height:100%;background:#050607}
 .poster-image,.detail-overview-poster,.detail-episode-thumb,.continue-card-poster{background:#050607}
 .detail-page-hero{background-color:#050607}
+
+
+/* Continue watching: compact horizontal media cards */
+.streaming-row.continue-watching-row{grid-auto-columns:minmax(250px,290px);gap:13px;padding:3px 2px 12px}
+.continue-watching-card{display:grid;grid-template-columns:66px minmax(0,1fr);grid-template-rows:1fr;align-items:center;gap:13px;min-height:104px;padding:10px;border:1px solid #2b3039;border-radius:9px;background:#111419;transition:border-color .2s,background .2s,transform .2s}
+.continue-watching-card:hover{border-color:#796344;background:#171a20;transform:translateY(-2px)}
+.continue-watching-card .continue-card-poster{width:66px;height:84px;aspect-ratio:auto;flex:none;border-radius:5px;background:#050607}
+.continue-watching-card .continue-card-poster>img,.continue-watching-card .continue-card-poster>.artwork-empty{width:100%;height:100%;aspect-ratio:auto;object-fit:cover}
+.continue-watching-card .continue-progress-track{left:0;right:0;bottom:0;height:3px;border-radius:0;background:#ffffff35}
+.continue-watching-card .streaming-card-info{min-width:0;align-self:center;gap:8px}
+.continue-watching-card .streaming-card-info small{display:flex;align-items:center;gap:7px;color:#999faa;font-size:8px;letter-spacing:1px}
+.continue-watching-card .streaming-card-info small b{padding:3px 5px;border-radius:3px;background:#29241c;color:#e2c18c;font-size:9px;letter-spacing:0}
+.continue-watching-card .streaming-card-info strong{font:650 13px Manrope,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.continue-resume-label{display:flex;align-items:center;gap:6px;color:#d0b17f;font-size:9px}
+.continue-watching-card:hover .continue-resume-label{color:#f0d5a8}
+@media(max-width:700px){
+ .streaming-row.continue-watching-row{grid-auto-columns:minmax(235px,82%);gap:10px}
+ .continue-watching-card{min-height:96px;grid-template-columns:60px minmax(0,1fr);padding:9px}
+ .continue-watching-card .continue-card-poster{width:60px;height:78px}
+}
