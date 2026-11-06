@@ -179,6 +179,20 @@ export default function HomePage() {
     setSelectedEpisode(null);
     setSelected(item);
   };
+
+  const resumeTitle = (item: Title) => {
+    const episode = (item.seasons || []).flatMap(season => season.episodes.map(entry => ({ season: season.number, episode: entry })))
+      .filter(entry => (entry.episode.progress || 0) > 0 && (entry.episode.progress || 0) < 100)
+      .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
+    setSelected(item);
+    if (episode?.episode.videoUrl) {
+      setSelectedEpisode({ season: episode.season, episode: episode.episode.number });
+      setSelectedEpisodeUrl(episode.episode.videoUrl);
+    } else {
+      setSelectedEpisode(null);
+      setSelectedEpisodeUrl(null);
+    }
+  };
   const toggleFavorite = (id: number) => setFavorites((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]);
 
   const addTitle = (event: React.FormEvent<HTMLFormElement>) => {
@@ -294,7 +308,7 @@ export default function HomePage() {
           {activePage === "Accueil" && <section className="section-block">
             <div className="section-head"><div><div className="eyebrow">REPRENDRE LÀ OÙ VOUS EN ÉTIEZ</div><h2>À continuer <em>pour vous</em></h2></div><span className="subtle">{ongoing.length} titre{ongoing.length > 1 ? "s" : ""} en cours</span></div>
             <div className="continue-grid">
-              {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt=""/><div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
+              {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => resumeTitle(item)}><img src={item.poster} alt=""/><div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
               {!ongoing.length && <div className="empty-mini">Vos lectures en cours apparaîtront ici.</div>}
             </div>
           </section>}
