@@ -79,3 +79,25 @@ export async function deleteAssets(id: number): Promise<void> {
     db.close();
   }
 }
+
+export async function deleteAssetsExcept(id: number, retainedKeys: Set<string>): Promise<void> {
+  const db = await openAssetDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(ASSET_STORE, "readwrite");
+      const store = tx.objectStore(ASSET_STORE);
+      const keys = store.getAllKeys();
+      keys.onsuccess = () => {
+        for (const key of keys.result) {
+          if (typeof key === "string" && key.startsWith(`${id}:`) && !retainedKeys.has(key)) store.delete(key);
+        }
+      };
+      keys.onerror = () => tx.abort();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("Échec du nettoyage des anciens fichiers."));
+      tx.onabort = () => reject(tx.error ?? new Error("Nettoyage des anciens fichiers annulé."));
+    });
+  } finally {
+    db.close();
+  }
+}
