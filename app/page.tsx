@@ -224,13 +224,21 @@ export default function HomePage() {
       window.setTimeout(() => setNotice(null), 4500);
       return;
     }
+    const thumbnailSource = file || episodeFiles[0];
+    let generatedPoster: Blob | undefined;
+    if (!posterFile && thumbnailSource) {
+      generatedPoster = await createVideoThumbnail(thumbnailSource);
+      if (generatedPoster) {
+        await saveAsset(`${newId}:poster-thumbnail`, generatedPoster).catch(() => undefined);
+      }
+    }
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       collection: String(form.get("collection") || "").trim() || undefined,
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
-      poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
+      poster: posterFile ? URL.createObjectURL(posterFile) : generatedPoster ? URL.createObjectURL(generatedPoster) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
       progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${seasonCount} saison${seasonCount > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
       episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
@@ -264,7 +272,7 @@ export default function HomePage() {
           const fileIndex = (season.number - 1) * perSeason + (episode.number - 1);
           if (!episodeFiles[fileIndex]) retainedAssets.add(`${key}:thumbnail`);
         }));
-        if (!(episodeFiles.length && episodeFiles[0])) retainedAssets.add(`${newId}:poster-thumbnail`);
+        if (!generatedPoster && !(episodeFiles.length && episodeFiles[0])) retainedAssets.add(`${newId}:poster-thumbnail`);
       }
       await deleteAssetsExcept(newId, retainedAssets).catch(() => setNotice({ title: "Nettoyage incomplet", message: "Le titre est enregistré, mais certains anciens fichiers n’ont pas pu être supprimés." }));
       setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item));
