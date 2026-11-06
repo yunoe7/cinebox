@@ -321,7 +321,7 @@ export default function HomePage() {
           <div className="welcome"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1></div><p>Un espace à vous. <span>Des histoires à l’infini.</span></p></div>
 
           {activePage === "Accueil" && activeFeatured && <section className="hero hero-carousel" aria-label="Sélection à la une">
-            <div className="hero-bg" style={{ backgroundImage: `url("${activeFeatured.backdrop || activeFeatured.poster}")` }}/>
+            <div className="hero-bg" style={{ backgroundImage: `url("${activeFeatured.poster || activeFeatured.backdrop}")` }}/>
             <div className="hero-overlay"/>
             <div className="hero-copy" key={activeFeatured.id}>
               <div className="hero-kicker"><i/> À LA UNE <span/> SÉLECTION CINÉBOX</div>
