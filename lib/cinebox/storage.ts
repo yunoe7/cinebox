@@ -43,6 +43,21 @@ export async function loadAsset(key: string): Promise<Blob | undefined> {
   }
 }
 
+export async function deleteAsset(key: string): Promise<void> {
+  const db = await openAssetDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(ASSET_STORE, "readwrite");
+      tx.objectStore(ASSET_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("Échec de la suppression du fichier."));
+      tx.onabort = () => reject(tx.error ?? new Error("Suppression du fichier annulée."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export async function deleteAssets(id: number): Promise<void> {
   const db = await openAssetDb();
   try {
