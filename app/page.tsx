@@ -198,7 +198,8 @@ export default function HomePage() {
 
   const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const file = fileRef.current?.files?.[0];
     const episodeFiles = Array.from(document.querySelector<HTMLInputElement>('input[name="episodeVideos"]')?.files || []);
     const posterFile = posterRef.current?.files?.[0];
@@ -252,7 +253,7 @@ export default function HomePage() {
     if (editingTitle) setTitles(old => old.map(item => item.id === editingTitle.id ? newTitle : item)); else setTitles(old => [newTitle, ...old]);
     setEditingTitle(null);
     setShowAdd(false);
-    event.currentTarget.reset();
+    formElement.reset();
     if (fileRef.current) fileRef.current.value = "";
     if (posterRef.current) posterRef.current.value = "";
     setActivePage("Accueil");
@@ -343,7 +344,7 @@ export default function HomePage() {
             </section>
             {ongoing.length > 0 && <section className="section-block streaming-row-section">
               <div className="section-head"><div><div className="eyebrow">REPRENEZ LÀ OÙ VOUS EN ÉTIEZ</div><h2>Continuer à <em>regarder</em></h2></div><span className="subtle">{ongoing.length} en cours</span></div>
-              <div className="streaming-row">{[...ongoing].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0)).map(item => <button className="streaming-card continue-card" key={item.id} onClick={() => openTitle(item)}>
+              <div className="streaming-row">{[...ongoing].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0)).map(item => <button className="streaming-card continue-card" key={item.id} onClick={() => resumeTitle(item)}>
                 <span className="continue-card-poster"><img src={item.poster} alt="" loading="lazy"/><span className="continue-progress-track"><span style={{ width: `${Math.max(3, Math.min(100, item.progress))}%` }}/></span></span>
                 <span className="streaming-card-info"><small>REPRENDRE · {Math.round(item.progress)} %</small><strong>{item.name}</strong></span>
               </button>)}</div>
