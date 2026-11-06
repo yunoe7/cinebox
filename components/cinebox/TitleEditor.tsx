@@ -18,10 +18,10 @@ type Props = {
 export default function TitleEditor({ addKind, setAddKind, editingTitle, fileRef, posterRef, onClose, onSubmit }: Props) {
   return (
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div className="modal add-modal" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}>
-        <button className="close-btn" onClick={onClose}><X/></button>
+      <motion.div className="modal add-modal" role="dialog" aria-modal="true" aria-labelledby="title-editor-heading" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}>
+        <button className="close-btn" type="button" aria-label="Fermer le formulaire" onClick={onClose}><X/></button>
         <div className="eyebrow">{editingTitle ? "MODIFIER LA BIBLIOTHÈQUE" : "BIBLIOTHÈQUE PERSONNELLE"}</div>
-        <h2>{editingTitle ? "Modifier le " : "Ajouter un "}<em>titre</em></h2>
+        <h2 id="title-editor-heading">{editingTitle ? "Modifier le " : "Ajouter un "}<em>titre</em></h2>
         <p className="modal-desc">{editingTitle ? "Mettez à jour les informations de ce contenu." : "Renseignez les informations essentielles, puis ajoutez vos médias."}</p>
         <form className="add-form" onSubmit={onSubmit}>
           <label>Titre<input name="name" required placeholder="Ex. Le voyage intérieur" defaultValue={editingTitle?.name || ""}/></label>
