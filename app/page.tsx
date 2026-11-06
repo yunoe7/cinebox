@@ -9,6 +9,8 @@ import TitleEditor from "../components/cinebox/TitleEditor";
 import { AppToast, DeleteConfirmation } from "../components/cinebox/FeedbackDialogs";
 import type { Kind, Title } from "../lib/cinebox/types";
 import { SpotlightSurface } from "../components/ui/spotlight-surface";
+import { MagicCard } from "../components/magicui/magic-card";
+import { ShimmerButton } from "../components/magicui/shimmer-button";
 
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
@@ -283,19 +285,19 @@ export default function HomePage() {
           <div className="crumb">CINÉBOX <span>/</span> <b>{activePage.toUpperCase()}</b></div>
           <div className="top-actions">
             <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans ma collection…" aria-label="Rechercher dans ma collection"/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>
-            <button className="add-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></button>
+            <ShimmerButton className="add-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></ShimmerButton>
           </div>
         </header>
 
         <div className="page-content">
           <div className="welcome welcome-redesign"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1><p className="welcome-subtitle">Votre cinéma privé, soigneusement composé.</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>
-          {activePage === "Accueil" && <section className="library-overview" aria-label="Aperçu de votre bibliothèque">
+          {activePage === "Accueil" && <MagicCard className="library-overview" aria-label="Aperçu de votre bibliothèque">
             <div className="library-overview-intro"><span className="overview-mark"><Clapperboard size={18}/></span><div><small>VOTRE ESPACE CINÉMA</small><strong>La collection, en un regard</strong></div></div>
             <div className="overview-stat"><strong>{titles.length.toString().padStart(2,"0")}</strong><span>TITRES</span></div>
             <div className="overview-stat"><strong>{titles.filter(item => item.kind === "Film").length.toString().padStart(2,"0")}</strong><span>FILMS</span></div>
             <div className="overview-stat"><strong>{titles.filter(item => item.kind === "Série").length.toString().padStart(2,"0")}</strong><span>SÉRIES</span></div>
             <div className="overview-stat"><strong>{favorites.length.toString().padStart(2,"0")}</strong><span>FAVORIS</span></div>
-          </section>}
+          </MagicCard>}
 
           {activePage === "Accueil" && activeFeatured && <section className="hero hero-carousel" aria-label="Sélection à la une">
             <div className="hero-bg" style={{ backgroundImage: activeFeatured.poster || activeFeatured.backdrop ? `url("${activeFeatured.poster || activeFeatured.backdrop}")` : "none" }}/>
