@@ -289,7 +289,7 @@ export default function HomePage() {
           <div className="welcome"><div><div className="eyebrow">VOTRE COLLECTION PERSONNELLE</div><h1>{pageTitle}</h1></div><p>Un espace à vous. <span>Des histoires à l’infini.</span></p></div>
 
           {activePage === "Accueil" && activeFeatured && <section className="hero hero-carousel" aria-label="Sélection à la une">
-            <div className="hero-bg" style={{ backgroundImage: `url("${activeFeatured.poster || activeFeatured.backdrop}")` }}/>
+            <div className="hero-bg" style={{ backgroundImage: activeFeatured.poster || activeFeatured.backdrop ? `url("${activeFeatured.poster || activeFeatured.backdrop}")` : "none" }}/>
             <div className="hero-overlay"/>
             <div className="hero-copy" key={activeFeatured.id}>
               <div className="hero-kicker"><i/> À LA UNE <span/> SÉLECTION CINÉBOX</div>
@@ -312,7 +312,7 @@ export default function HomePage() {
           {activePage === "Accueil" && <section className="section-block">
             <div className="section-head"><div><div className="eyebrow">REPRENDRE LÀ OÙ VOUS EN ÉTIEZ</div><h2>À continuer <em>pour vous</em></h2></div><span className="subtle">{ongoing.length} titre{ongoing.length > 1 ? "s" : ""} en cours</span></div>
             <div className="continue-grid">
-              {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => resumeTitle(item)}><img src={item.poster} alt=""/><div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
+              {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => resumeTitle(item)}>{item.poster ? <img src={item.poster} alt=""/> : <span className="artwork-empty" aria-hidden="true"/>}<div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
               {!ongoing.length && <div className="empty-mini">Vos lectures en cours apparaîtront ici.</div>}
             </div>
           </section>}
@@ -321,7 +321,7 @@ export default function HomePage() {
             <div className="section-head"><div><div className="eyebrow">SELON VOS ENVIES</div><h2>À découvrir <em>ensuite</em></h2></div><span className="subtle">Une sélection issue de vos favoris</span></div>
             <div className="discovery-grid">
               {personalizedPicks.map(item => <button className="discovery-card" key={item.id} onClick={() => openTitle(item)}>
-                <img src={item.poster} alt="" loading="lazy"/>
+                {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}
                 <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
                 <Play className="discovery-play" size={16}/>
               </button>)}
@@ -380,7 +380,7 @@ export default function HomePage() {
             </div>
             <div className="poster-grid">
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className="poster-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * .035, .25) }}>
-                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className="poster-image"><img src={item.poster} alt={item.name} loading="lazy"/><span className="kind-chip">{item.kind}</span><span className="poster-play"><Play size={20} fill="currentColor"/></span></div><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong></button>
+                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className="poster-image">{item.poster ? <img src={item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span><span className="poster-play"><Play size={20} fill="currentColor"/></span></div><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong></button>
                 {activePage === "Administration" ? <div className="card-menu-wrap"><button className="heart-btn card-menu-trigger" onClick={() => setOpenCardMenu(openCardMenu === item.id ? null : item.id)} aria-label={`Actions pour ${item.name}`} aria-expanded={openCardMenu === item.id} title="Actions"><MoreHorizontal size={18}/></button>{openCardMenu === item.id && <><button className="menu-dismiss" aria-label="Fermer le menu" onClick={() => setOpenCardMenu(null)}/><div className="card-action-menu"><button onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); setOpenCardMenu(null); }}><Settings size={15}/> Modifier</button><button className="danger" onClick={() => { setOpenCardMenu(null); setConfirmDelete(item); }}><Trash2 size={15}/> Supprimer</button></div></>}</div> : <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
               </motion.article>)}
               {!visibleTitles.length && <div className="empty-state"><strong>Aucun titre trouvé</strong><span>Modifiez votre recherche ou réinitialisez les filtres pour retrouver votre collection.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); setGenreFilter("Tous les genres"); }}>Réinitialiser la recherche et les filtres</button></div>}
