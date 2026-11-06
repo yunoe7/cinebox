@@ -60,7 +60,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
             </div>
             <aside className="episode-watch-sidebar">
               <div className="eyebrow">VOUS REGARDEZ</div>
-              <div className="episode-watch-title-card"><img src={selected.poster} alt=""/><div><strong>{selected.name}</strong><small>{selected.year} · {selected.kind}</small><button type="button" onClick={() => setPlaying(false)}>Voir la fiche <ChevronRight size={13}/></button></div></div>
+              <div className="episode-watch-title-card">{selected.poster ? <img src={selected.poster} alt=""/> : <span className="artwork-empty" aria-hidden="true"/>}<div><strong>{selected.name}</strong><small>{selected.year} · {selected.kind}</small><button type="button" onClick={() => setPlaying(false)}>Voir la fiche <ChevronRight size={13}/></button></div></div>
               <h3>Informations</h3>
               <dl><div><dt>Format</dt><dd>{selected.kind}</dd></div><div><dt>Année</dt><dd>{selected.year}</dd></div><div><dt>Genre</dt><dd>{selected.genre}</dd></div>{selected.seasons?.length ? <div><dt>Saisons</dt><dd>{selected.seasons.length}</dd></div> : null}</dl>
               <h3>Synopsis</h3><p>{selected.description}</p>
@@ -73,7 +73,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
             <button className="detail-back-to-info" type="button" onClick={() => setPlaying(false)}>Retour à la fiche</button>
           </div>
           <div className="episode-watch-synopsis"><h3>Synopsis</h3><p>{selected.description}</p></div>
-        </section> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),url("${selected.poster || selected.backdrop}")` }}>
+        </section> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),${selected.poster || selected.backdrop ? `url("${selected.poster || selected.backdrop}")` : "none"}` }}>
           <div className="detail-page-hero-content">
             <div className="eyebrow">CINÉBOX ORIGINALS · {selected.kind.toUpperCase()}</div>
             <span className="detail-page-tag">{selected.kind === "Série" ? "SÉRIE À DÉCOUVRIR" : "À DÉCOUVRIR"}</span>
@@ -95,7 +95,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
         </nav>
         <div className="detail-page-body">
           {activeTab === "details" ? <div className="detail-overview">
-            <div className="detail-overview-poster"><img src={selected.poster} alt={`Affiche de ${selected.name}`}/></div>
+            <div className="detail-overview-poster">{selected.poster ? <img src={selected.poster} alt={`Affiche de ${selected.name}`}/> : null}</div>
             <div className="detail-overview-copy"><div className="eyebrow">À PROPOS DE CE TITRE</div><h3>{selected.name}</h3><p>{selected.description}</p>
               <dl><div><dt>Type</dt><dd>{selected.kind}</dd></div><div><dt>Année</dt><dd>{selected.year}</dd></div><div><dt>Genre</dt><dd>{selected.genre}</dd></div><div><dt>Durée</dt><dd>{selected.duration}</dd></div>{selected.collection && <div><dt>Collection</dt><dd>{selected.collection}</dd></div>}</dl>
             </div>
