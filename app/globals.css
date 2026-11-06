@@ -1503,3 +1503,16 @@ body{background:var(--cinema-ink)}
 .ui-card-description{margin:0;color:#969ba4;font-size:11px;line-height:1.6}
 .ui-card-content{padding:16px 18px 18px}
 @media(hover:none),(prefers-reduced-motion:reduce){.spotlight-surface:before{display:none}}
+
+
+/* Magic UI: restrained shimmer action and illuminated feature surface */
+.magic-card{position:relative;isolation:isolate}
+.magic-card:after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 15%,rgba(224,203,164,.045) 48%,transparent 78%);opacity:.75}
+.magic-card>*{position:relative;z-index:1}
+.magic-shimmer-button{position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;border:1px solid rgba(225,201,159,.52);border-radius:7px;background:linear-gradient(135deg,#e0c69a,#b99765);color:#17130d;font:700 11px 'DM Sans',sans-serif;cursor:pointer;transition:transform .2s,box-shadow .2s,filter .2s}
+.magic-shimmer-button:hover{transform:translateY(-2px);box-shadow:0 9px 25px rgba(203,177,132,.2);filter:brightness(1.04)}
+.magic-shimmer-content{position:relative;z-index:2;display:inline-flex;align-items:center;gap:8px}
+.magic-shimmer-sheen{position:absolute;inset:-50% auto -50% -45%;z-index:1;width:35%;transform:skewX(-22deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:magic-shimmer-pass 5.8s ease-in-out infinite;pointer-events:none}
+@keyframes magic-shimmer-pass{0%,62%{left:-45%;opacity:0}70%{opacity:1}100%{left:125%;opacity:0}}
+.magic-shimmer-button.add-btn{height:41px;min-height:41px;padding:0 15px}
+@media(prefers-reduced-motion:reduce){.magic-shimmer-sheen{animation:none;display:none}}
