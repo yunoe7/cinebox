@@ -339,9 +339,9 @@ export default function HomePage() {
             </section>
             {ongoing.length > 0 && <section className="section-block streaming-row-section">
               <div className="section-head"><div><div className="eyebrow">REPRENEZ LÀ OÙ VOUS EN ÉTIEZ</div><h2>Continuer à <em>regarder</em></h2></div><span className="subtle">{ongoing.length} en cours</span></div>
-              <div className="streaming-row">{[...ongoing].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0)).map(item => <button className="streaming-card continue-card" key={item.id} onClick={() => resumeTitle(item)}>
-                <span className="continue-card-poster"><img src={item.poster} alt="" loading="lazy"/><span className="continue-progress-track"><span style={{ width: `${Math.max(3, Math.min(100, item.progress))}%` }}/></span></span>
-                <span className="streaming-card-info"><small>REPRENDRE · {Math.round(item.progress)} %</small><strong>{item.name}</strong></span>
+              <div className="streaming-row continue-watching-row">{[...ongoing].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0)).map(item => <button className="streaming-card continue-card continue-watching-card" key={item.id} onClick={() => resumeTitle(item)} aria-label={`Reprendre ${item.name} à ${Math.round(item.progress)} %`}>
+                <span className="continue-card-poster">{item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="continue-progress-track"><span style={{ width: `${Math.max(3, Math.min(100, item.progress))}%` }}/></span></span>
+                <span className="streaming-card-info"><small>EN COURS DE LECTURE <b>{Math.round(item.progress)} %</b></small><strong>{item.name}</strong><span className="continue-resume-label">Reprendre la lecture <Play size={12} fill="currentColor"/></span></span>
               </button>)}</div>
             </section>}
             <section className="section-block streaming-row-section collections-section">
