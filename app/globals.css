@@ -779,3 +779,81 @@ footer{color:#78808b}
 
 /* Search field: keep the focus ring on the outer container only */
 .search input:focus-visible{outline:none;outline-offset:0;box-shadow:none}
+
+
+/* Immersive title detail experience */
+.detail-page-backdrop{padding:18px;overflow-y:auto;align-items:flex-start}
+.detail-page-modal{width:min(1180px,100%);max-height:calc(100vh - 36px);overflow-y:auto;overscroll-behavior:contain;background:#11141a;border:1px solid #353b45;border-radius:12px}
+.detail-page-close{position:sticky;float:right;top:14px;right:14px;z-index:8;margin:14px -52px -52px 0}
+.detail-page-hero{position:relative;min-height:430px;background-size:cover;background-position:center 35%;display:flex;align-items:center;padding:70px 7% 58px;border-bottom:1px solid #343a43}
+.detail-page-hero-content{position:relative;z-index:1;width:min(620px,75%)}
+.detail-page-tag{display:inline-flex;margin-top:23px;padding:7px 10px;border:1px solid #a88a5d;border-radius:4px;color:#e8cda2;background:#17130c88;font-size:8px;font-weight:700;letter-spacing:1.6px}
+.detail-page-hero h2{margin:15px 0 12px;font:750 clamp(30px,5vw,54px) Manrope;letter-spacing:-1.8px;color:#f7f4ee}
+.detail-page-meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:#c6c9ce;font-size:11px}
+.detail-page-meta i{color:#b99768;font-style:normal}
+.detail-page-description{max-width:570px;margin:20px 0 0;color:#d0d1d3;font-size:13px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.detail-page-description.expanded{display:block}
+.detail-more{margin-top:5px;padding:0;border:0;background:none;color:#e2bb82;font-size:10px}
+.detail-page-actions{display:flex;align-items:center;gap:10px;margin-top:25px;flex-wrap:wrap}
+.detail-page-actions .gold-btn{min-height:43px;padding:0 20px;gap:9px}
+.detail-page-actions .gold-btn:disabled{opacity:.45;cursor:not-allowed}
+.detail-secondary-btn,.detail-icon-btn{height:43px;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:0 15px;border:1px solid #55545a;border-radius:6px;background:#191d24;color:#eee;font-size:11px}
+.detail-icon-btn{width:43px;padding:0;color:#e4d4ba}
+.detail-icon-btn.is-fav{color:#e6bd83;border-color:#a3865c}
+.detail-no-video{display:block;margin-top:12px;color:#a3a8b1;font-size:10px}
+.detail-tabs{display:flex;gap:4px;padding:0 7%;min-height:58px;border-bottom:1px solid #303640;background:#101216;overflow-x:auto}
+.detail-tabs button{position:relative;display:flex;align-items:center;gap:9px;white-space:nowrap;padding:0 17px;border:0;border-bottom:2px solid transparent;background:none;color:#a8a9ad;font-size:11px}
+.detail-tabs button.active{border-bottom-color:#d3b17d;color:#f1d4a7}
+.detail-tabs button span{padding:3px 6px;border-radius:3px;background:#29241d;color:#e6c48f;font-size:9px}
+.detail-page-body{padding:32px 7% 36px}
+.detail-overview{display:grid;grid-template-columns:155px minmax(0,1fr);gap:27px;max-width:850px}
+.detail-overview-poster{overflow:hidden;border:1px solid #353b45;border-radius:7px;background:#191d24;aspect-ratio:2/3}
+.detail-overview-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.detail-overview-copy h3,.detail-season-heading h3{margin:8px 0 10px;font:700 21px Manrope;color:#f0e9dc}
+.detail-overview-copy p{max-width:680px;color:#b6bac2;font-size:12px;line-height:1.8}
+.detail-overview-copy dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px;margin:22px 0 0}
+.detail-overview-copy dl div{border-bottom:1px solid #2c323b;padding-bottom:9px}
+.detail-overview-copy dt{color:#858c98;font-size:9px;text-transform:uppercase;letter-spacing:1px}
+.detail-overview-copy dd{margin:5px 0 0;color:#e5d6bf;font-size:11px}
+.detail-bottom-actions{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:30px;padding-top:18px;border-top:1px solid #2d333c}
+.detail-bottom-actions>span{display:flex;align-items:center;gap:8px;color:#9299a4;font-size:10px}
+.detail-season{margin-bottom:25px}
+.detail-season-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.detail-season-heading h3{margin-bottom:0}
+.detail-season-heading>span{color:#9da3ad;font-size:10px}
+.detail-episode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.detail-episode-card{display:flex;align-items:center;min-width:0;gap:8px;padding:7px;border:1px solid #303640;border-radius:7px;background:#171b22}
+.detail-episode-card.active{border-color:#a3865c;background:#211e19}
+.detail-episode-main{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:none;color:#e9e5de;text-align:left}
+.detail-episode-main:disabled{opacity:.48;cursor:not-allowed}
+.detail-episode-thumb{position:relative;display:grid;place-items:center;flex:none;width:88px;aspect-ratio:16/9;overflow:hidden;border-radius:4px;background:#292d34;color:#d9bd8f;font:700 13px Manrope}
+.detail-episode-thumb img{width:100%;height:100%;object-fit:cover}
+.detail-episode-thumb i{position:absolute;inset:0;display:grid;place-items:center;background:#0007;color:#fff;opacity:0;transition:opacity .18s}
+.detail-episode-main:hover .detail-episode-thumb i{opacity:1}
+.detail-episode-text{display:flex;flex-direction:column;gap:6px;min-width:0}
+.detail-episode-text strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.detail-episode-text small{color:#969da8;font-size:9px}
+.detail-episode-edit{width:30px;height:30px;display:grid;place-items:center;border:1px solid #3b414a;border-radius:5px;background:#20242b;color:#cdb184}
+.detail-empty{color:#999;font-size:12px}
+.detail-player-wrap{padding:34px 7% 18px;background:#08090b}
+.detail-player-wrap .detail-video{width:100%;max-height:65vh;aspect-ratio:16/9;object-fit:contain}
+.detail-back-to-info{margin-top:12px;padding:8px 12px;border:1px solid #49443a;border-radius:5px;background:#1b1d21;color:#e5c99d;font-size:10px}
+@media(max-width:700px){
+ .detail-page-backdrop{padding:0;align-items:stretch}
+ .detail-page-modal{width:100%;max-height:100dvh;border-radius:0;border-left:0;border-right:0}
+ .detail-page-hero{min-height:470px;padding:80px 22px 35px;background-position:center}
+ .detail-page-hero-content{width:100%}
+ .detail-page-hero h2{font-size:34px}
+ .detail-page-description{font-size:12px}
+ .detail-tabs{padding:0 12px}
+ .detail-tabs button{padding:0 12px;font-size:10px}
+ .detail-page-body{padding:24px 18px}
+ .detail-overview{grid-template-columns:100px minmax(0,1fr);gap:15px}
+ .detail-overview-copy h3{font-size:17px}
+ .detail-overview-copy p{font-size:11px}
+ .detail-overview-copy dl{gap:10px}
+ .detail-episode-grid{grid-template-columns:1fr}
+ .detail-episode-thumb{width:78px}
+ .detail-bottom-actions{align-items:flex-start;flex-direction:column}
+ .detail-page-close{margin:12px -48px -48px 0}
+}
