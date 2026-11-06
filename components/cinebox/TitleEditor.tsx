@@ -12,7 +12,7 @@ type Props = {
   fileRef: RefObject<HTMLInputElement | null>;
   posterRef: RefObject<HTMLInputElement | null>;
   onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
 };
 
 export default function TitleEditor({ addKind, setAddKind, editingTitle, fileRef, posterRef, onClose, onSubmit }: Props) {
