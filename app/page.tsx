@@ -8,7 +8,6 @@ import DetailModal from "../components/cinebox/DetailModal";
 import EpisodeEditor from "../components/cinebox/EpisodeEditor";
 import TitleEditor from "../components/cinebox/TitleEditor";
 import { AppToast, DeleteConfirmation } from "../components/cinebox/FeedbackDialogs";
-import VideoPlayer from "../components/cinebox/VideoPlayer";
 import type { Kind, Title } from "../lib/cinebox/types";
 async function createVideoThumbnail(blob: Blob): Promise<Blob | undefined> {
   const url = URL.createObjectURL(blob);
@@ -44,7 +43,7 @@ async function createVideoThumbnail(blob: Blob): Promise<Blob | undefined> {
 
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
-  Sparkles, Tv, Upload, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck
+  Sparkles, Tv, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck
 } from "lucide-react";
 
 const navItems = [
@@ -233,7 +232,7 @@ export default function HomePage() {
       description: String(form.get("description") || "Ajouté à votre bibliothèque personnelle."),
       poster: posterFile ? URL.createObjectURL(posterFile) : editingTitle?.poster || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&q=80",
       backdrop: editingTitle?.backdrop || "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1600&q=80",
-      progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${editingTitle?.seasons?.length || seasonCount} saison${(editingTitle?.seasons?.length || seasonCount) > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
+      progress: editingTitle?.progress || 0, duration: kind === "Série" ? `${seasonCount} saison${seasonCount > 1 ? "s" : ""}` : String(form.get("duration") || "Non renseigné"),
       episodes: kind === "Série" ? `${perSeason} épisodes / saison` : undefined,
       seasons: kind === "Série" ? Array.from({ length: seasonCount }, (_, seasonIndex) => {
         const oldSeason = editingTitle?.seasons?.find(season => season.number === seasonIndex + 1);
@@ -251,12 +250,12 @@ export default function HomePage() {
           };
         }) };
       }) : undefined,
-      videoUrl: file ? URL.createObjectURL(file) : editingTitle?.videoUrl
+      videoUrl: kind === "Film" ? (file ? URL.createObjectURL(file) : editingTitle?.kind === "Film" ? editingTitle.videoUrl : undefined) : undefined
     };
     if (editingTitle) {
       const retainedAssets = new Set<string>();
       if (!posterFile && editingTitle.poster) retainedAssets.add(`${newId}:poster`);
-      if (file || editingTitle.videoUrl) retainedAssets.add(`${newId}:video`);
+      if (kind === "Film" && (file || (editingTitle.kind === "Film" && editingTitle.videoUrl))) retainedAssets.add(`${newId}:video`);
       if (kind === "Série") {
         newTitle.seasons?.forEach(season => season.episodes.forEach(episode => {
           if (!episode.videoUrl) return;
