@@ -140,7 +140,7 @@ export default function HomePage() {
   const ongoing = titles.map(item => {
     const watchedEpisodes = (item.seasons || []).flatMap(season => season.episodes)
       .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100);
-    if (item.progress > 0 || watchedEpisodes.length === 0) return item;
+    if (item.kind !== "Série" || watchedEpisodes.length === 0) return item;
     const latestEpisode = [...watchedEpisodes].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0))[0];
     return { ...item, progress: latestEpisode.progress || 0, currentTime: latestEpisode.currentTime || 0 };
   }).filter(item => item.progress > 0);
