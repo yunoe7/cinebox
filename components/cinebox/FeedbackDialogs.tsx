@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck, Trash2, X } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
@@ -9,6 +10,37 @@ export function DeleteConfirmation({ title, onCancel, onConfirm }: {
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCancel();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = cancelButtonRef.current?.closest('[role="alertdialog"]');
+      const focusable = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [onCancel]);
+
   return (
     <motion.div className="modal-backdrop app-confirm-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <motion.div className="app-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" initial={{ opacity: 0, y: 12, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: .98 }}>
@@ -17,8 +49,8 @@ export function DeleteConfirmation({ title, onCancel, onConfirm }: {
         <h2 id="delete-title">Supprimer ce titre ?</h2>
         <p><strong>{title.name}</strong> sera retiré de votre collection. Cette action ne peut pas être annulée.</p>
         <div className="confirm-actions">
-          <button className="confirm-cancel" onClick={onCancel}>Annuler</button>
-          <button className="confirm-delete" onClick={onConfirm}>Supprimer</button>
+          <button ref={cancelButtonRef} type="button" className="confirm-cancel" onClick={onCancel}>Annuler</button>
+          <button type="button" className="confirm-delete" onClick={onConfirm}>Supprimer</button>
         </div>
       </motion.div>
     </motion.div>
