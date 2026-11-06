@@ -312,9 +312,9 @@ export default function HomePage() {
               </div>
             </div>
             <div className="hero-controls">
-              <button aria-label="Titre précédent" onClick={() => setHeroIndex(index => (index - 1 + featuredTitles.length) % featuredTitles.length)}><ChevronRight size={15} className="hero-prev-icon"/></button>
-              <div className="hero-dots">{featuredTitles.map((item, index) => <button key={item.id} aria-label={`Afficher ${item.name}`} aria-current={index === heroIndex ? "true" : undefined} className={index === heroIndex ? "active" : ""} onClick={() => setHeroIndex(index)}/>)}</div>
-              <button aria-label="Titre suivant" onClick={() => setHeroIndex(index => (index + 1) % featuredTitles.length)}><ChevronRight size={15}/></button>
+              <button type="button" aria-label="Titre précédent" onClick={() => setHeroIndex(index => (index - 1 + featuredTitles.length) % featuredTitles.length)} disabled={featuredTitles.length < 2}><ChevronRight size={15} className="hero-prev-icon"/></button>
+              <div className="hero-dots" role="group" aria-label="Choisir le titre à la une">{featuredTitles.map((item, index) => <button type="button" key={item.id} aria-label={`Afficher ${item.name}`} aria-current={index === heroIndex ? "true" : undefined} aria-pressed={index === heroIndex} className={index === heroIndex ? "active" : ""} onClick={() => setHeroIndex(index)}/>)}</div>
+              <button type="button" aria-label="Titre suivant" onClick={() => setHeroIndex(index => (index + 1) % featuredTitles.length)} disabled={featuredTitles.length < 2}><ChevronRight size={15}/></button>
             </div>
           </section>}
 
