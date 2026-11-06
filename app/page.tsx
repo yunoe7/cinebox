@@ -250,12 +250,12 @@ export default function HomePage() {
           };
         }) };
       }) : undefined,
-      videoUrl: kind === "Film" ? (file ? URL.createObjectURL(file) : editingTitle?.kind === "Film" ? editingTitle.videoUrl : undefined) : undefined
+      videoUrl: kind !== "Série" ? (file ? URL.createObjectURL(file) : editingTitle?.kind !== "Série" ? editingTitle?.videoUrl : undefined) : undefined
     };
     if (editingTitle) {
       const retainedAssets = new Set<string>();
       if (!posterFile && editingTitle.poster) retainedAssets.add(`${newId}:poster`);
-      if (kind === "Film" && (file || (editingTitle.kind === "Film" && editingTitle.videoUrl))) retainedAssets.add(`${newId}:video`);
+      if (kind !== "Série" && (file || (editingTitle.kind !== "Série" && editingTitle.videoUrl))) retainedAssets.add(`${newId}:video`);
       if (kind === "Série") {
         newTitle.seasons?.forEach(season => season.episodes.forEach(episode => {
           if (!episode.videoUrl) return;
