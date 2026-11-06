@@ -137,13 +137,16 @@ export default function HomePage() {
     const timer = window.setInterval(() => setHeroIndex(index => (index + 1) % featuredTitles.length), 7000);
     return () => window.clearInterval(timer);
   }, [featuredTitles.length]);
-  const ongoing = titles.map(item => {
-    const watchedEpisodes = (item.seasons || []).flatMap(season => season.episodes)
-      .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100);
-    if (item.kind !== "Série" || watchedEpisodes.length === 0) return item;
-    const latestEpisode = [...watchedEpisodes].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0))[0];
-    return { ...item, progress: latestEpisode.progress || 0, currentTime: latestEpisode.currentTime || 0 };
-  }).filter(item => item.progress > 0);
+  const ongoing = titles.flatMap(item => {
+    if (item.kind === "Série") {
+      const watchedEpisodes = (item.seasons || []).flatMap(season => season.episodes)
+        .filter(episode => Boolean(episode.videoUrl) && (episode.progress || 0) > 0 && (episode.progress || 0) < 100);
+      if (watchedEpisodes.length === 0) return [];
+      const latestEpisode = [...watchedEpisodes].sort((a, b) => (b.currentTime || 0) - (a.currentTime || 0))[0];
+      return [{ ...item, progress: latestEpisode.progress || 0, currentTime: latestEpisode.currentTime || 0 }];
+    }
+    return item.progress > 0 ? [item] : [];
+  });
   const personalizedPicks = useMemo(() => {
     const favoriteGenres = favorites
       .map(id => titles.find(item => item.id === id)?.genre)
