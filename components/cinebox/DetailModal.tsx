@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Heart, Play, Settings, X, Bookmark, Info, Film } from "lucide-react";
+import { Heart, Play, Settings, X, Bookmark, Info, Film, ChevronRight, ListVideo } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
 import VideoPlayer from "./VideoPlayer";
 
@@ -52,11 +52,28 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     <motion.div className="modal-backdrop detail-page-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div className="detail-modal detail-page-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }}>
         <button ref={closeButtonRef} className="close-btn detail-page-close" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
-        {playing && playbackUrl ? <div className="detail-player-wrap">
-          <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
-            onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>
-          <button className="detail-back-to-info" type="button" onClick={() => setPlaying(false)}>Retour aux informations</button>
-        </div> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),url("${selected.poster || selected.backdrop}")` }}>
+        {playing && playbackUrl ? <section className="episode-watch-page">
+          <div className="episode-watch-top">
+            <div className="episode-watch-player">
+              <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
+                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>
+            </div>
+            <aside className="episode-watch-sidebar">
+              <div className="eyebrow">VOUS REGARDEZ</div>
+              <div className="episode-watch-title-card"><img src={selected.poster} alt=""/><div><strong>{selected.name}</strong><small>{selected.year} · {selected.kind}</small><button type="button" onClick={() => setPlaying(false)}>Voir la fiche <ChevronRight size={13}/></button></div></div>
+              <h3>Informations</h3>
+              <dl><div><dt>Format</dt><dd>{selected.kind}</dd></div><div><dt>Année</dt><dd>{selected.year}</dd></div><div><dt>Genre</dt><dd>{selected.genre}</dd></div>{selected.seasons?.length ? <div><dt>Saisons</dt><dd>{selected.seasons.length}</dd></div> : null}</dl>
+              <h3>Synopsis</h3><p>{selected.description}</p>
+            </aside>
+          </div>
+          <div className="episode-watch-controls">
+            <div><span className="eyebrow">{selected.name.toUpperCase()}</span><h2>{selectedEpisode ? `Saison ${selectedEpisode.season} · Épisode ${selectedEpisode.episode}` : selected.name}</h2></div>
+            {episodes.length > 0 && <label className="episode-watch-picker"><ListVideo size={15}/><select aria-label="Choisir un épisode" value={selectedEpisode ? `${selectedEpisode.season}:${selectedEpisode.episode}` : `${episodes[0].season}:${episodes[0].episode}`} onChange={event => { const [season,episode] = event.target.value.split(":").map(Number); const target = episodes.find(ep => ep.season === season && ep.episode === episode); if (target) onSelectEpisode(target.season,target.episode,target.url); }}>{episodes.map(ep => <option key={`${ep.season}:${ep.episode}`} value={`${ep.season}:${ep.episode}`}>S{ep.season} · E{ep.episode}</option>)}</select></label>}
+            {(() => { const index = episodes.findIndex(ep => ep.season === selectedEpisode?.season && ep.episode === selectedEpisode?.episode); const next = episodes[index + 1]; return next ? <button className="episode-next-button" type="button" onClick={() => onSelectEpisode(next.season,next.episode,next.url)}>Suivant <ChevronRight size={15}/></button> : null; })()}
+            <button className="detail-back-to-info" type="button" onClick={() => setPlaying(false)}>Retour à la fiche</button>
+          </div>
+          <div className="episode-watch-synopsis"><h3>Synopsis</h3><p>{selected.description}</p></div>
+        </section> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),url("${selected.poster || selected.backdrop}")` }}>
           <div className="detail-page-hero-content">
             <div className="eyebrow">CINÉBOX ORIGINALS · {selected.kind.toUpperCase()}</div>
             <span className="detail-page-tag">{selected.kind === "Série" ? "SÉRIE À DÉCOUVRIR" : "À DÉCOUVRIR"}</span>
