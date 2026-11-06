@@ -50,7 +50,7 @@ export default function DetailModal({
               <h3>Saison {season.number}</h3>
               <div className="episode-list">{season.episodes.map((episode) => <div className="episode-line" key={episode.number}>
                 <button className={`episode-row ${selectedEpisode?.season === season.number && selectedEpisode?.episode === episode.number ? "episode-active" : ""}`} type="button" disabled={!episode.videoUrl} onClick={() => onSelectEpisode(season.number, episode.number, episode.videoUrl || "")}>
-                  <span className="episode-number">{String(episode.number).padStart(2, "0")}</span>
+                  {episode.thumbnailUrl ? <img className="episode-thumbnail" src={episode.thumbnailUrl} alt="" /> : <span className="episode-number">{String(episode.number).padStart(2, "0")}</span>}
                   <span className="episode-title-wrap"><span>{episode.title}</span>{(episode.progress || 0) > 0 && <i className="episode-progress"><b style={{ width: `${episode.progress}%` }}/></i>}</span>
                   <small>{episode.videoUrl ? (episode.progress ? `${episode.progress}% · reprendre` : "Lire") : "Vidéo absente"}</small>
                 </button>
