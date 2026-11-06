@@ -766,3 +766,13 @@ footer{color:#78808b}
 :where(button,a):focus:not(:focus-visible){
   outline:none;
 }
+
+
+/* Search clear action and helpful empty state */
+.search-clear{display:grid;place-items:center;flex:none;width:25px;height:25px;padding:0;border:0;border-radius:5px;background:transparent;color:#9a9ea6;cursor:pointer}
+.search-clear:hover{background:#252a32;color:#eee}
+.empty-state{display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;padding:34px 18px;color:#9297a2}
+.empty-state strong{color:#e8e3da;font:600 15px Manrope,sans-serif}
+.empty-state span{font-size:11px;line-height:1.6}
+.empty-state button{margin-top:5px;padding:9px 13px;border:1px solid #454b55;border-radius:7px;background:#1a1f26;color:#e5dfd4;font-size:10px;font-weight:600}
+.empty-state button:hover{border-color:#927650;background:#22262d}
