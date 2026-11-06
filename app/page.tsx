@@ -8,6 +8,7 @@ import EpisodeEditor from "../components/cinebox/EpisodeEditor";
 import TitleEditor from "../components/cinebox/TitleEditor";
 import { AppToast, DeleteConfirmation } from "../components/cinebox/FeedbackDialogs";
 import type { Kind, Title } from "../lib/cinebox/types";
+import { SpotlightSurface } from "../components/ui/spotlight-surface";
 
 import {
   Clapperboard, Film, Heart, Home, Menu, Play, Plus, Search, Settings,
@@ -328,11 +329,11 @@ export default function HomePage() {
           {activePage === "Accueil" && personalizedPicks.length > 0 && <section className="section-block discovery-block">
             <div className="section-head"><div><div className="eyebrow">SELON VOS ENVIES</div><h2>À découvrir <em>ensuite</em></h2></div><span className="subtle">Une sélection issue de vos favoris</span></div>
             <div className="discovery-grid">
-              {personalizedPicks.map(item => <button className="discovery-card" key={item.id} onClick={() => openTitle(item)}>
+              {personalizedPicks.map(item => <SpotlightSurface className="discovery-spotlight" key={item.id}><button className="discovery-card" onClick={() => openTitle(item)}>
                 {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}
                 <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
                 <Play className="discovery-play" size={16}/>
-              </button>)}
+              </button></SpotlightSurface>)}
             </div>
           </section>}
 
