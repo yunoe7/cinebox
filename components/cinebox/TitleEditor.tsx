@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ChevronRight, Upload, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { RefObject, FormEvent } from "react";
 import type { Kind, Title } from "../../lib/cinebox/types";
 
@@ -16,6 +17,24 @@ type Props = {
 };
 
 export default function TitleEditor({ addKind, setAddKind, editingTitle, fileRef, posterRef, onClose, onSubmit }: Props) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { onClose(); return; }
+      if (event.key !== "Tab") return;
+      const dialog = closeButtonRef.current?.closest('[role="dialog"]');
+      const items = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      if (!items?.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); previous?.focus(); };
+  }, [onClose]);
   return (
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div className="modal add-modal" role="dialog" aria-modal="true" aria-labelledby="title-editor-heading" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}>
