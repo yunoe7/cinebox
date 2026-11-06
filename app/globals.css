@@ -756,3 +756,13 @@ footer{color:#78808b}
 
 .episode-thumbnail{width:72px;height:42px;flex:0 0 72px;object-fit:cover;border-radius:4px;background:#24272c;border:1px solid #343941}
 @media(max-width:560px){.episode-thumbnail{width:58px;height:36px;flex-basis:58px}}
+
+
+/* Consistent keyboard focus across the interface */
+:where(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline:2px solid #c5a66b;
+  outline-offset:3px;
+}
+:where(button,a):focus:not(:focus-visible){
+  outline:none;
+}
