@@ -753,3 +753,6 @@ footer{color:#78808b}
 .continue-card:hover .continue-card-poster>img{transform:scale(1.025);filter:brightness(1.08)}
 .continue-progress-track{position:absolute;left:9px;right:9px;bottom:9px;height:3px;border-radius:99px;background:rgba(255,255,255,.38);overflow:hidden}
 .continue-progress-track>span{display:block;height:100%;border-radius:99px;background:#c5a66b}
+
+.episode-thumbnail{width:72px;height:42px;flex:0 0 72px;object-fit:cover;border-radius:4px;background:#24272c;border:1px solid #343941}
+@media(max-width:560px){.episode-thumbnail{width:58px;height:36px;flex-basis:58px}}
