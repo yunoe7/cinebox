@@ -1480,3 +1480,26 @@ body{background:var(--cinema-ink)}
  .hero-carousel:after{animation:none}
  .streaming-card,.poster-card,.discovery-card,.add-btn{transition:none}
 }
+
+
+/* Shared component layer: shadcn-style primitives + Magic UI + 21st spotlight */
+.spotlight-surface{position:relative;isolation:isolate;min-width:0;border-radius:10px}
+.spotlight-surface:before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;opacity:0;background:radial-gradient(250px circle at var(--spotlight-x,50%) var(--spotlight-y,50%),var(--spotlight-color),transparent 72%);transition:opacity .22s ease}
+.spotlight-surface:hover:before{opacity:1}
+.discovery-spotlight{height:100%}
+.discovery-spotlight .discovery-card{position:relative;z-index:1;width:100%;height:100%}
+.ui-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:7px;font:600 12px 'DM Sans',sans-serif;cursor:pointer;transition:background .18s,border-color .18s,transform .18s}
+.ui-button-default{background:#d5b98d;color:#17130d}
+.ui-button-outline{background:transparent;border-color:#514737;color:#e7d7bb}
+.ui-button-ghost{background:transparent;color:#c9cbd0}
+.ui-button-default:hover,.ui-button-outline:hover,.ui-button-ghost:hover{transform:translateY(-1px)}
+.ui-button-default:hover{background:#e2c99e}
+.ui-button-sm{min-height:32px;padding:0 11px}
+.ui-button-default.ui-button-default,.ui-button-outline.ui-button-default{min-height:40px;padding:0 15px}
+.ui-button-icon{width:36px;height:36px;padding:0}
+.ui-card{border:1px solid rgba(255,255,255,.09);border-radius:10px;background:linear-gradient(145deg,#191c22,#111318);color:#f1eee8;box-shadow:0 12px 28px rgba(0,0,0,.2)}
+.ui-card-header{display:flex;flex-direction:column;gap:5px;padding:18px 18px 0}
+.ui-card-title{margin:0;font:650 15px/1.3 Manrope,sans-serif;color:#f1eee8}
+.ui-card-description{margin:0;color:#969ba4;font-size:11px;line-height:1.6}
+.ui-card-content{padding:16px 18px 18px}
+@media(hover:none),(prefers-reduced-motion:reduce){.spotlight-surface:before{display:none}}
