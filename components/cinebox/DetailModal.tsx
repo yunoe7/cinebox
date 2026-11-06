@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Heart, Play, Settings, X } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
@@ -27,20 +27,43 @@ export default function DetailModal({
   selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites,
   onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView
 }: DetailModalProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     if (!selected) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = closeButtonRef.current?.closest('[role="dialog"]');
+      const focusable = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), video[controls], [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [selected, onClose]);
 
   return (
     <AnimatePresence>
       {selected && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
         <motion.div className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" initial={{ y: 18 }} animate={{ y: 0 }} exit={{ y: 10, opacity: 0 }}>
-          <button className="close-btn" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
+          <button ref={closeButtonRef} className="close-btn" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
           {(selectedEpisodeUrl || selected.videoUrl) ? <VideoPlayer
             key={selectedEpisodeUrl || selected.videoUrl}
             src={selectedEpisodeUrl || selected.videoUrl!}
