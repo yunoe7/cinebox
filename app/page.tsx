@@ -88,9 +88,10 @@ export default function HomePage() {
           const restored = await Promise.all(records.map(async (item) => {
             const posterBlob = await loadAsset(`${item.id}:poster`).catch(() => undefined);
             const videoBlob = await loadAsset(`${item.id}:video`).catch(() => undefined);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const blob = await loadAsset(`${item.id}:episode:${season.number}:${episode.number}`).catch(() => undefined); const thumbnail = blob ? await createVideoThumbnail(blob) : undefined; return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined, thumbnailUrl: thumbnail ? URL.createObjectURL(thumbnail) : undefined }; })) })));
+            const seasons = await Promise.all((item.seasons || []).map(async (season) => ({ ...season, episodes: await Promise.all(season.episodes.map(async (episode) => { const key = `${item.id}:episode:${season.number}:${episode.number}`; const blob = await loadAsset(key).catch(() => undefined); let thumbnail = await loadAsset(`${key}:thumbnail`).catch(() => undefined); if (blob && !thumbnail) { thumbnail = await createVideoThumbnail(blob); if (thumbnail) await saveAsset(`${key}:thumbnail`, thumbnail).catch(() => undefined); } return { ...episode, videoUrl: blob ? URL.createObjectURL(blob) : undefined, thumbnailUrl: thumbnail ? URL.createObjectURL(thumbnail) : undefined }; })) })));
             const firstEpisodeBlob = item.kind === "Série" ? await loadAsset(`${item.id}:episode:1:1`).catch(() => undefined) : undefined;
-            const generatedPoster = !posterBlob && firstEpisodeBlob ? await createVideoThumbnail(firstEpisodeBlob) : undefined;
+            let generatedPoster = !posterBlob ? await loadAsset(`${item.id}:poster-thumbnail`).catch(() => undefined) : undefined;
+            if (!posterBlob && firstEpisodeBlob && !generatedPoster) { generatedPoster = await createVideoThumbnail(firstEpisodeBlob); if (generatedPoster) await saveAsset(`${item.id}:poster-thumbnail`, generatedPoster).catch(() => undefined); }
             return {
               ...item,
               seasons,
@@ -182,7 +183,7 @@ export default function HomePage() {
 
   const resumeTitle = (item: Title) => {
     const episode = (item.seasons || []).flatMap(season => season.episodes.map(entry => ({ season: season.number, episode: entry })))
-      .filter(entry => (entry.episode.progress || 0) > 0 && (entry.episode.progress || 0) < 100)
+      .filter(entry => Boolean(entry.episode.videoUrl) && (entry.episode.progress || 0) > 0 && (entry.episode.progress || 0) < 100)
       .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
     setSelected(item);
     if (episode?.episode.videoUrl) {
@@ -195,7 +196,7 @@ export default function HomePage() {
   };
   const toggleFavorite = (id: number) => setFavorites((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]);
 
-  const addTitle = (event: React.FormEvent<HTMLFormElement>) => {
+  const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const file = fileRef.current?.files?.[0];
@@ -208,10 +209,18 @@ export default function HomePage() {
     const name = String(form.get("name") || "").trim();
     if (!name) return;
     const newId = editingTitle?.id ?? Date.now();
-    if (posterFile) void saveAsset(`${newId}:poster`, posterFile).catch(() => alert("Impossible de sauvegarder cette affiche dans le navigateur."));
-    if (file) void saveAsset(`${newId}:video`, file).catch(() => alert("Impossible de sauvegarder cette vidéo dans le navigateur."));
     const perSeason = episodeCount || Math.ceil(Math.max(episodeNames.length, episodeFiles.length) / seasonCount);
-    episodeFiles.forEach((episodeFile, index) => { const seasonNumber = Math.floor(index / Math.max(1, perSeason)) + 1; const episodeNumber = index % Math.max(1, perSeason) + 1; void saveAsset(`${newId}:episode:${seasonNumber}:${episodeNumber}`, episodeFile).catch(() => alert(`Impossible de sauvegarder la vidéo de l’épisode ${index + 1}.`)); });
+    try {
+      const saves: Promise<void>[] = [];
+      if (posterFile) saves.push(saveAsset(`${newId}:poster`, posterFile));
+      if (file) saves.push(saveAsset(`${newId}:video`, file));
+      episodeFiles.forEach((episodeFile, index) => { const seasonNumber = Math.floor(index / Math.max(1, perSeason)) + 1; const episodeNumber = index % Math.max(1, perSeason) + 1; saves.push(saveAsset(`${newId}:episode:${seasonNumber}:${episodeNumber}`, episodeFile)); });
+      await Promise.all(saves);
+    } catch {
+      setNotice({ title: "Sauvegarde impossible", message: "Un ou plusieurs fichiers n’ont pas pu être enregistrés. Vérifiez l’espace disponible puis réessayez." });
+      window.setTimeout(() => setNotice(null), 4500);
+      return;
+    }
     const newTitle: Title = {
       id: newId, name, kind,
       year: Number(form.get("year")) || new Date().getFullYear(),
@@ -417,14 +426,17 @@ export default function HomePage() {
           onSave={async (target, file) => {
             if (!selected) return;
             const key = `${selected.id}:episode:${target.season}:${target.episode}`;
-            if (file) await saveAsset(key, file);
+            if (file) { try { await saveAsset(key, file); } catch { setNotice({ title: "Sauvegarde impossible", message: "La vidéo de cet épisode n’a pas pu être enregistrée. Réessayez." }); return; } }
             const videoUrl = file ? URL.createObjectURL(file) : undefined;
+            const thumbnail = file ? await createVideoThumbnail(file) : undefined;
+            if (thumbnail) await saveAsset(`${key}:thumbnail`, thumbnail).catch(() => undefined);
+            const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined;
             const update = (item: Title): Title => ({
               ...item,
               seasons: item.seasons?.map(season => season.number !== target.season ? season : {
                 ...season,
                 episodes: season.episodes.map(episode => episode.number !== target.episode ? episode : {
-                  ...episode, title: target.title, ...(videoUrl ? { videoUrl, currentTime: 0, progress: 0 } : {})
+                  ...episode, title: target.title, ...(videoUrl ? { videoUrl, thumbnailUrl, currentTime: 0, progress: 0 } : {})
                 })
               })
             });
