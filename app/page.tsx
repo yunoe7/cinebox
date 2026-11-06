@@ -289,7 +289,7 @@ export default function HomePage() {
           <button className="mobile-menu" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Menu"><Menu/></button>
           <div className="crumb">CINÉBOX <span>/</span> <b>{activePage.toUpperCase()}</b></div>
           <div className="top-actions">
-            <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans ma collection…"/></label>
+            <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans ma collection…" aria-label="Rechercher dans ma collection"/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>
             <button className="add-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></button>
           </div>
         </header>
@@ -392,7 +392,7 @@ export default function HomePage() {
                 <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className="poster-image"><img src={item.poster} alt={item.name} loading="lazy"/><span className="kind-chip">{item.kind}</span><span className="poster-play"><Play size={20} fill="currentColor"/></span></div><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong></button>
                 {activePage === "Administration" ? <div className="card-menu-wrap"><button className="heart-btn card-menu-trigger" onClick={() => setOpenCardMenu(openCardMenu === item.id ? null : item.id)} aria-label={`Actions pour ${item.name}`} aria-expanded={openCardMenu === item.id} title="Actions"><MoreHorizontal size={18}/></button>{openCardMenu === item.id && <><button className="menu-dismiss" aria-label="Fermer le menu" onClick={() => setOpenCardMenu(null)}/><div className="card-action-menu"><button onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); setOpenCardMenu(null); }}><Settings size={15}/> Modifier</button><button className="danger" onClick={() => { setOpenCardMenu(null); setConfirmDelete(item); }}><Trash2 size={15}/> Supprimer</button></div></>}</div> : <button className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label="Favori"><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
               </motion.article>)}
-              {!visibleTitles.length && <div className="empty-state">Aucun titre trouvé. Essayez un autre filtre ou ajoutez un contenu.</div>}
+              {!visibleTitles.length && <div className="empty-state"><strong>Aucun titre trouvé</strong><span>Modifiez votre recherche ou réinitialisez les filtres pour retrouver votre collection.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); setGenreFilter("Tous les genres"); }}>Réinitialiser la recherche et les filtres</button></div>}
             </div>
           </section>
           <footer><span>© 2026 CINÉBOX</span><span>VOTRE CINÉMA PERSONNEL <b>✦</b></span></footer>
