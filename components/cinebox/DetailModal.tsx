@@ -29,11 +29,11 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { if (playing) setPlaying(false); else onClose(); }
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); previous?.focus(); };
-  }, [selected, onClose, playing]);
+  }, [selected?.id, onClose]);
 
   if (!selected) return null;
   const episodes = selected.seasons?.flatMap(season => season.episodes.filter(ep => ep.videoUrl).map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl! }))) || [];
@@ -54,7 +54,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
           <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
             onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>
           <button className="detail-back-to-info" type="button" onClick={() => setPlaying(false)}>Retour aux informations</button>
-        </div> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),url("${selected.backdrop || selected.poster}")` }}>
+        </div> : <section className="detail-page-hero" style={{ backgroundImage: `linear-gradient(90deg,rgba(8,10,14,.97),rgba(8,10,14,.78) 48%,rgba(8,10,14,.2)),linear-gradient(0deg,#11141a,transparent 60%),url("${selected.poster || selected.backdrop}")` }}>
           <div className="detail-page-hero-content">
             <div className="eyebrow">CINÉBOX ORIGINALS · {selected.kind.toUpperCase()}</div>
             <span className="detail-page-tag">{selected.kind === "Série" ? "SÉRIE À DÉCOUVRIR" : "À DÉCOUVRIR"}</span>
