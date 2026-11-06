@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
+import { deleteAsset, deleteAssets, loadAsset, saveAsset } from "../lib/cinebox/storage";
 import { initialTitles } from "../lib/cinebox/catalog";
 import DetailModal from "../components/cinebox/DetailModal";
 import EpisodeEditor from "../components/cinebox/EpisodeEditor";
@@ -431,6 +431,10 @@ export default function HomePage() {
             const videoUrl = file ? URL.createObjectURL(file) : undefined;
             const thumbnail = file ? await createVideoThumbnail(file) : undefined;
             if (thumbnail) await saveAsset(`${key}:thumbnail`, thumbnail).catch(() => undefined);
+            else if (file) await deleteAsset(`${key}:thumbnail`).catch(() => undefined);
+            if (file && target.season === 1 && target.episode === 1) {
+              await deleteAsset(`${selected.id}:poster-thumbnail`).catch(() => undefined);
+            }
             const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined;
             const update = (item: Title): Title => ({
               ...item,
