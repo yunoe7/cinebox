@@ -221,7 +221,7 @@ export default function HomePage() {
     };
     if (editingTitle) {
       const retainedAssets = new Set<string>();
-      if (!posterFile && editingTitle.poster) retainedAssets.add(`${newId}:poster`);
+      if (posterFile || editingTitle.poster) retainedAssets.add(`${newId}:poster`);
       if (kind !== "Série" && (file || (editingTitle.kind !== "Série" && editingTitle.videoUrl))) retainedAssets.add(`${newId}:video`);
       if (kind === "Série") {
         newTitle.seasons?.forEach(season => season.episodes.forEach(episode => {
