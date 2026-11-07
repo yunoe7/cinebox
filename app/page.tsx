@@ -868,7 +868,7 @@ export default function HomePage() {
     }
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    let smartImport: (Partial<Title> & { tmdbId: number; name: string; releaseDate?: string; runtime?: number; genres?: string[]; seasons?: Title["seasons"] }) | null = null;
+    let smartImport: (Partial<Title> & { tmdbId: number; name: string; releaseDate?: string; runtime?: number; genres?: string[]; seasons?: Title["seasons"]; posterPath?: string | null; backdropPath?: string | null }) | null = null;
     try {
       const value = String(form.get("smartImport") || "");
       if (value) {
