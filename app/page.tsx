@@ -23,6 +23,8 @@ import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalog } from "../components/cinebox/SharedCatalog";
+import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
+
 import { loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 
 import {
@@ -1231,6 +1233,7 @@ export default function HomePage() {
           </section>}
 
           {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
+            <BunnyLibraryPanel/>
             <div className="admin-page-heading"><div><div className="eyebrow">AFFICHES & MINIATURES</div><h2 id="admin-media-title">Gestion des médias</h2><p>Prévisualisez les images enregistrées et vérifiez leurs métadonnées locales.</p></div><button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Importer une affiche</button></div>
             <div className="admin-media-summary"><div><ImageIcon size={17}/><span><strong>{adminMedia.length}</strong> image{adminMedia.length === 1 ? "" : "s"} associée{adminMedia.length === 1 ? "" : "s"}</span></div><div><Play size={17}/><span><strong>{adminVideoFileCount}</strong> fichier{adminVideoFileCount === 1 ? "" : "s"} vidéo lié{adminVideoFileCount === 1 ? "" : "s"}</span></div><p>Formats d’image acceptés à l’import : JPG, PNG et WebP · maximum 20 Mo par image.</p></div>
             {adminMedia.length ? <div className="admin-media-grid">{adminMedia.map((media) => {
