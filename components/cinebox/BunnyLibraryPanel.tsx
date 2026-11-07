@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Film, LoaderCircle, Play, RefreshCw, ShieldCheck, UploadCloud, Video, X } from "lucide-react";
 
 type BunnyVideo = { id: string; title: string; durationSeconds: number | null; thumbnailUrl: string | null };
@@ -113,12 +113,12 @@ export function BunnyLibraryPanel() {
     } finally { setUploading(false); }
   };
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     width: "100%", minHeight: 46, borderRadius: 10, padding: "0 14px",
     border: "1px solid rgba(220,195,146,.19)", background: "#0b0c0f",
     color: "#f5f1e9", outline: "none", font: "inherit", fontSize: 13,
   };
-  const labelStyle: React.CSSProperties = { display: "block", color: "#b6b0a4", fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 8 };
+  const labelStyle: CSSProperties = { display: "block", color: "#b6b0a4", fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 8 };
 
   return (
     <section aria-labelledby="bunny-library-title" style={{ marginTop: 26, border: "1px solid rgba(220,195,146,.18)", borderRadius: 18, overflow: "hidden", background: "linear-gradient(145deg,rgba(24,23,21,.98),rgba(13,14,17,.98))", boxShadow: "0 18px 55px rgba(0,0,0,.18)" }}>
