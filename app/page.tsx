@@ -1039,6 +1039,36 @@ export default function HomePage() {
       return;
     }
     importBatch.transferTo(`${blobOwnerPrefix}:library`);
+    let sharedPublishMessage = "";
+    if (smartImport && !editingTitle) {
+      const adminToken = window.sessionStorage.getItem("cinebox-admin-token") || "";
+      if (adminToken.length >= 32) {
+        try {
+          const imagePath = (value?: string) => {
+            if (!value) return null;
+            try { return new URL(value, window.location.origin).searchParams.get("path"); }
+            catch { return null; }
+          };
+          const response = await fetch("/api/catalog/publish", {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer " + adminToken },
+            body: JSON.stringify({
+              tmdbId: smartImport.tmdbId, kind: kind === "Série" ? "series" : "movie",
+              title: newTitle.name, overview: newTitle.description, releaseDate: smartImport.releaseDate,
+              posterPath: smartImport.posterPath || imagePath(newTitle.poster),
+              backdropPath: smartImport.backdropPath || imagePath(smartImport.backdrop),
+              genres: newTitle.genres || newTitle.genre.split(",").map(value => value.trim()).filter(Boolean),
+              metadata: { originalName: newTitle.originalName, originalLanguage: newTitle.originalLanguage, productionCountries: newTitle.productionCountries, cast: newTitle.cast, director: newTitle.director, rating: newTitle.rating, voteCount: newTitle.voteCount, status: newTitle.status, totalSeasons: newTitle.totalSeasons, totalEpisodes: newTitle.totalEpisodes },
+              seasons: (newTitle.seasons || []).map(season => ({ number: season.number, name: season.name, overview: season.overview, airDate: season.airDate, tmdbId: season.tmdbId, episodes: season.episodes.map(episode => ({ number: episode.number, title: episode.title, overview: episode.overview, airDate: episode.airDate, runtime: episode.runtime, tmdbId: episode.tmdbId, thumbnailPath: imagePath(episode.thumbnailUrl) })) })),
+            }),
+          });
+          const result = await response.json() as { published?: boolean; error?: string };
+          sharedPublishMessage = response.ok && result.published ? " La fiche a aussi été publiée dans le catalogue partagé." : " Enregistrement local effectué, mais la publication partagée a échoué : " + (result.error || "erreur inconnue");
+        } catch { sharedPublishMessage = " Enregistrement local effectué, mais le catalogue partagé n'a pas répondu."; }
+      } else {
+        sharedPublishMessage = " Pour la rendre visible dans Bunny et chez les autres utilisateurs, ouvre Administration > Médias, saisis le code administrateur, puis enregistre à nouveau cette fiche TMDB.";
+      }
+    }
     setEditingTitle(null);
     setShowAdd(false);
     formElement.reset();
@@ -1048,8 +1078,8 @@ export default function HomePage() {
     else setActivePage("Accueil");
     setFilter("Tout");
     setNotice(publishing.status === "cleanup-pending"
-      ? { title: "Contenu enregistré", message: `« ${name} » est enregistré. Le travail de nettoyage est conservé et sera réessayé au prochain démarrage.` }
-      : { title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » a été sauvegardé dans votre collection.` });
+      ? { title: "Contenu enregistré", message: `« ${name} » est enregistré. Le travail de nettoyage sera réessayé au prochain démarrage.${sharedPublishMessage}` }
+      : { title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » a été sauvegardé dans votre collection.${sharedPublishMessage}` });
     window.setTimeout(() => setNotice(null), 3600);
   };
 
