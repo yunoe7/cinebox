@@ -22,6 +22,9 @@ import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
+import { SharedCatalog } from "../components/cinebox/SharedCatalog";
+import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
+
 import { loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 
 import {
@@ -865,7 +868,7 @@ export default function HomePage() {
     }
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    let smartImport: (Partial<Title> & { tmdbId: number; name: string; releaseDate?: string; runtime?: number; genres?: string[]; seasons?: Title["seasons"] }) | null = null;
+    let smartImport: (Partial<Title> & { tmdbId: number; name: string; releaseDate?: string; runtime?: number; genres?: string[]; seasons?: Title["seasons"]; posterPath?: string | null; backdropPath?: string | null }) | null = null;
     try {
       const value = String(form.get("smartImport") || "");
       if (value) {
@@ -1036,6 +1039,36 @@ export default function HomePage() {
       return;
     }
     importBatch.transferTo(`${blobOwnerPrefix}:library`);
+    let sharedPublishMessage = "";
+    if (smartImport && !editingTitle) {
+      const adminToken = window.sessionStorage.getItem("cinebox-admin-token") || "";
+      if (adminToken.length >= 32) {
+        try {
+          const imagePath = (value?: string) => {
+            if (!value) return null;
+            try { return new URL(value, window.location.origin).searchParams.get("path"); }
+            catch { return null; }
+          };
+          const response = await fetch("/api/catalog/publish", {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer " + adminToken },
+            body: JSON.stringify({
+              tmdbId: smartImport.tmdbId, kind: kind === "Série" ? "series" : "movie",
+              title: newTitle.name, overview: newTitle.description, releaseDate: smartImport.releaseDate,
+              posterPath: smartImport.posterPath || imagePath(newTitle.poster),
+              backdropPath: smartImport.backdropPath || imagePath(smartImport.backdrop),
+              genres: newTitle.genres || newTitle.genre.split(",").map(value => value.trim()).filter(Boolean),
+              metadata: { originalName: newTitle.originalName, originalLanguage: newTitle.originalLanguage, productionCountries: newTitle.productionCountries, cast: newTitle.cast, director: newTitle.director, rating: newTitle.rating, voteCount: newTitle.voteCount, status: newTitle.status, totalSeasons: newTitle.totalSeasons, totalEpisodes: newTitle.totalEpisodes },
+              seasons: (newTitle.seasons || []).map(season => ({ number: season.number, name: season.name, overview: season.overview, airDate: season.airDate, tmdbId: season.tmdbId, episodes: season.episodes.map(episode => ({ number: episode.number, title: episode.title, overview: episode.overview, airDate: episode.airDate, runtime: episode.runtime, tmdbId: episode.tmdbId, thumbnailPath: imagePath(episode.thumbnailUrl) })) })),
+            }),
+          });
+          const result = await response.json() as { published?: boolean; error?: string };
+          sharedPublishMessage = response.ok && result.published ? " La fiche a aussi été publiée dans le catalogue partagé." : " Enregistrement local effectué, mais la publication partagée a échoué : " + (result.error || "erreur inconnue");
+        } catch { sharedPublishMessage = " Enregistrement local effectué, mais le catalogue partagé n'a pas répondu."; }
+      } else {
+        sharedPublishMessage = " Pour la rendre visible dans Bunny et chez les autres utilisateurs, ouvre Administration > Médias, saisis le code administrateur, puis enregistre à nouveau cette fiche TMDB.";
+      }
+    }
     setEditingTitle(null);
     setShowAdd(false);
     formElement.reset();
@@ -1045,8 +1078,8 @@ export default function HomePage() {
     else setActivePage("Accueil");
     setFilter("Tout");
     setNotice(publishing.status === "cleanup-pending"
-      ? { title: "Contenu enregistré", message: `« ${name} » est enregistré. Le travail de nettoyage est conservé et sera réessayé au prochain démarrage.` }
-      : { title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » a été sauvegardé dans votre collection.` });
+      ? { title: "Contenu enregistré", message: `« ${name} » est enregistré. Le travail de nettoyage sera réessayé au prochain démarrage.${sharedPublishMessage}` }
+      : { title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » a été sauvegardé dans votre collection.${sharedPublishMessage}` });
     window.setTimeout(() => setNotice(null), 3600);
   };
 
@@ -1104,6 +1137,7 @@ export default function HomePage() {
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
           {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion du catalogue est masquée. Le filtrage utilise uniquement quelques mentions explicites, car les titres ne possèdent pas de classification d’âge.</div>}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${favorites.length} favori${favorites.length === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
+          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog/>}
           {activePage === "Accueil" && <MagicCard className={`hero-surface ${activeFeatured?.backdrop ? "has-backdrop" : activeFeatured?.poster ? "has-poster" : "is-empty"}`}>
             {activeFeatured ? <section className="hero hero-carousel" aria-label="Sélection à la une">
               <div className={`hero-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
@@ -1229,6 +1263,7 @@ export default function HomePage() {
           </section>}
 
           {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
+            <BunnyLibraryPanel/>
             <div className="admin-page-heading"><div><div className="eyebrow">AFFICHES & MINIATURES</div><h2 id="admin-media-title">Gestion des médias</h2><p>Prévisualisez les images enregistrées et vérifiez leurs métadonnées locales.</p></div><button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Importer une affiche</button></div>
             <div className="admin-media-summary"><div><ImageIcon size={17}/><span><strong>{adminMedia.length}</strong> image{adminMedia.length === 1 ? "" : "s"} associée{adminMedia.length === 1 ? "" : "s"}</span></div><div><Play size={17}/><span><strong>{adminVideoFileCount}</strong> fichier{adminVideoFileCount === 1 ? "" : "s"} vidéo lié{adminVideoFileCount === 1 ? "" : "s"}</span></div><p>Formats d’image acceptés à l’import : JPG, PNG et WebP · maximum 20 Mo par image.</p></div>
             {adminMedia.length ? <div className="admin-media-grid">{adminMedia.map((media) => {

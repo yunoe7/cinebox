@@ -12,7 +12,7 @@ type SearchResult = { id: number; media_type?: "movie" | "tv" | "person"; title?
 type EpisodeDetail = { id: number; episode_number: number; name?: string; overview?: string; air_date?: string; runtime?: number | null; still_path?: string | null };
 type SeasonDetail = { id: number; season_number: number; name?: string; overview?: string; air_date?: string; poster_path?: string | null; episodes?: EpisodeDetail[] };
 type Detail = SearchResult & { genres?: Array<{ id: number; name: string }>; runtime?: number | null; number_of_seasons?: number; number_of_episodes?: number; status?: string; seasons?: Array<{ season_number: number; name?: string; episode_count?: number; air_date?: string }>; credits?: { cast?: Array<{ name: string; order: number }>; crew?: Array<{ name: string; job: string }> }; production_countries?: Array<{ name: string }>; seasonsLoaded?: SeasonDetail[] };
-export type SmartImportData = { tmdbId: number; kind: "Film" | "Série"; name: string; originalName: string; description: string; releaseDate: string; originalLanguage: string; productionCountries: string[]; cast: string[]; director: string; rating: number; voteCount: number; runtime?: number; status?: string; totalSeasons?: number; totalEpisodes?: number; genres: string[]; seasons?: Season[]; backdrop?: string };
+export type SmartImportData = { tmdbId: number; kind: "Film" | "Série"; name: string; originalName: string; description: string; releaseDate: string; originalLanguage: string; productionCountries: string[]; cast: string[]; director: string; rating: number; voteCount: number; runtime?: number; status?: string; totalSeasons?: number; totalEpisodes?: number; genres: string[]; seasons?: Season[]; backdrop?: string; posterPath?: string | null; backdropPath?: string | null };
 export type SmartImportedAsset = { slot: string; file: File };
 
 type Props = { addKind: Kind; existingTitles: Title[]; onApply: (data: SmartImportData, poster: File | null, assets: SmartImportedAsset[]) => void; onDuplicate: (title: Title) => void };
@@ -132,6 +132,8 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
         genres: selected.genres?.map(genre => genre.name) || [],
         seasons: selected.media_type === "tv" ? seasons : undefined,
         backdrop: selected.backdrop_path ? posterUrl(selected.backdrop_path) : "",
+        posterPath: selected.poster_path,
+        backdropPath: selected.backdrop_path,
       };
       const assetRequests: Array<{ slot: string; path?: string | null; filename: string }> = [];
       if (selected.backdrop_path) assetRequests.push({ slot: "smart:backdrop", path: selected.backdrop_path, filename: `tmdb-${selected.id}-backdrop` });
