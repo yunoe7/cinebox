@@ -43,7 +43,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: { 
     upstreamUrl = new URL(`${TMDB_API}/${route[0]}/${route[1]}`);
     upstreamUrl.searchParams.set("language", "fr-FR");
     upstreamUrl.searchParams.set("append_to_response", "credits");
-  } else if (route.length === 4 && route[0] === "tv" && route[2] === "season" && safeId(route[1]) && /^(0|[1-9]\d{0,2})$/.test(route[3])) {
+  } else if (route.length === 3 && ["movie", "tv"].includes(route[0]) && safeId(route[1]) && route[2] === "reviews") {\n    upstreamUrl = new URL(`${TMDB_API}/${route[0]}/${route[1]}/reviews`);\n    upstreamUrl.searchParams.set("language", "fr-FR");\n    upstreamUrl.searchParams.set("page", "1");\n  } else if (route.length === 4 && route[0] === "tv" && route[2] === "season" && safeId(route[1]) && /^(0|[1-9]\d{0,2})$/.test(route[3])) {
     upstreamUrl = new URL(`${TMDB_API}/tv/${route[1]}/season/${route[3]}`);
     upstreamUrl.searchParams.set("language", "fr-FR");
   } else if (route.length === 1 && route[0] === "image") {
