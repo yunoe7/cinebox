@@ -18,7 +18,7 @@ function json(body: unknown, status = 200): Response {
 export async function onRequestGet({ env }: { env: BunnyEnv }): Promise<Response> {
   const apiKey = env.BUNNY_STREAM_API_KEY;
   const libraryId = env.BUNNY_STREAM_LIBRARY_ID;
-  if (!apiKey || !libraryId || !/^\\d{1,12}$/.test(libraryId)) {
+  if (!apiKey || !libraryId || !/^[0-9]{1,12}$/.test(libraryId)) {
     return json({ error: "La bibliothèque Bunny Stream n'est pas configurée." }, 503);
   }
 
