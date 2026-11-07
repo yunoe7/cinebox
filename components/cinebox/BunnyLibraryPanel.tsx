@@ -62,6 +62,7 @@ export function BunnyLibraryPanel() {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
@@ -89,6 +90,50 @@ export function BunnyLibraryPanel() {
     if (token.length >= 32) window.sessionStorage.setItem("cinebox-admin-token", token);
     else window.sessionStorage.removeItem("cinebox-admin-token");
   }, [token]);
+
+  const syncLocalCatalog = async () => {
+    if (token.length < 32) { setMessage("Saisis le code administrateur avant la synchronisation."); return; }
+    setSyncing(true); setMessage("");
+    try {
+      const raw = window.localStorage.getItem("cinebox-titles");
+      const localTitles: any = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(localTitles) || localTitles.length === 0) throw new Error("Aucune fiche locale à publier.");
+      const imagePath = (value: unknown) => {
+        if (typeof value !== "string" || !value) return null;
+        try { const url = new URL(value, window.location.origin); return url.searchParams.get("path") || (url.hostname === "image.tmdb.org" ? url.pathname : null); }
+        catch { return null; }
+      };
+      let published = 0;
+      for (const item of localTitles) {
+        if (!item || typeof item.name !== "string" || !Number.isSafeInteger(item.id)) continue;
+        const kind = item.kind === "Série" ? "series" : item.kind === "Film" ? "movie" : "video";
+        const tmdbId = Number.isSafeInteger(item.tmdbId) && item.tmdbId > 0 ? item.tmdbId : null;
+        const response = await fetch("/api/catalog/publish", {
+          method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + token },
+          body: JSON.stringify({
+            id: tmdbId ? undefined : `cinebox:${item.id}`, ...(tmdbId ? { tmdbId } : {}),
+            kind, title: item.name, overview: item.description || "",
+            releaseDate: item.releaseDate || (item.year ? `${item.year}-01-01` : ""),
+            posterPath: imagePath(item.poster), backdropPath: imagePath(item.backdrop),
+            genres: Array.isArray(item.genres) ? item.genres : String(item.genre || "").split(",").map((v: string) => v.trim()).filter(Boolean),
+            metadata: { collection: item.collection, duration: item.duration, rating: item.rating, originalLanguage: item.originalLanguage },
+            seasons: (item.seasons || []).map((season: any) => ({
+              number: season.number, name: season.name, overview: season.overview, airDate: season.airDate,
+              episodes: (season.episodes || []).map((episode: any) => ({
+                number: episode.number, title: episode.title, overview: episode.overview,
+                airDate: episode.airDate, runtime: episode.runtime, thumbnailPath: imagePath(episode.thumbnailUrl),
+              })),
+            })),
+          }),
+        });
+        if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.error || `Publication impossible pour ${item.name}.`); }
+        published++;
+      }
+      setMessage(`${published} fiche(s) publiée(s) dans le catalogue partagé.`);
+      await refreshCatalog();
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Synchronisation impossible."); }
+    finally { setSyncing(false); }
+  };
 
   const upload = async () => {
     if (!file || !titleId || token.length < 32) return;
@@ -158,6 +203,11 @@ export function BunnyLibraryPanel() {
           </div>
         </div>
 
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+          <button type="button" onClick={() => void syncLocalCatalog()} disabled={syncing || token.length < 32} style={{ border: "1px solid rgba(213,180,122,.3)", borderRadius: 9, padding: "10px 14px", color: "#d9bb82", background: "rgba(213,180,122,.08)", cursor: syncing || token.length < 32 ? "not-allowed" : "pointer", opacity: syncing || token.length < 32 ? .55 : 1, fontSize: 12 }}>
+            {syncing ? "Publication en cours…" : "Publier mes fiches locales"}
+          </button>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(280px,.9fr)", gap: 18 }}>
           <div style={{ padding: 20, borderRadius: 14, border: "1px solid rgba(213,180,122,.2)", background: "linear-gradient(145deg,rgba(213,180,122,.075),rgba(255,255,255,.018))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}><div style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 10, background: "rgba(213,180,122,.13)", color: "#d9bb82" }}><UploadCloud size={17}/></div><div><h4 style={{ margin: 0, color: "#f3eee4", fontSize: 14 }}>Ajouter une vidéo</h4><span style={{ color: "#8f9197", fontSize: 10 }}>Import direct vers votre bibliothèque</span></div></div>

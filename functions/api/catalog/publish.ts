@@ -11,8 +11,9 @@ interface PublishEnv {
   CINEBOX_ADMIN_TOKEN?: string;
 }
 type PublishBody = {
-  tmdbId: number;
-  kind: "movie" | "series";
+  id?: string;
+  tmdbId?: number;
+  kind: "movie" | "series" | "video";
   title: string;
   overview?: string;
   releaseDate?: string;
@@ -83,8 +84,13 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     return json({ error: "Corps JSON invalide." }, 400);
   }
 
-  if (!Number.isSafeInteger(body.tmdbId) || body.tmdbId <= 0 ||
-      !["movie", "series"].includes(body.kind) ||
+  const tmdbId = Number.isSafeInteger(body.tmdbId) && Number(body.tmdbId) > 0 ? Number(body.tmdbId) : null;
+  const id = tmdbId
+    ? `tmdb:${body.kind}:${tmdbId}`
+    : typeof body.id === "string" && /^(?:cinebox:[0-9]{1,20}|tmdb:(?:movie|series):[0-9]{1,12})$/.test(body.id)
+      ? body.id
+      : "";
+  if (!id || !["movie", "series", "video"].includes(body.kind) ||
       typeof body.title !== "string" || !body.title.trim() || body.title.length > 300) {
     return json({ error: "Les informations du titre sont invalides." }, 400);
   }
@@ -93,7 +99,6 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     : [];
   const metadata = isRecord(body.metadata) ? body.metadata : {};
   const seasons = body.kind === "series" && Array.isArray(body.seasons) ? body.seasons.slice(0, 100) : [];
-  const id = `tmdb:${body.kind}:${body.tmdbId}`;
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `INSERT INTO catalog_titles (id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, published, updated_at)
@@ -103,7 +108,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
        genres_json=excluded.genres_json, metadata_json=excluded.metadata_json, published=1, updated_at=CURRENT_TIMESTAMP`,
     ).bind(id, body.kind, body.title.trim().slice(0, 300), cleanText(body.overview, 12000),
       cleanText(body.releaseDate, 20) || null, safePath(body.posterPath), safePath(body.backdropPath),
-      JSON.stringify(genres), JSON.stringify({ ...metadata, tmdbId: body.tmdbId })),
+      JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}) })),
   ];
 
   const episodeIds: string[] = [];

@@ -1040,34 +1040,55 @@ export default function HomePage() {
     }
     importBatch.transferTo(`${blobOwnerPrefix}:library`);
     let sharedPublishMessage = "";
-    if (smartImport && !editingTitle) {
-      const adminToken = window.sessionStorage.getItem("cinebox-admin-token") || "";
-      if (adminToken.length >= 32) {
-        try {
-          const imagePath = (value?: string) => {
-            if (!value) return null;
-            try { return new URL(value, window.location.origin).searchParams.get("path"); }
-            catch { return null; }
-          };
-          const response = await fetch("/api/catalog/publish", {
-            method: "POST",
-            headers: { "content-type": "application/json", authorization: "Bearer " + adminToken },
-            body: JSON.stringify({
-              tmdbId: smartImport.tmdbId, kind: kind === "Série" ? "series" : "movie",
-              title: newTitle.name, overview: newTitle.description, releaseDate: smartImport.releaseDate,
-              posterPath: smartImport.posterPath || imagePath(newTitle.poster),
-              backdropPath: smartImport.backdropPath || imagePath(smartImport.backdrop),
-              genres: newTitle.genres || newTitle.genre.split(",").map(value => value.trim()).filter(Boolean),
-              metadata: { originalName: newTitle.originalName, originalLanguage: newTitle.originalLanguage, productionCountries: newTitle.productionCountries, cast: newTitle.cast, director: newTitle.director, rating: newTitle.rating, voteCount: newTitle.voteCount, status: newTitle.status, totalSeasons: newTitle.totalSeasons, totalEpisodes: newTitle.totalEpisodes },
-              seasons: (newTitle.seasons || []).map(season => ({ number: season.number, name: season.name, overview: season.overview, airDate: season.airDate, tmdbId: season.tmdbId, episodes: season.episodes.map(episode => ({ number: episode.number, title: episode.title, overview: episode.overview, airDate: episode.airDate, runtime: episode.runtime, tmdbId: episode.tmdbId, thumbnailPath: imagePath(episode.thumbnailUrl) })) })),
-            }),
-          });
-          const result = await response.json() as { published?: boolean; error?: string };
-          sharedPublishMessage = response.ok && result.published ? " La fiche a aussi été publiée dans le catalogue partagé." : " Enregistrement local effectué, mais la publication partagée a échoué : " + (result.error || "erreur inconnue");
-        } catch { sharedPublishMessage = " Enregistrement local effectué, mais le catalogue partagé n'a pas répondu."; }
-      } else {
-        sharedPublishMessage = " Pour la rendre visible dans Bunny et chez les autres utilisateurs, ouvre Administration > Médias, saisis le code administrateur, puis enregistre à nouveau cette fiche TMDB.";
-      }
+    const adminToken = window.sessionStorage.getItem("cinebox-admin-token") || "";
+    if (adminToken.length >= 32) {
+      try {
+        const imagePath = (value?: string) => {
+          if (!value) return null;
+          try {
+            const parsed = new URL(value, window.location.origin);
+            return parsed.searchParams.get("path") || (parsed.hostname === "image.tmdb.org" ? parsed.pathname : null);
+          } catch { return null; }
+        };
+        const sharedId = smartImport
+          ? `tmdb:${kind === "Série" ? "series" : "movie"}:${smartImport.tmdbId}`
+          : `cinebox:${newId}`;
+        const response = await fetch("/api/catalog/publish", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer " + adminToken },
+          body: JSON.stringify({
+            id: sharedId, ...(smartImport ? { tmdbId: smartImport.tmdbId } : {}),
+            kind: kind === "Série" ? "series" : kind === "Film" ? "movie" : "video",
+            title: newTitle.name, overview: newTitle.description,
+            releaseDate: smartImport?.releaseDate || (newTitle.year ? `${newTitle.year}-01-01` : ""),
+            posterPath: smartImport?.posterPath || imagePath(newTitle.poster),
+            backdropPath: smartImport?.backdropPath || imagePath(newTitle.backdrop),
+            genres: newTitle.genres || newTitle.genre.split(",").map(value => value.trim()).filter(Boolean),
+            metadata: {
+              originalName: newTitle.originalName, originalLanguage: newTitle.originalLanguage,
+              productionCountries: newTitle.productionCountries, cast: newTitle.cast,
+              director: newTitle.director, rating: newTitle.rating, voteCount: newTitle.voteCount,
+              status: newTitle.status, totalSeasons: newTitle.totalSeasons, totalEpisodes: newTitle.totalEpisodes,
+              collection: newTitle.collection, duration: newTitle.duration,
+            },
+            seasons: (newTitle.seasons || []).map(season => ({
+              number: season.number, name: season.name, overview: season.overview,
+              airDate: season.airDate, tmdbId: season.tmdbId,
+              episodes: season.episodes.map(episode => ({
+                number: episode.number, title: episode.title, overview: episode.overview,
+                airDate: episode.airDate, runtime: episode.runtime, tmdbId: episode.tmdbId,
+                thumbnailPath: imagePath(episode.thumbnailUrl),
+              })),
+            })),
+          }),
+        });
+        const result = await response.json() as { published?: boolean; error?: string };
+        sharedPublishMessage = response.ok && result.published
+          ? " La fiche est publiée dans le catalogue partagé."
+          : " Publication partagée échouée : " + (result.error || "erreur inconnue");
+      } catch { sharedPublishMessage = " Le catalogue partagé n'a pas répondu ; la fiche reste enregistrée localement."; }
+    } else {
+      sharedPublishMessage = " Pour publier cette fiche pour tous, saisis d'abord le code administrateur dans Administration > Médias.";
     }
     setEditingTitle(null);
     setShowAdd(false);

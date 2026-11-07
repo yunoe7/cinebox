@@ -11,7 +11,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  if(!env.DB||!env.BUNNY_STREAM_API_KEY||!env.BUNNY_STREAM_LIBRARY_ID)return json({error:"Configuration incomplète."},503);
  let b:any;try{b=await request.json()}catch{return json({error:"Requête invalide."},400)}
  const videoId=typeof b?.videoId==="string"?b.videoId:"",titleId=typeof b?.titleId==="string"?b.titleId:"";
- if(!/^[a-f0-9-]{20,64}$/i.test(videoId)||!/^tmdb:(movie|series):[0-9]+$/.test(titleId))return json({error:"Identifiants invalides."},400);
+ if(!/^[a-f0-9-]{20,64}$/i.test(videoId)||!/^(?:tmdb:(movie|series):[0-9]+|cinebox:[0-9]{1,20})$/.test(titleId))return json({error:"Identifiants invalides."},400);
  try{
   const check=await fetch(`https://video.bunnycdn.com/library/${env.BUNNY_STREAM_LIBRARY_ID}/videos/${videoId}`,{headers:{AccessKey:env.BUNNY_STREAM_API_KEY,Accept:"application/json"}});
   if(!check.ok)return json({error:"La vidéo n'est pas encore visible dans Bunny."},409);
