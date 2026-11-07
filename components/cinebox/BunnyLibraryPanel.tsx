@@ -85,6 +85,10 @@ export function BunnyLibraryPanel() {
   }, []);
 
   useEffect(() => { void refresh(); void refreshCatalog(); }, [refresh, refreshCatalog]);
+  useEffect(() => {
+    if (token.length >= 32) window.sessionStorage.setItem("cinebox-admin-token", token);
+    else window.sessionStorage.removeItem("cinebox-admin-token");
+  }, [token]);
 
   const upload = async () => {
     if (!file || !titleId || token.length < 32) return;
