@@ -1,6 +1,7 @@
 interface BunnyEnv {
   BUNNY_STREAM_API_KEY?: string;
   BUNNY_STREAM_LIBRARY_ID?: string;
+  BUNNY_STREAM_CDN_HOSTNAME?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -56,7 +57,7 @@ export async function onRequestGet({ env }: { env: BunnyEnv }): Promise<Response
         durationSeconds: typeof item.length === "number" && Number.isFinite(item.length) ? item.length : null,
         uploadedAt: typeof item.dateUploaded === "string" ? item.dateUploaded : null,
         thumbnailUrl: typeof item.thumbnailFileName === "string"
-          ? `https://vz-${libraryId}.b-cdn.net/${encodeURIComponent(item.thumbnailFileName)}`
+          ? `https://${env.BUNNY_STREAM_CDN_HOSTNAME || `vz-${libraryId}.b-cdn.net`}/${encodeURIComponent(item.thumbnailFileName)}`
           : null,
         availableResolutions: typeof item.availableResolutions === "string" ? item.availableResolutions : null,
       }];
