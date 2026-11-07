@@ -1,0 +1,10 @@
+/test-results/
+/playwright-report/
+.env.local
+
+/node_modules/
+/.next/
+/out/
+/.wrangler/
+/.validation-build-*/
+/tsconfig.tsbuildinfo

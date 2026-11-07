@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import { retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 
 type VideoPlayerProps = {
   src: string;
@@ -14,6 +15,12 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
   const lastSavedSecond = useRef(0);
   const countedView = useRef(false);
   const lastDuration = useRef(0);
+
+  useEffect(() => {
+    if (!src.startsWith("blob:")) return;
+    const lease = retainBlobUrl(src);
+    return () => lease.release();
+  }, [src]);
 
   const saveProgress = (video: HTMLVideoElement, force = false) => {
     if (!Number.isFinite(video.currentTime) || video.currentTime < 0) return;

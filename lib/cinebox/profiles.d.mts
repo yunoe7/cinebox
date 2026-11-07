@@ -1,0 +1,18 @@
+export type ProfilePinRecord = { salt: string; hash: string; iterations: 180000 };
+export type Profile = { id: string; name: string; avatarId: string; isChild: boolean; isPrimary: boolean; pin: ProfilePinRecord | null; createdAt: number };
+export type ProfilePlayback = { assetKey?: string; currentTime: number; progress: number; episodes: Record<string, { assetKey?: string; currentTime: number; progress: number }> };
+export type ProfileData = { favorites: number[]; playback: Record<string, ProfilePlayback>; history: Array<{ titleId: number; viewedAt: number }>; viewCounts: Record<string, number>; preferences: { autoplayNext: boolean } };
+export type ProfileStore = { version: 1; profiles: Profile[]; activeProfileId: string; data: Record<string, ProfileData> };
+export function isProfileStore(value: unknown): value is ProfileStore;
+export function emptyProfileData(): ProfileData;
+export function createInitialProfileStore(titles: { status: string; value?: any[] }, favorites: { status: string; value?: number[] }, options?: { id?: string; createdAt?: number; crypto?: Crypto }): ProfileStore;
+export function loadOrMigrateProfiles(storage: Pick<Storage, "getItem" | "setItem">, titles: any, favorites: any, options?: { id?: string; createdAt?: number; crypto?: Crypto }): { status: "ready"; store: ProfileStore; migrated: boolean } | { status: "error"; reason: string; error: Error };
+export function writeProfileStore(storage: Pick<Storage, "getItem" | "setItem">, store: ProfileStore): { ok: true } | { ok: false; reason: string; error: Error };
+export function createProfile(store: ProfileStore, input: Partial<Profile> & { name: string }, options?: { id?: string; createdAt?: number; crypto?: Crypto }): ProfileStore;
+export function updateProfile(store: ProfileStore, profileId: string, patch: Partial<Pick<Profile, "name" | "avatarId" | "isChild" | "pin">>): ProfileStore;
+export function deleteProfile(store: ProfileStore, profileId: string): ProfileStore;
+export function setPrimaryProfile(store: ProfileStore, profileId: string): ProfileStore;
+export function selectProfile(store: ProfileStore, profileId: string): ProfileStore;
+export function updateProfileData(store: ProfileStore, profileId: string, updater: (data: ProfileData) => ProfileData): ProfileStore;
+export function overlayProfileData<T extends { id: number; seasons?: Array<{ number: number; episodes: Array<{ number: number; [key: string]: unknown }>; [key: string]: unknown }>; [key: string]: unknown }>(titles: T[], profileData: ProfileData): T[];
+export function getProfileEpisodeKey(season: number, episode: number): string;
