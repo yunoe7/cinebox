@@ -111,7 +111,8 @@ export function BunnyLibraryPanel() {
     if(mediaType==="tv"&&(!season||!season.episodes.some(e=>e.episode_number===episodeNumber))){setMessage("Choisis un épisode valide.");return;}
     setSaving(true);setMessage("");
     try{
-      const selectedEpisode=season?.episodes.find(e=>e.episode_number===episodeNumber);
+      const selectedSeason=season;
+      const selectedEpisode=selectedSeason?.episodes.find(e=>e.episode_number===episodeNumber);
       const payload={
         tmdbId:detail.id,kind:mediaType==="tv"?"series":"movie",
         title:detail.title||detail.name||"Sans titre",
@@ -128,9 +129,9 @@ export function BunnyLibraryPanel() {
           bunnyVideoId:mediaType==="movie"?selectedVideo.id:undefined
         },
         bunnyVideoId:selectedVideo.id,
-        ...(mediaType==="tv"&&selectedEpisode?{
+        ...(mediaType==="tv"&&selectedEpisode&&selectedSeason?{
           targetEpisode:{seasonNumber,episodeNumber},
-          seasons:[{number:seasonNumber,name:season.name,overview:season.overview,airDate:season.air_date,episodes:season.episodes.map(e=>({
+          seasons:[{number:seasonNumber,name:selectedSeason.name,overview:selectedSeason.overview,airDate:selectedSeason.air_date,episodes:selectedSeason.episodes.map(e=>({
             number:e.episode_number,title:e.name,overview:e.overview,airDate:e.air_date,runtime:e.runtime??undefined,tmdbId:e.id,thumbnailPath:e.still_path||null
           }))}]
         }:{})
