@@ -11,7 +11,7 @@ type SharedTitle = {
   posterPath:string|null; backdropPath:string|null; genres:string[]; metadata?:Record<string,any>; seasons?:SharedSeason[];
 };
 type CatalogResponse = { titles: SharedTitle[] };
-type Props = { onOpen: (title:Title)=>void };
+type Props = { onOpen: (title:Title)=>void; onFeatured?: (title:Title | null)=>void };
 
 function isCatalogResponse(value: unknown): value is CatalogResponse {
   return !!value && typeof value==="object" && Array.isArray((value as CatalogResponse).titles);
@@ -57,10 +57,11 @@ function toTitle(item:SharedTitle):Title {
 }
 
 /** Public catalogue cards open in the same detail and episode experience as the personal library. */
-export function SharedCatalog({onOpen}:Props) {
+export function SharedCatalog({onOpen,onFeatured}:Props) {
   const [titles,setTitles]=useState<SharedTitle[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState(false);
+  useEffect(()=>{ onFeatured?.(titles.length ? toTitle(titles[0]) : null); },[titles,onFeatured]);
   useEffect(()=>{
     const controller=new AbortController();
     fetch("/api/catalog?limit=50",{signal:controller.signal,headers:{accept:"application/json"}})
