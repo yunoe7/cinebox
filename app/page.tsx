@@ -262,6 +262,7 @@ function writeFailureMessage(label: string, reason: "quota" | "access" | "serial
 
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
+  const [sharedFeaturedTitle, setSharedFeaturedTitle] = useState<Title | null>(null);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
@@ -759,7 +760,10 @@ export default function HomePage() {
             : b.id - a.id
         : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy]);
 
-  const featuredTitles = useMemo(() => [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5), [browseTitles]);
+  const featuredTitles = useMemo(() => {
+    const local = [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5);
+    return titles.length === 0 && sharedFeaturedTitle ? [sharedFeaturedTitle] : local;
+  }, [browseTitles, titles.length, sharedFeaturedTitle]);
   const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
   useEffect(() => {
     if (featuredTitles.length < 2 || prefersReducedMotion) return;
@@ -1158,7 +1162,7 @@ export default function HomePage() {
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
           {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion du catalogue est masquée. Le filtrage utilise uniquement quelques mentions explicites, car les titres ne possèdent pas de classification d’âge.</div>}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${favorites.length} favori${favorites.length === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
-          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog onOpen={openTitle}/>}
+          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog onOpen={openTitle} onFeatured={setSharedFeaturedTitle}/>}
           {activePage === "Accueil" && <MagicCard className={`hero-surface ${activeFeatured?.backdrop ? "has-backdrop" : activeFeatured?.poster ? "has-poster" : "is-empty"}`}>
             {activeFeatured ? <section className="hero hero-carousel" aria-label="Sélection à la une">
               <div className={`hero-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
