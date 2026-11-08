@@ -32,16 +32,13 @@ Créer une expérience premium, immersive et cinématographique.
 
 Ne supprime jamais une fonctionnalité pour simplifier une refonte visuelle.
 
-## Architecture de données cible
+## Stockage
 
-CinéBox évolue vers un catalogue central partagé et des données privées par compte.
+Les données restent locales au navigateur.
 
-- D1 : catalogue partagé, saisons, épisodes, métadonnées et données personnelles (favoris, progression, historique).
-- Cloudflare Stream : diffusion vidéo adaptative et téléversement direct via URL à usage unique.
-- Les droits d'administration doivent être vérifiés côté serveur, jamais uniquement dans l'interface.
-- L'identité utilisateur sera fournie ultérieurement par l'intégration du bot Discord. Ne pas inventer de système de connexion provisoire ni exposer d'écriture publique.
-- Les données historiques localStorage / IndexedDB doivent être conservées jusqu'à ce qu'une migration explicite et vérifiée soit disponible.
-- Le stockage local peut rester utilisé pour les préférences d'interface non sensibles.
+- localStorage : cinebox-titles et cinebox-favorites.
+- IndexedDB : cinebox-assets, store files.\
+  Ne remplace pas ce fonctionnement par un stockage cloud ou une authentification.
 
 ## Architecture
 
