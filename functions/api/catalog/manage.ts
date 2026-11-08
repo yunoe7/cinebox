@@ -26,6 +26,7 @@ export async function onRequestPatch({request,env}:{request:Request;env:Env}){
  if(!env.DB)return json({error:"Base de données indisponible."},503);
  let body:any;try{body=await request.json()}catch{return json({error:"JSON invalide."},400)}
  if(typeof body?.id!=="string"||!body.id.trim())return json({error:"Identifiant manquant."},400);
+ if(typeof body.detachVideoId==="string"&&/^[a-f0-9-]{20,64}$/i.test(body.detachVideoId)){try{await env.DB.prepare("UPDATE catalog_episodes SET stream_uid=NULL, updated_at=CURRENT_TIMESTAMP WHERE title_id=? AND stream_uid=?").bind(body.id,body.detachVideoId).run();const row=await env.DB.prepare("SELECT metadata_json FROM catalog_titles WHERE id=?").bind(body.id).all<{metadata_json:string}>();if(row.results[0]){let meta:Record<string,unknown>={};try{const parsed=JSON.parse(row.results[0].metadata_json);if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))meta=parsed}catch{}if(meta.bunnyVideoId===body.detachVideoId){delete meta.bunnyVideoId;await env.DB.prepare("UPDATE catalog_titles SET metadata_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(meta),body.id).run();}}return json({detached:true,id:body.id});}catch{return json({error:"Dissociation impossible."},503);}}
  const title=typeof body.title==="string"?body.title.trim().slice(0,300):null;
  const overview=typeof body.overview==="string"?body.overview.slice(0,12000):null;
  const releaseDate=typeof body.release_date==="string"?body.release_date.slice(0,20):null;
