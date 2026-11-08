@@ -127,7 +127,7 @@ export async function onRequestGet({
         posterPath: row.poster_path,
         backdropPath: row.backdrop_path,
         genres: Array.isArray(genres) ? genres : [],
-        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {},
+        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...(metadata as Record<string, unknown>), ...(env.BUNNY_STREAM_LIBRARY_ID ? { bunnyLibraryId: env.BUNNY_STREAM_LIBRARY_ID } : {}) } : {},
         seasons: [...seasons.values()],
         updatedAt: row.updated_at,
       };
