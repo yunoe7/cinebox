@@ -9,7 +9,7 @@ interface TitleRow { id:string; kind:"movie"|"series"|"video"; title:string; ove
 interface EpisodeRow { id:string; title_id:string; season_number:number; episode_number:number; title:string; overview:string; duration_seconds:number|null; stream_uid:string|null; thumbnail_path:string|null; metadata_json:string; }
 function json(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});}
 function authorized(request:Request,env:Env){const expected=env.CINEBOX_ADMIN_TOKEN||"";const header=request.headers.get("authorization")||"";const token=header.startsWith("Bearer ")?header.slice(7):"";if(expected.length<32||token.length!==expected.length)return false;let mismatch=0;for(let i=0;i<expected.length;i++)mismatch|=expected.charCodeAt(i)^token.charCodeAt(i);return mismatch===0;}
-export async function onRequestGet({request,env}:{request:Request;env:Env}){
+export async function onRequestGet({env}:{env:Env}){
  if(!authorized(request,env))return json({error:"Authentification administrateur requise."},401);
  if(!env.DB)return json({error:"Base de données indisponible."},503);
  try{
