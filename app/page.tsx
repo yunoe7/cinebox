@@ -24,6 +24,7 @@ import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalog } from "../components/cinebox/SharedCatalog";
 import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
+import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
 import { loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 
@@ -1250,10 +1251,12 @@ export default function HomePage() {
             {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}><Icon size={16}/><span>{label}</span></button>)}
           </nav>}
 
+          {activePage === "Administration" && adminSection === "overview" && <SharedCatalogManager/>}
+
           {activePage === "Administration" && adminSection === "overview" && <section className="admin-overview" aria-labelledby="admin-dashboard-title">
-            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu des contenus et médias de votre bibliothèque locale.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
+            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu de votre bibliothèque locale. Le catalogue partagé se gère juste au-dessus.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
-              <div><span><Library size={14}/> TITRES</span><strong>{titles.length}</strong><small>dans la bibliothèque</small></div>
+              <div><span><Library size={14}/> TITRES</span><strong>{titles.length}</strong><small>sur cet appareil</small></div>
               <div><span><Film size={14}/> FILMS</span><strong>{filmTitles.length}</strong><small>longs métrages</small></div>
               <div><span><Tv size={14}/> SÉRIES</span><strong>{seriesTitles.length}</strong><small>séries enregistrées</small></div>
               <div><span><Play size={14}/> ÉPISODES</span><strong>{episodeCount}</strong><small>dans les saisons</small></div>
@@ -1284,7 +1287,7 @@ export default function HomePage() {
                 </section>
               </aside>
             </div>
-            <div className="admin-hint"><Database size={14}/> Les titres restent dans localStorage et les médias importés dans IndexedDB sur cet appareil. L’administration lit directement ces données.</div>
+            <div className="admin-hint"><Database size={14}/> Les compteurs ci-dessus concernent la bibliothèque locale de cet appareil. Le catalogue central (D1) et les vidéos Bunny se gèrent dans le panneau Catalogue central.</div>
           </section>}
 
           {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
