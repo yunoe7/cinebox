@@ -264,6 +264,7 @@ function writeFailureMessage(label: string, reason: "quota" | "access" | "serial
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
   const [sharedFeaturedTitle, setSharedFeaturedTitle] = useState<Title | null>(null);
+  const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
@@ -664,6 +665,20 @@ export default function HomePage() {
     restoreLibrary();
     return () => { cancelled = true; restorationBatch?.release(); };
   }, [blobOwnerPrefix]);
+
+  useEffect(() => {
+    if (activePage !== "Administration") return;
+    const controller = new AbortController();
+    fetch("/api/catalog?limit=1", { cache: "no-store", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Catalogue central indisponible");
+        const payload = await response.json();
+        const stats = payload.stats || {};
+        setSharedAdminStats({ titles: Number(stats.titles)||0, films: Number(stats.films)||0, series: Number(stats.series)||0, videos: Number(stats.videos)||0, episodes: Number(stats.episodes)||0, loaded: true });
+      })
+      .catch(() => { if (!controller.signal.aborted) setSharedAdminStats(current => ({ ...current, loaded: false })); });
+    return () => controller.abort();
+  }, [activePage]);
 
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
@@ -1254,13 +1269,13 @@ export default function HomePage() {
           {activePage === "Administration" && adminSection === "overview" && <SharedCatalogManager/>}
 
           {activePage === "Administration" && adminSection === "overview" && <section className="admin-overview" aria-labelledby="admin-dashboard-title">
-            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu de votre bibliothèque locale. Le catalogue partagé se gère juste au-dessus.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
+            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu en temps réel du catalogue commun et de ses contenus publiés.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
-              <div><span><Library size={14}/> TITRES</span><strong>{titles.length}</strong><small>sur cet appareil</small></div>
-              <div><span><Film size={14}/> FILMS</span><strong>{filmTitles.length}</strong><small>longs métrages</small></div>
-              <div><span><Tv size={14}/> SÉRIES</span><strong>{seriesTitles.length}</strong><small>séries enregistrées</small></div>
-              <div><span><Play size={14}/> ÉPISODES</span><strong>{episodeCount}</strong><small>dans les saisons</small></div>
-              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{videoTitles.length}</strong><small>contenus autonomes</small></div>
+              <div><span><Library size={14}/> TITRES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.titles : titles.length}</strong><small>dans le catalogue commun</small></div>
+              <div><span><Film size={14}/> FILMS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.films : filmTitles.length}</strong><small>films publiés</small></div>
+              <div><span><Tv size={14}/> SÉRIES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.series : seriesTitles.length}</strong><small>séries publiées</small></div>
+              <div><span><Play size={14}/> ÉPISODES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.episodes : episodeCount}</strong><small>dans les saisons publiées</small></div>
+              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.videos : videoTitles.length}</strong><small>vidéos publiées</small></div>
               <div><span><Heart size={14}/> FAVORIS</span><strong>{favorites.length}</strong><small>dans Ma liste</small></div>
             </div>
             <div className="admin-dashboard-grid">
@@ -1287,7 +1302,7 @@ export default function HomePage() {
                 </section>
               </aside>
             </div>
-            <div className="admin-hint"><Database size={14}/> Les compteurs ci-dessus concernent la bibliothèque locale de cet appareil. Le catalogue central (D1) et les vidéos Bunny se gèrent dans le panneau Catalogue central.</div>
+            <div className="admin-hint"><Database size={14}/> Les compteurs proviennent du catalogue central (D1). Les modifications sont synchronisées pour tous les utilisateurs.</div>
           </section>}
 
           {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
