@@ -147,7 +147,10 @@ export async function onRequestGet({
       };
     });
 
-    return json({ titles, pagination: { limit: rawLimit, offset: rawOffset, count: titles.length } });
+    const statsResult = await env.DB.prepare("SELECT COUNT(*) AS titles, SUM(CASE WHEN kind = 'movie' THEN 1 ELSE 0 END) AS films, SUM(CASE WHEN kind = 'series' THEN 1 ELSE 0 END) AS series, SUM(CASE WHEN kind = 'video' THEN 1 ELSE 0 END) AS videos FROM catalog_titles WHERE published = 1").all<{ titles:number; films:number; series:number; videos:number }>();
+    const episodeStats = await env.DB.prepare("SELECT COUNT(*) AS episodes FROM catalog_episodes e INNER JOIN catalog_titles t ON t.id=e.title_id WHERE t.published=1").all<{ episodes:number }>();
+    const stats = statsResult.results[0] || {titles:0,films:0,series:0,videos:0};
+    return json({ titles, stats: { titles: stats.titles || 0, films: stats.films || 0, series: stats.series || 0, videos: stats.videos || 0, episodes: episodeStats.results[0]?.episodes || 0 }, pagination: { limit: rawLimit, offset: rawOffset, count: titles.length } });
   } catch {
     return json({ error: "Impossible de charger le catalogue pour le moment." }, 503);
   }
