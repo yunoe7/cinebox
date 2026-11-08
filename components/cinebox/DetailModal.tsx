@@ -98,8 +98,8 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
         {playing && playbackUrl ? <section className="episode-watch-page">
           <div className="episode-watch-top">
             <div className="episode-watch-player">
-              <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
-                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>
+              {playbackUrl.startsWith("https://iframe.mediadelivery.net/embed/") ? <iframe key={playbackUrl} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`} src={playbackUrl} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen style={{width:"100%",height:"100%",minHeight:420,border:0,background:"#000"}}/> : <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
+                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>} 
             </div>
             <aside className="episode-watch-sidebar">
               <div className="eyebrow">VOUS REGARDEZ</div>
