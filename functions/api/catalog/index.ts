@@ -17,7 +17,7 @@ interface CatalogEnv {
   DB: D1Database;
 }
 
-interface CatalogTitleRow {
+interface CatalogEpisodeRow {\n  id: string; title_id: string; season_number: number; episode_number: number; title: string; overview: string; duration_seconds: number | null; stream_uid: string | null; thumbnail_path: string | null; metadata_json: string;\n}\n\ninterface CatalogTitleRow {
   id: string;
   kind: "movie" | "series" | "video";
   title: string;
@@ -79,11 +79,45 @@ export async function onRequestGet({
     const result = await statement.all<CatalogTitleRow>();
     if (!result.success) throw new Error("D1 query failed");
 
+    const episodeResult = result.results.length
+      ? await env.DB.prepare(
+          `SELECT id, title_id, season_number, episode_number, title, overview, duration_seconds, stream_uid, thumbnail_path, metadata_json
+           FROM catalog_episodes WHERE title_id IN (${result.results.map(() => "?").join(",")})
+           ORDER BY season_number, episode_number`,
+        ).bind(...result.results.map(row => row.id)).all<CatalogEpisodeRow>()
+      : { results: [], success: true };
+    if (!episodeResult.success) throw new Error("D1 episode query failed");
+    const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();
+    for (const episode of episodeResult.results) {
+      const list = episodesByTitle.get(episode.title_id) || [];
+      list.push(episode);
+      episodesByTitle.set(episode.title_id, list);
+    }
+
     const titles = result.results.map((row) => {
       let genres: unknown = [];
       let metadata: unknown = {};
       try { genres = JSON.parse(row.genres_json); } catch { /* Keep a safe default. */ }
       try { metadata = JSON.parse(row.metadata_json); } catch { /* Keep a safe default. */ }
+      const episodeRows = episodesByTitle.get(row.id) || [];
+      const seasons = new Map<number, { number: number; episodes: Array<Record<string, unknown>> }>();
+      for (const episode of episodeRows) {
+        const season = seasons.get(episode.season_number) || { number: episode.season_number, episodes: [] };
+        let episodeMetadata: Record<string, unknown> = {};
+        try { const parsed = JSON.parse(episode.metadata_json); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) episodeMetadata = parsed; } catch { /* safe default */ }
+        season.episodes.push({
+          number: episode.episode_number,
+          title: episode.title,
+          overview: episode.overview,
+          runtime: episode.duration_seconds,
+          thumbnailPath: episode.thumbnail_path,
+          tmdbId: episodeMetadata.tmdbId ?? null,
+          videoUrl: episode.stream_uid && env.BUNNY_STREAM_LIBRARY_ID
+            ? `https://iframe.mediadelivery.net/embed/${env.BUNNY_STREAM_LIBRARY_ID}/${episode.stream_uid}`
+            : null,
+        });
+        seasons.set(episode.season_number, season);
+      }
       return {
         id: row.id,
         kind: row.kind,
@@ -94,6 +128,7 @@ export async function onRequestGet({
         backdropPath: row.backdrop_path,
         genres: Array.isArray(genres) ? genres : [],
         metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {},
+        seasons: [...seasons.values()],
         updatedAt: row.updated_at,
       };
     });
