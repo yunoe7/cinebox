@@ -15,9 +15,23 @@ interface D1Database {
 
 interface CatalogEnv {
   DB: D1Database;
+  BUNNY_STREAM_LIBRARY_ID?: string;
 }
 
-interface CatalogEpisodeRow {\n  id: string; title_id: string; season_number: number; episode_number: number; title: string; overview: string; duration_seconds: number | null; stream_uid: string | null; thumbnail_path: string | null; metadata_json: string;\n}\n\ninterface CatalogTitleRow {
+interface CatalogEpisodeRow {
+  id: string;
+  title_id: string;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  overview: string;
+  duration_seconds: number | null;
+  stream_uid: string | null;
+  thumbnail_path: string | null;
+  metadata_json: string;
+}
+
+interface CatalogTitleRow {
   id: string;
   kind: "movie" | "series" | "video";
   title: string;
