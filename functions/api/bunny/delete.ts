@@ -1,4 +1,4 @@
-interface Statement { bind(...values:(string|number|null)[]):Statement; run():Promise<{success:boolean}>; }
+interface Statement { bind(...values:(string|number|null)[]):Statement; all<T>():Promise<{results:T[];success:boolean}>; run():Promise<{success:boolean}>; }
 interface DB { prepare(sql:string):Statement; }
 interface Env { DB?:DB; CINEBOX_ADMIN_TOKEN?:string; BUNNY_STREAM_API_KEY?:string; BUNNY_STREAM_LIBRARY_ID?:string; }
 function json(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});}
