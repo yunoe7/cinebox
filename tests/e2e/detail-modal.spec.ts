@@ -84,8 +84,8 @@ async function expectResumedAt(video: Locator, second: number) {
     const media = element as HTMLVideoElement;
     return media.currentTime;
   }), { timeout: 10_000 }).toBeGreaterThanOrEqual(second - 0.5);
-  await expect.poll(() => video.evaluate(() => window.__cineboxDetailMediaEvents.some(event =>
-    event.type === "seeked" && Math.abs(event.currentTime - second) <= 0.5)), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => video.evaluate((_element, target: number) => window.__cineboxDetailMediaEvents.some(event =>
+    event.type === "seeked" && Math.abs(event.currentTime - target) <= 0.5), second), { timeout: 10_000 }).toBe(true);
 }
 
 test("la fiche film affiche uniquement les métadonnées disponibles et conserve l'action favoris", async ({ page }) => {

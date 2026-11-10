@@ -81,7 +81,7 @@ async function createProfile(page: Page, name: string, options: { avatar?: strin
     await page.getByPlaceholder("Confirmer le code").fill(options.pin);
   }
   await page.getByRole("button", { name: "Enregistrer" }).click();
-  await expect(page.getByRole("status")).toContainText("Profil créé");
+  await expect(page.getByRole("status").filter({ hasText: "Profil créé" })).toBeVisible();
   await page.getByRole("button", { name: "Choisir un profil" }).click();
 }
 
@@ -155,7 +155,7 @@ test("modifie le nom, l’avatar, le mode enfant et les préférences", async ({
   expect(profile).toMatchObject({ avatarId: "moon-cat", isChild: true });
   expect(state.data[profile.id].preferences.autoplayNext).toBe(false);
   await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Administration" })).toHaveCount(0);
-  await expect(page.getByText(/Mode enfant : la gestion du catalogue est masquée/)).toBeVisible();
+  await expect(page.getByText(/Mode enfant : la gestion et le catalogue partagé sont masqués/)).toBeVisible();
 });
 
 test("supprime un profil secondaire sans toucher à la bibliothèque partagée", async ({ page }) => {
@@ -292,7 +292,7 @@ test("le menu annonce les fonctions non disponibles sans simuler un service", as
   const menu = page.getByRole("menu");
   await expect(menu.getByRole("menuitem", { name: /S’abonner.*Indisponible/ })).toBeVisible();
   await menu.getByRole("menuitem", { name: /S’abonner/ }).click();
-  await expect(page.getByRole("status")).toContainText("ne dispose pas encore");
+  await expect(page.getByRole("status").filter({ hasText: "ne dispose pas encore" })).toBeVisible();
 });
 
 test("le menu se parcourt au clavier et se ferme avec Échap ou clic extérieur", async ({ page }) => {

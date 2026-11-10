@@ -1,25 +1,19 @@
-interface BunnyEnv {
+import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+
+interface BunnyEnv extends AdminEnv {
   BUNNY_STREAM_API_KEY?: string;
   BUNNY_STREAM_LIBRARY_ID?: string;
   BUNNY_STREAM_CDN_HOSTNAME?: string;
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    },
-  });
 }
 
 /**
  * Read-only Bunny Stream connectivity check.
  * Never returns the API key or raw Bunny response.
  */
-export async function onRequestGet({ env }: { env: BunnyEnv }): Promise<Response> {
+export async function onRequestGet({ request, env }: { request: Request; env: BunnyEnv }): Promise<Response> {
+  const denied = await requireAdmin(request, env);
+  if (denied) return denied;
+
   const apiKey = env.BUNNY_STREAM_API_KEY;
   const libraryId = env.BUNNY_STREAM_LIBRARY_ID;
 

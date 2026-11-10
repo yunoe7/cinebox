@@ -14,5 +14,6 @@ export function deleteProfile(store: ProfileStore, profileId: string): ProfileSt
 export function setPrimaryProfile(store: ProfileStore, profileId: string): ProfileStore;
 export function selectProfile(store: ProfileStore, profileId: string): ProfileStore;
 export function updateProfileData(store: ProfileStore, profileId: string, updater: (data: ProfileData) => ProfileData): ProfileStore;
+export function addProfileView(data: ProfileData, titleId: number, viewedAt?: number): ProfileData;
 export function overlayProfileData<T extends { id: number; seasons?: Array<{ number: number; episodes: Array<{ number: number; [key: string]: unknown }>; [key: string]: unknown }>; [key: string]: unknown }>(titles: T[], profileData: ProfileData): T[];
 export function getProfileEpisodeKey(season: number, episode: number): string;

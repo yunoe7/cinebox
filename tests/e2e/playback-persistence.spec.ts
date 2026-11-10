@@ -93,7 +93,7 @@ async function seedBrowser(page: Page, titles: StoredTitle[], favorites: number[
 async function openFilmPlayer(page: Page, title: string) {
   await page.getByRole("button", { name: `Ouvrir ${title}` }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Lecture" }).click();
+  await dialog.getByRole("button", { name: /^(Lecture|Reprendre)$/ }).click();
   const video = page.locator("video.detail-video");
   await expect(video).toBeVisible();
   return { dialog, video };
@@ -317,9 +317,10 @@ test("6 — ferme et rouvre le contexte persistant temporaire en conservant la r
     await expect(page.getByRole("button", { name: "Ouvrir Fermeture propre" })).toBeVisible();
     expect(await readStorageSnapshot(page, true)).toEqual(beforeClose);
     await openFilmPlayer(page, "Fermeture propre");
-    await waitForProfileViewCount(page, title.id, 2);
+    // Reopening the browser within the 30 s view-dedupe window counts as the same view.
+    await waitForProfileViewCount(page, title.id, 1);
     await expect.poll(async () => (await readTitles(page))[0]).toMatchObject({
-      viewCount: 2,
+      viewCount: 1,
       backdrop: "",
       seasons: [],
       currentTime: 33,

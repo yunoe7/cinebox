@@ -97,7 +97,7 @@ export function ProfileCenter({ store, initialMode = "gate", onClose, onCommit, 
   const closeCenter = () => { setDraft(null); setDeleteTarget(null); if (initialMode === "gate") setMode("gate"); else onClose?.(); };
 
   const content = <section className={`profile-center ${mode === "gate" ? "profile-center-gate" : "profile-center-manager"}`} aria-label={title}>
-    {mode !== "gate" && <div className="profile-center-topline"><span className="profile-center-brand"><i>C</i> CINÉBOX</span>{initialMode !== "gate" && <button className="profile-center-close" aria-label="Fermer la gestion des profils" onClick={closeCenter}><X size={18}/></button>}</div>}
+    {mode !== "gate" && <div className="profile-center-topline"><span className="profile-center-brand"><span className="profile-center-brand-logo"><img src="/images/cinebox-spider-logo.png" alt="Logo araignée CinéBox" width={1254} height={1254} draggable={false} decoding="async"/></span> CINÉBOX</span>{initialMode !== "gate" && <button className="profile-center-close" aria-label="Fermer la gestion des profils" onClick={closeCenter}><X size={18}/></button>}</div>}
     {mode === "gate" ? <BlurFade className="profile-center-inner" duration={reducedMotion ? 0 : .55}>
       <div className="profile-center-heading profile-center-heading--gate"><CineboxLogo variant="profile-gate"/><span className="eyebrow">VOTRE ESPACE PERSONNEL</span><h1>Qui regarde<em> ?</em></h1><p>Choisissez un profil pour retrouver votre cinéma.</p></div>
       <div className="profile-select-grid">

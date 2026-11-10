@@ -9,5 +9,6 @@ export type Title = {
   originalName?: string; releaseDate?: string; originalLanguage?: string; productionCountries?: string[];
   cast?: string[]; director?: string; rating?: number; voteCount?: number; tmdbId?: number;
   status?: string; totalSeasons?: number; totalEpisodes?: number; genres?: string[];
+  sharedId?: string;
 };
 

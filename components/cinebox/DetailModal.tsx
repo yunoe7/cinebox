@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Heart, Play, Settings, X, Bookmark, Info, Film, ChevronRight, ListVideo, Star, Clock } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
+import BunnyPlayer from "./BunnyPlayer";
 import VideoPlayer from "./VideoPlayer";
+import { isBunnyEmbedUrl } from "../../lib/cinebox/bunny-playback.mjs";
 import { retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import { MagicCard } from "../magicui/magic-card";
 import { BlurFade } from "../magicui/blur-fade";
@@ -66,6 +68,14 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   const episodes = selected.seasons?.flatMap(season => season.episodes.filter(ep => ep.videoUrl).map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl! }))) || [];
   const chosen = selectedEpisode ? episodes.find(ep => ep.season === selectedEpisode.season && ep.episode === selectedEpisode.episode) : undefined;
   const playbackUrl = selectedEpisodeUrl || chosen?.url || selected.videoUrl || episodes[0]?.url || null;
+  const playbackProgress = selectedEpisode
+    ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.progress ?? 0
+    : selected.progress ?? 0;
+  const playbackResumeAt = playbackProgress > 0 && playbackProgress < 100
+    ? (selectedEpisode
+      ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
+      : selected.currentTime ?? 0)
+    : 0;
   const canPlay = Boolean(selected.videoUrl || episodes.length);
   const resumableEpisode = selected.seasons?.flatMap(season => season.episodes
     .filter(episode => Boolean(episode.videoUrl) && (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
@@ -98,8 +108,9 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
         {playing && playbackUrl ? <section className="episode-watch-page">
           <div className="episode-watch-top">
             <div className="episode-watch-player">
-              <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={selectedEpisode ? selected.seasons?.find(s => s.number === selectedEpisode.season)?.episodes.find(ep => ep.number === selectedEpisode.episode)?.currentTime ?? 0 : selected.currentTime ?? 0}
-                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>
+              {isBunnyEmbedUrl(playbackUrl) ? <BunnyPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`}
+                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)}/> : <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt}
+                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/>} 
             </div>
             <aside className="episode-watch-sidebar">
               <div className="eyebrow">VOUS REGARDEZ</div>

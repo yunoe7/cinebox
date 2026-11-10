@@ -1,11 +1,81 @@
 "use client";
 
-import { motion, useReducedMotion, type HTMLMotionProps } from "framer-motion";
+import { useRef, type ReactNode } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion, type MotionProps, type Variants } from "framer-motion";
 
-type BlurFadeProps = Omit<HTMLMotionProps<"div">, "initial" | "animate" | "transition"> & { duration?: number; delay?: number };
+type MarginType = string | number;
 
-/** Magic UI Blur Fade adapted to the existing Framer Motion and CSS setup. */
-export function BlurFade({ children, className = "", duration = 0.55, delay = 0, ...props }: BlurFadeProps) {
+interface BlurFadeProps extends MotionProps {
+  children: ReactNode;
+  className?: string;
+  variant?: { hidden: { y: number }; visible: { y: number } };
+  duration?: number;
+  delay?: number;
+  offset?: number;
+  direction?: "up" | "down" | "left" | "right";
+  inView?: boolean;
+  inViewMargin?: MarginType;
+  blur?: string;
+}
+
+const getFilter = (v: Variants[string]) => (typeof v === "function" ? undefined : v?.filter);
+
+export function BlurFade({
+  children,
+  className,
+  variant,
+  duration = 0.45,
+  delay = 0,
+  offset = 8,
+  direction = "down",
+  inView = false,
+  inViewMargin = "-60px",
+  blur = "6px",
+  ...props
+}: BlurFadeProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
-  return <motion.div className={`magic-blur-fade ${className}`.trim()} initial={reducedMotion ? false : { opacity: 0, y: 12, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: reducedMotion ? 0 : duration, delay: reducedMotion ? 0 : delay, ease: [0.22, 1, 0.36, 1] }} {...props}>{children}</motion.div>;
+  const inViewResult = useInView(ref, { once: true, margin: inViewMargin as never });
+  const isInView = !inView || inViewResult;
+
+  const defaultVariants: Variants = {
+    hidden: {
+      [direction === "left" || direction === "right" ? "x" : "y"]:
+        direction === "right" || direction === "down" ? -offset : offset,
+      opacity: 0,
+      filter: `blur(${blur})`,
+    },
+    visible: {
+      [direction === "left" || direction === "right" ? "x" : "y"]: 0,
+      opacity: 1,
+      filter: "blur(0px)",
+    },
+  };
+  const combinedVariants = variant ?? defaultVariants;
+
+  const hiddenFilter = getFilter(combinedVariants.hidden);
+  const visibleFilter = getFilter(combinedVariants.visible);
+  const shouldTransitionFilter = hiddenFilter != null && visibleFilter != null && hiddenFilter !== visibleFilter;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        ref={ref}
+        initial={reducedMotion ? false : "hidden"}
+        animate={reducedMotion ? "visible" : isInView ? "visible" : "hidden"}
+        exit="hidden"
+        variants={combinedVariants}
+        transition={reducedMotion ? { duration: 0 } : {
+          delay: 0.04 + delay,
+          duration,
+          ease: "easeOut",
+          ...(shouldTransitionFilter ? { filter: { duration } } : {}),
+        }}
+        className={`magic-blur-fade${className ? ` ${className}` : ""}`}
+        {...props}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
 }

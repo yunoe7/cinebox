@@ -115,7 +115,7 @@ async function seedIsolatedLibrary(page: Page, titles: StoredTitle[], assets: Ar
 async function openFilm(page: Page, name: string) {
   await page.getByRole("button", { name: `Ouvrir ${name}` }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Lecture" }).click();
+  await dialog.getByRole("button", { name: /^(Lecture|Reprendre)$/ }).click();
   const video = page.locator("video.detail-video");
   await expect(video).toBeVisible();
   return video;

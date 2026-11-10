@@ -1,0 +1,17 @@
+# Configuration Wrangler locale (exemple)
+#
+# Copier vers wrangler.toml pour le développement local avec Wrangler.
+# Le fichier wrangler.toml réel est ignoré par Git : il peut contenir
+# l'identifiant de votre base D1. Cet exemple, lui, peut être versionné.
+#
+# La configuration de production reste gérée dans le tableau de bord
+# Cloudflare Pages (Settings > Functions > D1 / Variables).
+
+name = "cinebox"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "out"
+
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "cinebox"
+# database_id = "<identifiant-de-votre-base-d1>"

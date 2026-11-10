@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, LoaderCircle, Search, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, LoaderCircle, Search, Sparkles, Star, X } from "lucide-react";
 import { MagicCard } from "../magicui/magic-card";
 import { BlurFade } from "../magicui/blur-fade";
 import { ShimmerButton } from "../magicui/shimmer-button";
@@ -19,6 +19,23 @@ type Props = { addKind: Kind; existingTitles: Title[]; onApply: (data: SmartImpo
 
 function yearOf(value?: string) { return value?.slice(0, 4) || ""; }
 function posterUrl(path?: string | null) { return path ? `/api/tmdb/image?path=${encodeURIComponent(path)}` : ""; }
+
+async function readJsonResponse(response: Response): Promise<{ ok: boolean; status: number; payload: unknown; error?: string }> {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  if (!contentType.toLowerCase().includes("application/json")) {
+    // The dev server (next dev) does not serve the Cloudflare Pages functions in functions/.
+    // In that case /api/tmdb/* returns the Next.js 404 HTML page instead of JSON.
+    return { ok: false, status: response.status, payload: null, error: "Le service de recherche externe n'est pas disponible dans cet environnement de développement (les fonctions Cloudflare ne sont pas servies par next dev). Lancez les fonctions avec « npx wrangler pages dev out --port 3000 » après un build, ou utilisez l'environnement Cloudflare Pages." };
+  }
+  let payload: unknown = null;
+  try { payload = text ? JSON.parse(text) : null; } catch { return { ok: false, status: response.status, payload: null, error: "Réponse invalide du catalogue externe." }; }
+  if (!response.ok) {
+    const message = (payload && typeof payload === "object" && "error" in payload && typeof (payload as { error?: unknown }).error === "string") ? (payload as { error: string }).error : "Recherche impossible.";
+    return { ok: false, status: response.status, payload, error: message };
+  }
+  return { ok: true, status: response.status, payload };
+}
 function mediaKind(result: SearchResult): "movie" | "tv" | "person" { return result.media_type || (result.title || result.original_title ? "movie" : "tv"); }
 function searchRating(value: unknown) { const rating = normalizeTmdbRating(value); return rating === undefined ? "—" : Math.round(rating * 10) / 10 || "—"; }
 
@@ -43,10 +60,12 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
         const params = new URLSearchParams({ query: query.trim(), kind: searchKind });
         if (year) params.set("year", year);
         const response = await fetch(`/api/tmdb/search?${params}`, { signal: controller.signal });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || "Recherche impossible.");
+        const result = await readJsonResponse(response);
+        if (!result.ok) throw new Error(result.error || "Recherche impossible.");
+        const payload = result.payload as { results?: unknown[] } | null;
         if (!payload || !Array.isArray(payload.results)) throw new Error("Réponse invalide du catalogue externe.");
-        setResults(payload.results.filter((item: SearchResult) => item && Number.isSafeInteger(item.id) && (item.title || item.name || item.original_title || item.original_name) && mediaKind(item) !== "person").slice(0, 12));
+        const items = payload.results as SearchResult[];
+        setResults(items.filter((item) => item && Number.isSafeInteger(item.id) && (item.title || item.name || item.original_title || item.original_name) && mediaKind(item) !== "person").slice(0, 12));
       } catch (cause) {
         if (!controller.signal.aborted) setError(cause instanceof TypeError ? "Connexion au catalogue impossible. Vérifiez votre réseau puis réessayez." : cause instanceof Error ? cause.message : "Recherche impossible.");
       } finally { if (!controller.signal.aborted) setLoading(false); }
@@ -60,15 +79,17 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
     try {
       if (kind === "person") return;
       const response = await fetch(`/api/tmdb/${kind}/${result.id}`);
-      const detail = await response.json();
-      if (!response.ok) throw new Error(detail?.error || "Fiche indisponible.");
+      const detailResult = await readJsonResponse(response);
+      if (!detailResult.ok) throw new Error(detailResult.error || "Fiche indisponible.");
+      const detail = detailResult.payload as Detail;
       if (!detail || typeof detail !== "object" || detail.id !== result.id) throw new Error("Fiche invalide reçue du catalogue externe.");
       if (kind === "tv") {
         const seasons: Array<{ season_number: number }> = (detail.seasons || []).filter((season: { season_number: number }) => season.season_number >= 0);
         const seasonsLoaded = await Promise.all(seasons.map(async ({ season_number }) => {
           const seasonResponse = await fetch(`/api/tmdb/tv/${result.id}/season/${season_number}`);
-          if (!seasonResponse.ok) return { id: 0, season_number, episodes: [] } as SeasonDetail;
-          return seasonResponse.json() as Promise<SeasonDetail>;
+          const seasonResult = await readJsonResponse(seasonResponse);
+          if (!seasonResult.ok || !seasonResult.payload || typeof seasonResult.payload !== "object") return { id: 0, season_number, episodes: [] } as SeasonDetail;
+          return seasonResult.payload as SeasonDetail;
         }));
         detail.seasonsLoaded = seasonsLoaded;
         setSelectedSeasons(seasonsLoaded.filter(season => season.season_number > 0).map(season => season.season_number));
@@ -180,7 +201,7 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
         <span><strong>{result.title || result.name || "Titre indisponible"}</strong><small>{result.original_title || result.original_name || "Titre original indisponible"}</small><small>{mediaKind(result) === "tv" ? "Série" : mediaKind(result) === "person" ? "Personne" : "Film"} · {yearOf(result.release_date || result.first_air_date) || "Date inconnue"} · {result.original_language?.toUpperCase() || "Langue inconnue"}</small><small>{result.overview || "Aucun résumé fourni par TMDB."}</small></span><i>{searchRating(result.vote_average)}</i></button></MagicCard></BlurFade>)}</div>}
     </> : <>
       <button type="button" className="smart-import-back" onClick={() => setSelected(null)}><ArrowLeft size={14}/> Retour aux résultats</button>
-      <div className="smart-import-preview">{selected.poster_path ? <img src={posterUrl(selected.poster_path)} alt="Affiche TMDB"/> : <div className="smart-no-poster smart-no-poster-large">Sans affiche</div>}<div><small>{selected.media_type === "tv" ? "SÉRIE" : "FILM"} · {yearOf(selected.release_date || selected.first_air_date) || "Date inconnue"}</small><h3>{selected.title || selected.name}</h3><p>{selected.original_title || selected.original_name}</p><p>{selected.overview || "Aucun résumé fourni."}</p><small>{selected.genres?.map(g => g.name).join(" · ") || "Genres non renseignés"} · ★ {displayTmdbRating(selected.vote_average)} ({selected.vote_count || 0})</small></div></div>
+      <div className="smart-import-preview">{selected.poster_path ? <img src={posterUrl(selected.poster_path)} alt="Affiche TMDB"/> : <div className="smart-no-poster smart-no-poster-large">Sans affiche</div>}<div><small>{selected.media_type === "tv" ? "SÉRIE" : "FILM"} · {yearOf(selected.release_date || selected.first_air_date) || "Date inconnue"}</small><h3>{selected.title || selected.name}</h3><p>{selected.original_title || selected.original_name}</p><p>{selected.overview || "Aucun résumé fourni."}</p><small>{selected.genres?.map(g => g.name).join(" · ") || "Genres non renseignés"} · <Star size={11} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 2 }} /> {displayTmdbRating(selected.vote_average)} ({selected.vote_count || 0})</small></div></div>
       {duplicate && <p className="smart-import-duplicate" role="status">Ce titre est déjà dans votre bibliothèque. L’import mettra à jour ses métadonnées en conservant ses vidéos et progressions.</p>}
       {selected.media_type === "tv" && <div className="smart-season-picker"><strong>Saisons à importer</strong><small>Les saisons spéciales (0) restent décochées par défaut.</small>{seasonDetails.map(season => <div className="smart-season-option" key={season.season_number}><label><input type="checkbox" checked={selectedSeasons.includes(season.season_number)} onChange={event => setSelectedSeasons(current => event.target.checked ? [...current, season.season_number] : current.filter(value => value !== season.season_number))}/><span>Saison {season.season_number}{season.season_number === 0 ? " · spéciale" : ""} — {season.name || "Sans nom"}</span><small>{season.episodes?.length || 0} épisodes</small></label><details><summary>Aperçu des épisodes</summary>{(season.episodes || []).map(episode => <p key={episode.id}><strong>{episode.episode_number}. {episode.name || "Épisode sans titre"}</strong><small>{episode.air_date || "Date inconnue"}{episode.air_date && episode.air_date > new Date().toISOString().slice(0, 10) ? " · À venir" : ""} · {episode.runtime ? `${episode.runtime} min` : "Durée inconnue"}</small><span>{episode.overview || "Résumé indisponible"}</span></p>)}</details></div>)}</div>}
       <p className="smart-import-disclaimer">Les informations seront préremplies et resteront modifiables. Aucune vidéo n’est importée. Les images d’affiche sont conservées dans la bibliothèque locale lorsqu’elles sont disponibles.</p>

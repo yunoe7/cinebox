@@ -15,6 +15,20 @@ interface D1Database {
 
 interface CatalogEnv {
   DB: D1Database;
+  BUNNY_STREAM_LIBRARY_ID?: string;
+}
+
+interface CatalogEpisodeRow {
+  id: string;
+  title_id: string;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  overview: string;
+  duration_seconds: number | null;
+  stream_uid: string | null;
+  thumbnail_path: string | null;
+  metadata_json: string;
 }
 
 interface CatalogTitleRow {
@@ -79,11 +93,45 @@ export async function onRequestGet({
     const result = await statement.all<CatalogTitleRow>();
     if (!result.success) throw new Error("D1 query failed");
 
+    const episodeResult = result.results.length
+      ? await env.DB.prepare(
+          `SELECT id, title_id, season_number, episode_number, title, overview, duration_seconds, stream_uid, thumbnail_path, metadata_json
+           FROM catalog_episodes WHERE title_id IN (${result.results.map(() => "?").join(",")})
+           ORDER BY season_number, episode_number`,
+        ).bind(...result.results.map(row => row.id)).all<CatalogEpisodeRow>()
+      : { results: [], success: true };
+    if (!episodeResult.success) throw new Error("D1 episode query failed");
+    const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();
+    for (const episode of episodeResult.results) {
+      const list = episodesByTitle.get(episode.title_id) || [];
+      list.push(episode);
+      episodesByTitle.set(episode.title_id, list);
+    }
+
     const titles = result.results.map((row) => {
       let genres: unknown = [];
       let metadata: unknown = {};
       try { genres = JSON.parse(row.genres_json); } catch { /* Keep a safe default. */ }
       try { metadata = JSON.parse(row.metadata_json); } catch { /* Keep a safe default. */ }
+      const episodeRows = episodesByTitle.get(row.id) || [];
+      const seasons = new Map<number, { number: number; episodes: Array<Record<string, unknown>> }>();
+      for (const episode of episodeRows) {
+        const season = seasons.get(episode.season_number) || { number: episode.season_number, episodes: [] };
+        let episodeMetadata: Record<string, unknown> = {};
+        try { const parsed = JSON.parse(episode.metadata_json); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) episodeMetadata = parsed; } catch { /* safe default */ }
+        season.episodes.push({
+          number: episode.episode_number,
+          title: episode.title,
+          overview: episode.overview,
+          runtime: episode.duration_seconds,
+          thumbnailPath: episode.thumbnail_path,
+          tmdbId: episodeMetadata.tmdbId ?? null,
+          videoUrl: episode.stream_uid && env.BUNNY_STREAM_LIBRARY_ID
+            ? `https://iframe.mediadelivery.net/embed/${env.BUNNY_STREAM_LIBRARY_ID}/${episode.stream_uid}`
+            : null,
+        });
+        seasons.set(episode.season_number, season);
+      }
       return {
         id: row.id,
         kind: row.kind,
@@ -93,12 +141,16 @@ export async function onRequestGet({
         posterPath: row.poster_path,
         backdropPath: row.backdrop_path,
         genres: Array.isArray(genres) ? genres : [],
-        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {},
+        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...(metadata as Record<string, unknown>), ...(env.BUNNY_STREAM_LIBRARY_ID ? { bunnyLibraryId: env.BUNNY_STREAM_LIBRARY_ID } : {}) } : {},
+        seasons: [...seasons.values()],
         updatedAt: row.updated_at,
       };
     });
 
-    return json({ titles, pagination: { limit: rawLimit, offset: rawOffset, count: titles.length } });
+    const statsResult = await env.DB.prepare("SELECT COUNT(*) AS titles, SUM(CASE WHEN kind = 'movie' THEN 1 ELSE 0 END) AS films, SUM(CASE WHEN kind = 'series' THEN 1 ELSE 0 END) AS series, SUM(CASE WHEN kind = 'video' THEN 1 ELSE 0 END) AS videos FROM catalog_titles WHERE published = 1").all<{ titles:number; films:number; series:number; videos:number }>();
+    const episodeStats = await env.DB.prepare("SELECT COUNT(*) AS episodes FROM catalog_episodes e INNER JOIN catalog_titles t ON t.id=e.title_id WHERE t.published=1").all<{ episodes:number }>();
+    const stats = statsResult.results[0] || {titles:0,films:0,series:0,videos:0};
+    return json({ titles, stats: { titles: stats.titles || 0, films: stats.films || 0, series: stats.series || 0, videos: stats.videos || 0, episodes: episodeStats.results[0]?.episodes || 0 }, pagination: { limit: rawLimit, offset: rawOffset, count: titles.length } });
   } catch {
     return json({ error: "Impossible de charger le catalogue pour le moment." }, 503);
   }
