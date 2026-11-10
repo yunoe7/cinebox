@@ -5,6 +5,11 @@ export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
   fullyParallel: false,
+  // A single Next dev server cannot serve several browser workers reliably:
+  // concurrent compilations cause 30s navigation timeouts. Keep e2e deterministic.
+  workers: 1,
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
@@ -18,9 +23,12 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    // A stale webpack cache can surface as a Next dev runtime overlay after edits.
+    // Start every e2e run from a clean isolated cache.
+    command: "node -e \"import('node:fs').then(({rmSync})=>rmSync('.next-e2e',{recursive:true,force:true}))\" && npm run dev -- --hostname 127.0.0.1 --port 3100",
+    env: { NEXT_DIST_DIR: ".next-e2e" },
     url: "http://127.0.0.1:3100",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

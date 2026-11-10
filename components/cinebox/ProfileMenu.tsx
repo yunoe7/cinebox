@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, CircleUserRound, Clock3, LogOut, Settings, Sparkles, Ticket } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { ProfileAvatar } from "./ProfileAvatar";
 import type { Profile } from "../../lib/cinebox/profiles.mjs";
 
@@ -50,15 +50,15 @@ export function ProfileMenu({ profile, onManage, onSwitch, onUnavailable }: {
     </button>
     <AnimatePresence>
       {open && <motion.div className="profile-menu-popover" role="menu" aria-label={`Menu de ${profile.name}`} onKeyDown={handleMenuKey}
-        initial={reducedMotion ? false : { opacity: 0, y: 7, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: 5, scale: .985 }} transition={{ duration: reducedMotion ? 0 : .16 }}>
-        <div className="profile-menu-heading"><ProfileAvatar avatarId={profile.avatarId} size={40}/><span><strong>{profile.name}</strong><small>Données locales à ce profil</small></span></div>
+        initial={reducedMotion ? false : { opacity: 0, y: 8, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: 6, scale: .99 }} transition={{ duration: reducedMotion ? 0 : .18, ease: [0.22, 1, 0.36, 1] }}>
+        <div className="profile-menu-heading"><ProfileAvatar avatarId={profile.avatarId} size={44} label={`Avatar de ${profile.name}`}/><span><strong>{profile.name}</strong><small>{profile.isChild ? "Profil enfant · Données locales" : "Profil actif · Données locales"}</small></span></div>
         <div className="profile-menu-divider" />
-        <button ref={(node) => { if (node) items.current[0] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}><CircleUserRound size={16}/> Profil <small>Gérer</small></button>
-        <button ref={(node) => { if (node) items.current[1] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Abonnement"))}><Ticket size={16}/> S’abonner <small>Indisponible</small></button>
-        <button ref={(node) => { if (node) items.current[2] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Nouveautés"))}><Sparkles size={16}/> Nouveautés <small>Indisponible</small></button>
-        <button ref={(node) => { if (node) items.current[3] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}><Settings size={16}/> Paramètres</button>
-        <button ref={(node) => { if (node) items.current[4] = node; }} type="button" role="menuitem" onClick={() => activate(onSwitch)}><LogOut size={16}/> Quitter ce profil <small>Changer</small></button>
-        <div className="profile-menu-foot"><Clock3 size={12}/> Le changement de profil conserve les médias et la bibliothèque partagée.</div>
+        <button ref={(node) => { if (node) items.current[0] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}>Profil <small>Gérer</small></button>
+        <button ref={(node) => { if (node) items.current[1] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Abonnement"))}>S’abonner <small>Indisponible</small></button>
+        <button ref={(node) => { if (node) items.current[2] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Nouveautés"))}>Nouveautés <small>Indisponible</small></button>
+        <button ref={(node) => { if (node) items.current[3] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}>Paramètres</button>
+        <button ref={(node) => { if (node) items.current[4] = node; }} type="button" role="menuitem" onClick={() => activate(onSwitch)}>Quitter ce profil <small>Changer</small></button>
+        <div className="profile-menu-foot">Le changement de profil conserve les médias et la bibliothèque partagée.</div>
       </motion.div>}
     </AnimatePresence>
   </div>;

@@ -21,6 +21,8 @@ type PublishBody = {
   backdropPath?: string | null;
   genres?: string[];
   metadata?: Record<string, unknown>;
+  bunnyVideoId?: string;
+  targetEpisode?: { seasonNumber: number; episodeNumber: number };
   seasons?: Array<{
     number: number;
     name?: string;
@@ -98,6 +100,11 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     ? body.genres.filter((item): item is string => typeof item === "string").slice(0, 30).map(item => item.slice(0, 80))
     : [];
   const metadata = isRecord(body.metadata) ? body.metadata : {};
+  const bunnyVideoId = typeof body.bunnyVideoId === "string" && /^[a-f0-9-]{20,64}$/i.test(body.bunnyVideoId) ? body.bunnyVideoId : null;
+  if (body.bunnyVideoId && !bunnyVideoId) return json({ error: "Identifiant Bunny invalide." }, 400);
+  const targetEpisode = body.targetEpisode && Number.isInteger(body.targetEpisode.seasonNumber) && Number.isInteger(body.targetEpisode.episodeNumber) && body.targetEpisode.seasonNumber >= 0 && body.targetEpisode.episodeNumber >= 1 ? body.targetEpisode : null;
+  if (targetEpisode && (!bunnyVideoId || body.kind !== "series")) return json({ error: "Association d’épisode invalide." }, 400);
+  if (body.kind === "series" && bunnyVideoId && !targetEpisode) return json({ error: "Choisis un épisode pour associer cette vidéo." }, 400);
   const seasons = body.kind === "series" && Array.isArray(body.seasons) ? body.seasons.slice(0, 100) : [];
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
@@ -108,7 +115,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
        genres_json=excluded.genres_json, metadata_json=excluded.metadata_json, published=1, updated_at=CURRENT_TIMESTAMP`,
     ).bind(id, body.kind, body.title.trim().slice(0, 300), cleanText(body.overview, 12000),
       cleanText(body.releaseDate, 20) || null, safePath(body.posterPath), safePath(body.backdropPath),
-      JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}) })),
+      JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}), ...(bunnyVideoId && !targetEpisode ? { bunnyVideoId } : {}) })),
   ];
 
   const episodeIds: string[] = [];
@@ -128,6 +135,11 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
         cleanText(episode.overview, 8000), Number.isInteger(episode.runtime) ? Math.max(0, Math.min(86400, episode.runtime as number)) : null,
         safePath(episode.thumbnailPath), JSON.stringify({ tmdbId: episode.tmdbId ?? null, airDate: cleanText(episode.airDate, 20) })));
     }
+  }
+
+  if (targetEpisode && bunnyVideoId) {
+    const episodeId = `${id}:s${targetEpisode.seasonNumber}:e${targetEpisode.episodeNumber}`;
+    statements.push(env.DB.prepare("UPDATE catalog_episodes SET stream_uid = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND title_id = ?").bind(bunnyVideoId, episodeId, id));
   }
 
   try {

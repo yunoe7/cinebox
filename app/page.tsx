@@ -24,6 +24,7 @@ import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalog } from "../components/cinebox/SharedCatalog";
 import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
+import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
 import { loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 
@@ -262,6 +263,8 @@ function writeFailureMessage(label: string, reason: "quota" | "access" | "serial
 
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
+  const [sharedFeaturedTitle, setSharedFeaturedTitle] = useState<Title | null>(null);
+  const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
   const [filter, setFilter] = useState("Tout");
@@ -663,6 +666,20 @@ export default function HomePage() {
     return () => { cancelled = true; restorationBatch?.release(); };
   }, [blobOwnerPrefix]);
 
+  useEffect(() => {
+    if (activePage !== "Administration") return;
+    const controller = new AbortController();
+    fetch("/api/catalog?limit=1", { cache: "no-store", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Catalogue central indisponible");
+        const payload = await response.json();
+        const stats = payload.stats || {};
+        setSharedAdminStats({ titles: Number(stats.titles)||0, films: Number(stats.films)||0, series: Number(stats.series)||0, videos: Number(stats.videos)||0, episodes: Number(stats.episodes)||0, loaded: true });
+      })
+      .catch(() => { if (!controller.signal.aborted) setSharedAdminStats(current => ({ ...current, loaded: false })); });
+    return () => controller.abort();
+  }, [activePage]);
+
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
   const filmYears = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.year))).sort((a, b) => b - a), [filmTitles]);
@@ -759,7 +776,10 @@ export default function HomePage() {
             : b.id - a.id
         : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy]);
 
-  const featuredTitles = useMemo(() => [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5), [browseTitles]);
+  const featuredTitles = useMemo(() => {
+    const local = [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5);
+    return titles.length === 0 && sharedFeaturedTitle ? [sharedFeaturedTitle] : local;
+  }, [browseTitles, titles.length, sharedFeaturedTitle]);
   const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
   useEffect(() => {
     if (featuredTitles.length < 2 || prefersReducedMotion) return;
@@ -1158,7 +1178,7 @@ export default function HomePage() {
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
           {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion du catalogue est masquée. Le filtrage utilise uniquement quelques mentions explicites, car les titres ne possèdent pas de classification d’âge.</div>}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${favorites.length} favori${favorites.length === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
-          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog/>}
+          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog onOpen={openTitle} onFeatured={setSharedFeaturedTitle}/>}
           {activePage === "Accueil" && <MagicCard className={`hero-surface ${activeFeatured?.backdrop ? "has-backdrop" : activeFeatured?.poster ? "has-poster" : "is-empty"}`}>
             {activeFeatured ? <section className="hero hero-carousel" aria-label="Sélection à la une">
               <div className={`hero-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
@@ -1246,14 +1266,16 @@ export default function HomePage() {
             {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}><Icon size={16}/><span>{label}</span></button>)}
           </nav>}
 
+          {activePage === "Administration" && adminSection === "overview" && <SharedCatalogManager/>}
+
           {activePage === "Administration" && adminSection === "overview" && <section className="admin-overview" aria-labelledby="admin-dashboard-title">
-            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu des contenus et médias de votre bibliothèque locale.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
+            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu en temps réel du catalogue commun et de ses contenus publiés.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
-              <div><span><Library size={14}/> TITRES</span><strong>{titles.length}</strong><small>dans la bibliothèque</small></div>
-              <div><span><Film size={14}/> FILMS</span><strong>{filmTitles.length}</strong><small>longs métrages</small></div>
-              <div><span><Tv size={14}/> SÉRIES</span><strong>{seriesTitles.length}</strong><small>séries enregistrées</small></div>
-              <div><span><Play size={14}/> ÉPISODES</span><strong>{episodeCount}</strong><small>dans les saisons</small></div>
-              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{videoTitles.length}</strong><small>contenus autonomes</small></div>
+              <div><span><Library size={14}/> TITRES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.titles : titles.length}</strong><small>dans le catalogue commun</small></div>
+              <div><span><Film size={14}/> FILMS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.films : filmTitles.length}</strong><small>films publiés</small></div>
+              <div><span><Tv size={14}/> SÉRIES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.series : seriesTitles.length}</strong><small>séries publiées</small></div>
+              <div><span><Play size={14}/> ÉPISODES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.episodes : episodeCount}</strong><small>dans les saisons publiées</small></div>
+              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.videos : videoTitles.length}</strong><small>vidéos publiées</small></div>
               <div><span><Heart size={14}/> FAVORIS</span><strong>{favorites.length}</strong><small>dans Ma liste</small></div>
             </div>
             <div className="admin-dashboard-grid">
@@ -1280,7 +1302,7 @@ export default function HomePage() {
                 </section>
               </aside>
             </div>
-            <div className="admin-hint"><Database size={14}/> Les titres restent dans localStorage et les médias importés dans IndexedDB sur cet appareil. L’administration lit directement ces données.</div>
+            <div className="admin-hint"><Database size={14}/> Les compteurs proviennent du catalogue central (D1). Les modifications sont synchronisées pour tous les utilisateurs.</div>
           </section>}
 
           {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
@@ -1313,9 +1335,13 @@ export default function HomePage() {
             </div>
           </section>}
 
+          {activePage === "Administration" && adminSection === "films" && <SharedCatalogManager kindFilter="movie"/>}
+          {activePage === "Administration" && adminSection === "series" && <SharedCatalogManager kindFilter="series"/>}
+          {activePage === "Administration" && adminSection === "videos" && <SharedCatalogManager kindFilter="video"/>}
+
           {(activePage !== "Administration" || adminSection === "films" || adminSection === "series" || adminSection === "videos") && <section className={`section-block catalogue ${activePage === "Films" ? "films-catalogue" : activePage === "Séries" ? "series-catalogue" : activePage === "Vidéos" ? "videos-catalogue" : activePage === "Ma liste" ? "ma-list-catalogue" : activePage === "Administration" ? "admin-catalogue" : ""}`} id="catalogue">
             <div className="section-head"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE CINÉMATHÈQUE" : activePage === "Séries" ? "VOTRE ESPACE SÉRIES" : activePage === "Vidéos" ? "VOTRE COLLECTION VIDÉO" : activePage === "Ma liste" ? "VOTRE SÉLECTION PERSONNELLE" : activePage === "Administration" ? `GESTION DES ${adminSection === "films" ? "FILMS" : adminSection === "series" ? "SÉRIES" : "VIDÉOS"}` : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Films" ? "Tous vos films" : activePage === "Séries" ? "Toutes vos séries" : activePage === "Vidéos" ? "Toutes vos vidéos" : activePage === "Administration" ? `Gérer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"}` : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Films" || activePage === "Séries" || activePage === "Vidéos" ? "à explorer" : activePage === "Administration" ? "bibliothèque" : activePage === "Ma liste" ? "à retrouver" : "à explorer"}</em></h2></div>
-              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} élément{visibleTitles.length === 1 ? "" : "s"} <span>dans cette catégorie</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
+              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{sharedAdminStats.loaded ? (adminSection === "films" ? sharedAdminStats.films : adminSection === "series" ? sharedAdminStats.series : sharedAdminStats.videos) : visibleTitles.length} élément{(sharedAdminStats.loaded ? (adminSection === "films" ? sharedAdminStats.films : adminSection === "series" ? sharedAdminStats.series : sharedAdminStats.videos) : visibleTitles.length) === 1 ? "" : "s"} <span>dans le catalogue commun</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
             </div>
             {activePage === "Administration" && <div className="admin-content-toolbar"><span>{visibleTitles.length} contenu{visibleTitles.length === 1 ? "" : "s"}</span><label><span>Trier</span><select className="sort-select" aria-label="Trier les contenus administrés" value={adminSortBy} onChange={(event) => setAdminSortBy(event.target.value)}><option value="recent">Ajouts récents</option><option value="title">Titre A à Z</option><option value="year-desc">Année décroissante</option><option value="year-asc">Année croissante</option></select></label><button type="button" className="admin-toolbar-add" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button></div>}
             {activePage === "Ma liste" && <div className="list-library-controls">

@@ -81,7 +81,7 @@ async function createProfile(page: Page, name: string, options: { avatar?: strin
     await page.getByPlaceholder("Confirmer le code").fill(options.pin);
   }
   await page.getByRole("button", { name: "Enregistrer" }).click();
-  await expect(page.getByRole("status")).toContainText("Profil créé");
+  await expect(page.getByRole("status").filter({ hasText: "Profil créé" })).toBeVisible();
   await page.getByRole("button", { name: "Choisir un profil" }).click();
 }
 
@@ -292,7 +292,7 @@ test("le menu annonce les fonctions non disponibles sans simuler un service", as
   const menu = page.getByRole("menu");
   await expect(menu.getByRole("menuitem", { name: /S’abonner.*Indisponible/ })).toBeVisible();
   await menu.getByRole("menuitem", { name: /S’abonner/ }).click();
-  await expect(page.getByRole("status")).toContainText("ne dispose pas encore");
+  await expect(page.getByRole("status").filter({ hasText: "ne dispose pas encore" })).toBeVisible();
 });
 
 test("le menu se parcourt au clavier et se ferme avec Échap ou clic extérieur", async ({ page }) => {

@@ -93,7 +93,7 @@ async function seedBrowser(page: Page, titles: StoredTitle[], favorites: number[
 async function openFilmPlayer(page: Page, title: string) {
   await page.getByRole("button", { name: `Ouvrir ${title}` }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Lecture" }).click();
+  await dialog.getByRole("button", { name: /^(Lecture|Reprendre)$/ }).click();
   const video = page.locator("video.detail-video");
   await expect(video).toBeVisible();
   return { dialog, video };

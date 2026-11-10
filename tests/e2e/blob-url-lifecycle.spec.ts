@@ -94,7 +94,7 @@ test("les URL restaurées restent valides dans le détail et le lecteur puis son
 
 test("une restauration interrompue révoque toutes les URL provisoires réellement créées", async ({ page }) => {
   await seedLibrary(page, 2);
-  await expect(page.getByRole("status")).toContainText("Bibliothèque protégée");
+  await expect(page.getByRole("status").filter({ hasText: "Bibliothèque protégée" })).toBeVisible();
   const created = await page.evaluate(() => [...window.__cineboxBlobCreated]);
   const revoked = await page.evaluate(() => [...window.__cineboxBlobRevoked]);
   expect(created).toHaveLength(1);

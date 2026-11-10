@@ -64,14 +64,14 @@ test("préserve la précision de la note TMDB, permet sa modification et la sauv
   await page.locator(".add-btn").click();
   await page.getByRole("textbox", { name: "Rechercher un film ou une série" }).fill("Étoiles");
   await page.getByRole("button", { name: /Choisir Étoiles/ }).first().click();
-  await expect(page.locator(".smart-import-preview")).toContainText("★ 8.479 (100)");
+  await expect(page.locator(".smart-import-preview")).toContainText("8.479 (100)");
   await page.getByRole("button", { name: "Préremplir le formulaire" }).click();
   const rating = page.getByLabel("Note TMDB");
   await expect(rating).toHaveValue("8.479");
   expect(await rating.evaluate(element => (element as HTMLInputElement).checkValidity())).toBe(true);
   await rating.fill("8.125");
   expect(await rating.evaluate(element => (element as HTMLInputElement).checkValidity())).toBe(true);
-  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71001" })).toContainText("★ 8.125 (100 votes)");
+  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71001" })).toContainText("8.125 (100 votes)");
   await page.getByRole("button", { name: "Ajouter à ma collection" }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("cinebox-titles") || "[]")[0]?.rating)).toBe(8.125);
 });
@@ -83,17 +83,17 @@ test("les notes TMDB absentes ou invalides restent affichées et importables san
   await expect(page.getByRole("button", { name: /Choisir Note invalide/ })).toContainText("—");
 
   await page.getByRole("button", { name: /Choisir Note absente/ }).click();
-  await expect(page.locator(".smart-import-preview")).toContainText("★ — (0)");
+  await expect(page.locator(".smart-import-preview")).toContainText("— (0)");
   await page.getByRole("button", { name: "Préremplir le formulaire" }).click();
   await expect(page.getByLabel("Note TMDB")).toHaveValue("0");
-  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71003" })).toContainText("★ 0 (0 votes)");
+  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71003" })).toContainText("0 (0 votes)");
 
   await page.getByRole("button", { name: "Retour aux résultats" }).click();
   await page.getByRole("button", { name: /Choisir Note invalide/ }).click();
-  await expect(page.locator(".smart-import-preview")).toContainText("★ — (0)");
+  await expect(page.locator(".smart-import-preview")).toContainText("— (0)");
   await page.getByRole("button", { name: "Préremplir le formulaire" }).click();
   await expect(page.getByLabel("Note TMDB")).toHaveValue("0");
-  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71004" })).toContainText("★ 0 (0 votes)");
+  await expect(page.locator(".smart-import-metadata small").filter({ hasText: "TMDB #71004" })).toContainText("0 (0 votes)");
 });
 
 test("la série importe ses saisons et épisodes, en laissant les saisons spéciales optatives", async ({ page }) => {

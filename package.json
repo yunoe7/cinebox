@@ -2,10 +2,15 @@
   "name": "cinebox",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:cf": "npm run build && wrangler pages dev out --port 3000 --compatibility-date=2024-01-01",
     "build": "next build",
-    "start": "next start",
+    "start": "wrangler pages dev out --port 3000 --compatibility-date=2024-01-01",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test",
     "test:e2e": "playwright test"
@@ -23,6 +28,10 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.7",
     "fake-indexeddb": "^6.2.7",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wrangler": "4.158.0"
+  },
+  "overrides": {
+    "postcss": "8.5.32"
   }
 }
