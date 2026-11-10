@@ -111,7 +111,8 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 ### Authentification administrateur
 
-- `POST /api/auth/login` vérifie le mot de passe avec PBKDF2-SHA256 (210 000 itérations par défaut) puis émet un cookie `__Host-cinebox_admin` : `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, `Max-Age=43200`.
+- `POST /api/auth/login` vérifie le mot de passe avec PBKDF2-SHA256 (100 000 itérations, plafond imposé par Cloudflare Workers) puis émet un cookie `__Host-cinebox_admin` : `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, `Max-Age=43200`.
+- Un mot de passe incorrect renvoie `401`. Une erreur cryptographique ou interne renvoie `500` avec un message générique, sans jamais journaliser le mot de passe, le vérificateur ni le sel.
 - La session est signée en HMAC-SHA256 et expire au bout de 12 heures maximum. Aucun jeton n'est stocké dans `sessionStorage` ni lisible par JavaScript.
 - `POST /api/auth/logout` efface le cookie. `GET /api/auth/session` renvoie l'état de la session sans jamais exposer sa valeur.
 - Les requêtes mutantes exigent une `Origin` exacte, `Sec-Fetch-Site: same-origin` lorsqu'il est présent, et l'en-tête `x-cinebox-request: 1`. Les anciens jetons Bearer sont refusés.

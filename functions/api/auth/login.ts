@@ -1,11 +1,13 @@
 import {
   ADMIN_SESSION_TTL_SECONDS,
+  AdminPasswordCryptoError,
   createAdminSession,
   verifyAdminPassword,
   verifyRequestOrigin,
 } from "../../../lib/cinebox/admin-auth.mjs";
 import {
   adminConfigurationError,
+  adminInternalError,
   buildAdminCookie,
   isAdminConfigured,
   json,
@@ -39,7 +41,19 @@ export async function onRequestPost({ request, env }: { request: Request; env: A
     return json({ error: "Mot de passe administrateur requis." }, 400);
   }
 
-  const valid = await verifyAdminPassword(password, env.CINEBOX_ADMIN_PASSWORD_HASH);
+  let valid: boolean;
+  try {
+    valid = await verifyAdminPassword(password, env.CINEBOX_ADMIN_PASSWORD_HASH);
+  } catch (error) {
+    // A crypto/internal failure is not a wrong password. Log a fixed line only:
+    // the password, the verifier and the salt must never reach the logs.
+    if (error instanceof AdminPasswordCryptoError) {
+      console.error("Admin login: PBKDF2 verifier failure.");
+    } else {
+      console.error("Admin login: unexpected verifier failure.");
+    }
+    return adminInternalError();
+  }
   if (!valid) {
     return json({ error: "Mot de passe administrateur incorrect." }, 401);
   }

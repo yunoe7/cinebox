@@ -18,6 +18,7 @@ export const ADMIN_AUTH_ERROR = "Authentification administrateur requise.";
 export const ADMIN_SESSION_EXPIRED_ERROR = "Session administrateur expirée. Reconnecte-toi.";
 export const ADMIN_ORIGIN_ERROR = "Requête refusée : origine invalide.";
 export const ADMIN_CONFIG_ERROR = "L'administration n'est pas configurée côté serveur.";
+export const ADMIN_INTERNAL_ERROR = "Erreur serveur. Réessaie plus tard.";
 
 export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -47,6 +48,11 @@ export function isAdminConfigured(env: AdminEnv): boolean {
 
 export function adminConfigurationError(): Response {
   return json({ error: ADMIN_CONFIG_ERROR }, 503);
+}
+
+/** Generic 500 for internal failures; never carries verifier material. */
+export function adminInternalError(): Response {
+  return json({ error: ADMIN_INTERNAL_ERROR }, 500);
 }
 
 export function readAdminCookie(request: Request): string {

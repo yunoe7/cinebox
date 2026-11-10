@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { onRequestPost as login } from "../../functions/api/auth/login.ts";
 import { onRequestPost as logout } from "../../functions/api/auth/logout.ts";
 import { onRequestGet as session } from "../../functions/api/auth/session.ts";
+import { ADMIN_INTERNAL_ERROR } from "../../functions/_lib/admin-auth.ts";
 import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
@@ -99,6 +100,42 @@ test("login rejects a wrong password without setting a cookie", async () => {
   });
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "Mot de passe administrateur incorrect." });
+  assert.equal(response.headers.get("set-cookie"), null);
+});
+
+test("login reports an internal error when the password verifier fails", async () => {
+  const original = crypto.subtle.deriveBits;
+  crypto.subtle.deriveBits = async () => {
+    throw new Error("simulated deriveBits failure");
+  };
+  try {
+    const response = await login({ request: loginRequest(), env: ADMIN_ENV });
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: ADMIN_INTERNAL_ERROR });
+    assert.equal(response.headers.get("set-cookie"), null);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes(ADMIN_PASSWORD), false);
+    assert.equal(serialized.includes(ADMIN_SESSION_SECRET), false);
+    assert.equal(serialized.includes("pbkdf2"), false);
+    assert.equal(serialized.includes("deriveBits"), false);
+  } finally {
+    crypto.subtle.deriveBits = original;
+  }
+});
+
+test("login refuses a verifier above the Workers iteration ceiling", async () => {
+  const [algorithm, , salt, digest] = ADMIN_ENV.CINEBOX_ADMIN_PASSWORD_HASH.split("$");
+  const env = {
+    ...ADMIN_ENV,
+    CINEBOX_ADMIN_PASSWORD_HASH: `${algorithm}$100001$${salt}$${digest}`,
+  };
+  const response = await login({ request: loginRequest(), env });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "L'administration n'est pas configurée côté serveur.",
+  });
   assert.equal(response.headers.get("set-cookie"), null);
 });
 

@@ -10,6 +10,10 @@ export const ADMIN_PASSWORD_ITERATIONS_MAX: number;
 export const ADMIN_CSRF_HEADER: string;
 export const ADMIN_CSRF_VALUE: string;
 
+export class AdminPasswordCryptoError extends Error {
+  constructor(message?: string);
+}
+
 export interface ParsedPasswordHash {
   iterations: number;
   salt: Uint8Array;
