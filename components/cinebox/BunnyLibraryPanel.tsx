@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
-import { Check, ChevronRight, LoaderCircle, LogOut, Play, RefreshCw, Search, ShieldCheck, Star, Video, X } from "lucide-react";
+import { Check, ChevronRight, LoaderCircle, Play, RefreshCw, Search, Star, Video, X } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+import { AdminSessionPanel } from "./AdminSessionPanel";
 
 type BunnyVideo = { id: string; title: string; durationSeconds: number | null; thumbnailUrl: string | null; status?: number | null };
 type BunnyList = { libraryId: string; total: number; videos: BunnyVideo[] };
@@ -14,7 +15,6 @@ type Review = { author:string; content:string; author_details?:{rating?:number|n
 type ReviewPayload = { results?:Review[] };
 const image = (path?:string|null, size="w500") => path ? `https://image.tmdb.org/t/p/${size}${path}` : "";
 const inputStyle:CSSProperties={width:"100%",minHeight:42,borderRadius:9,padding:"0 12px",border:"1px solid rgba(220,195,146,.2)",background:"#0b0c0f",color:"#f5f1e9",font:"inherit",fontSize:12,outline:"none"};
-const buttonStyle:CSSProperties={border:"1px solid rgba(213,180,122,.3)",borderRadius:9,padding:"9px 13px",color:"#d9bb82",background:"rgba(213,180,122,.08)",fontSize:11,cursor:"pointer"};
 
 function cleanSearchName(value:string) {
   return value.replace(/\\.[^.]+$/,"").replace(/[._]+/g," ").replace(/\bS\d{1,2}E\d{1,3}\b/i," ").replace(/\b(1080p|720p|2160p|WEB[- ]?DL|BluRay|VOSTFR|MULTI|HDTV)\b/gi," ").replace(/\[[^\]]*\]|\([^)]*\)/g," ").replace(/\s+/g," ").trim();
@@ -162,53 +162,66 @@ export function BunnyLibraryPanel() {
     finally{setSaving(false);}
   };
 
-  const label:CSSProperties={display:"block",fontSize:10,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"#b6b0a4",marginBottom:7};
-  return <section aria-label="Bibliothèque Bunny Stream" style={{marginTop:24,padding:20,border:"1px solid rgba(220,195,146,.18)",borderRadius:16,background:"linear-gradient(145deg,rgba(24,23,21,.98),rgba(13,14,17,.98))"}}>
-    <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:18}}>
-      <div><h3 style={{margin:0,color:"#f4f0e8",fontSize:17}}>Bibliothèque Bunny</h3><p style={{margin:"5px 0 0",fontSize:11,color:"#888b92"}}>{data?.total??0} vidéo(s) hébergée(s) · sélectionne une vidéo pour créer sa fiche</p></div>
-      <button type="button" onClick={()=>void refresh()} disabled={loading||authState!=="authenticated"} style={buttonStyle}>{loading?<LoaderCircle size={13}/>:<RefreshCw size={13}/>} Actualiser</button>
-    </header>
-    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
-      {authState==="authenticated"?(
-        <>
-          <span style={{display:"flex",alignItems:"center",gap:6,color:"#888b92",fontSize:9}}><ShieldCheck size={12}/> Session administrateur active</span>
-          <button type="button" onClick={()=>void logout()} style={buttonStyle} title="Fermer la session administrateur"><LogOut size={13}/> Déconnexion</button>
-        </>
-      ):authState==="anonymous"?(
-        <form onSubmit={login} style={{display:"flex",gap:8,alignItems:"center",flex:"1 1 360px",flexWrap:"wrap"}}>
-          <input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mot de passe administrateur" aria-label="Mot de passe administrateur" disabled={loggingIn} style={{...inputStyle,flex:"1 1 260px"}}/>
-          <button type="submit" disabled={loggingIn||password.length===0} style={buttonStyle}>{loggingIn?<LoaderCircle size={13}/>:<ShieldCheck size={13}/>} Se connecter</button>
-        </form>
-      ):(
-        <span style={{display:"flex",alignItems:"center",gap:6,color:"#888b92",fontSize:9}}><LoaderCircle size={12} className="animate-spin"/> Vérification de la session…</span>
-      )}
-    </div>
-    {error&&<p role="alert" style={{color:"#ffaaa0",fontSize:12}}>{error}</p>}
-    <div style={{display:"grid",gridTemplateColumns:"minmax(250px,.85fr) minmax(300px,1.15fr)",gap:18}}>
-      <div style={{display:"grid",alignContent:"start",gap:8,maxHeight:620,overflowY:"auto",paddingRight:4}}>
-        {loading&&!data?<LoaderCircle className="animate-spin"/>:data?.videos.map(video=><button key={video.id} type="button" onClick={()=>void selectVideo(video)} style={{display:"flex",alignItems:"center",gap:10,textAlign:"left",padding:9,borderRadius:10,border:selectedVideo?.id===video.id?"1px solid rgba(213,180,122,.65)":"1px solid rgba(255,255,255,.08)",background:selectedVideo?.id===video.id?"rgba(213,180,122,.10)":"rgba(255,255,255,.025)",cursor:"pointer",color:"#eee"}}>
-          {video.thumbnailUrl?<img src={video.thumbnailUrl} alt="" style={{width:82,aspectRatio:"16/9",objectFit:"cover",borderRadius:6,background:"#08090b"}}/>:<span style={{width:82,aspectRatio:"16/9",display:"grid",placeItems:"center",background:"#08090b",borderRadius:6,color:"#c5a56d"}}><Video size={18}/></span>}
-          <span style={{minWidth:0,flex:1}}><strong style={{display:"block",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{video.title}</strong><small style={{color:"#85878e",fontSize:9}}>{video.durationSeconds?Math.round(video.durationSeconds/60)+" min":"Durée en traitement"}</small></span>
-          <ChevronRight size={15} color="#c5a56d"/>
-        </button>)}
-        {!loading&&data?.videos.length===0&&<p style={{color:"#999",fontSize:12}}>Aucune vidéo dans Bunny pour le moment.</p>}
+  return <section className="bunny-panel" aria-label="Bibliothèque Bunny Stream">
+    <header className="bunny-panel-header">
+      <div className="bunny-panel-heading">
+        <div className="eyebrow">STREAM · BUNNY</div>
+        <h3>Bibliothèque Bunny</h3>
+        <p>{data?.total??0} vidéo(s) hébergée(s) · sélectionne une vidéo pour créer sa fiche</p>
       </div>
-      <div style={{minWidth:0,padding:16,borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(0,0,0,.15)"}}>
-        {!selectedVideo?<div style={{minHeight:300,display:"grid",placeItems:"center",textAlign:"center",color:"#85878e",fontSize:12}}><div><Video size={30}/><p>Choisis une vidéo Bunny pour commencer.</p></div></div>:<>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14}}><div><strong style={{fontSize:12,color:"#f3eee4"}}>{selectedVideo.title}</strong><p style={{margin:"4px 0 0",fontSize:9,color:"#85878e"}}>Fichier déjà hébergé · aucun nouvel envoi</p></div><button type="button" onClick={()=>setPreview(selectedVideo)} style={buttonStyle}><Play size={13}/> Aperçu</button></div>
-          <label style={label}>Recherche TMDB</label>
-          <div style={{display:"flex",gap:7}}><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void (async()=>{setSearching(true);try{const r=await fetch("/api/tmdb/search?query="+encodeURIComponent(query)+"&kind=multi");const j=await r.json();setHits((j.results||[]).filter((x:TmdbHit)=>x.media_type==="movie"||x.media_type==="tv"));}finally{setSearching(false);}})();}} style={{...inputStyle,flex:1}}/><button type="button" disabled={searching||!query.trim()} onClick={async()=>{setSearching(true);try{const r=await fetch("/api/tmdb/search?query="+encodeURIComponent(query)+"&kind=multi");const j=await r.json();setHits((j.results||[]).filter((x:TmdbHit)=>x.media_type==="movie"||x.media_type==="tv"));}catch{setMessage("Recherche TMDB impossible.");}finally{setSearching(false);}}} style={buttonStyle}>{searching?<LoaderCircle size={14}/>:<Search size={14}/>}</button></div>
-          {hits.length>0&&!detail&&<div style={{display:"grid",gap:6,maxHeight:230,overflowY:"auto",marginTop:10}}>{hits.map(hit=><button key={hit.id+"-"+hit.media_type} type="button" onClick={()=>void chooseHit(hit)} style={{display:"flex",alignItems:"center",gap:9,textAlign:"left",padding:7,borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#eee",cursor:"pointer"}}>{hit.poster_path?<img src={image(hit.poster_path,"w92")} alt="" style={{width:38,height:55,objectFit:"cover",borderRadius:4}}/>:<span style={{width:38,height:55,background:"#222"}}/>}<span style={{flex:1,minWidth:0}}><strong style={{display:"block",fontSize:11}}>{hit.title||hit.name}</strong><small style={{color:"#888",fontSize:9}}>{hit.media_type==="tv"?"Série":"Film"} · {(hit.release_date||hit.first_air_date||"").slice(0,4)} · TMDB {hit.vote_average?.toFixed(1)||"—"}</small></span><ChevronRight size={14}/></button>)}</div>}
-          {detail&&<div style={{marginTop:14}}>
-            <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>{detail.poster_path&&<img src={image(detail.poster_path)} alt="" style={{width:92,borderRadius:8,objectFit:"cover"}}/>}<div style={{minWidth:0}}><strong style={{fontSize:15,color:"#f4f0e8"}}>{detail.title||detail.name}</strong><p style={{fontSize:10,color:"#aaa",lineHeight:1.5,margin:"5px 0"}}>{detail.overview||"Synopsis indisponible."}</p><small style={{color:"#d9bb82",display:"inline-flex",alignItems:"center",gap:4}}><Star size={11} aria-hidden="true"/> {detail.vote_average?.toFixed(1)||"—"} · {detail.vote_count??0} votes · {(detail.release_date||detail.first_air_date||"").slice(0,4)}</small><p style={{fontSize:9,color:"#888",margin:"5px 0"}}>{(detail.genres||[]).map(g=>g.name).join(" · ")}</p></div></div>
-            {mediaType==="tv"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}><div><label style={label}>Saison</label><select value={seasonNumber} onChange={e=>{const n=Number(e.target.value);setSeasonNumber(n);void loadSeason(detail.id,n);}} style={inputStyle}>{(detail.seasons||[]).map(s=><option key={s.season_number} value={s.season_number}>{s.name||"Saison "+s.season_number}</option>)}</select></div><div><label style={label}>Épisode</label><select value={episodeNumber} onChange={e=>setEpisodeNumber(Number(e.target.value))} style={inputStyle} disabled={loadingSeason||!season}>{(season?.episodes||[]).map(ep=><option key={ep.episode_number} value={ep.episode_number}>E{String(ep.episode_number).padStart(2,"0")} · {ep.name}</option>)}</select></div></div>}
-            <div style={{marginTop:12,padding:10,borderRadius:8,background:"rgba(255,255,255,.03)"}}><strong style={{fontSize:10,color:"#d9bb82"}}>Casting et avis TMDB</strong><p style={{fontSize:9,color:"#aaa",margin:"5px 0"}}>{(detail.credits?.cast||[]).slice(0,6).map(c=>c.name).join(" · ")||"Casting non disponible"}</p><p style={{fontSize:9,color:"#888",margin:0}}>{reviews.length} avis TMDB récupérés · {(detail.credits?.crew||[]).find(c=>c.job==="Director")?.name||"Réalisation non renseignée"}</p></div>
-            <button type="button" disabled={saving||authState!=="authenticated"||(mediaType==="tv"&&!season)} onClick={()=>void publish()} style={{...buttonStyle,width:"100%",marginTop:14,minHeight:42,background:"linear-gradient(110deg,#c6a36b,#e2c38b)",color:"#17130d",fontWeight:800,opacity:saving||authState!=="authenticated"?.55:1}}>{saving?<LoaderCircle size={15} className="animate-spin"/>:<Check size={15}/>} Publier la fiche et associer la vidéo</button>
+      {authState==="authenticated"&&<button type="button" className="bunny-ghost-btn" onClick={()=>void refresh()} disabled={loading}>{loading?<LoaderCircle size={13} className="admin-spin"/>:<RefreshCw size={13}/>} Actualiser</button>}
+    </header>
+
+    <AdminSessionPanel
+      authState={authState}
+      password={password}
+      loggingIn={loggingIn}
+      onPasswordChange={setPassword}
+      onLogin={login}
+      onLogout={()=>void logout()}
+      description="Connecte-toi comme administrateur pour charger la bibliothèque Bunny et associer ses vidéos aux fiches CinéBox."
+      status={data?`${data.total} vidéo${data.total===1?"":"s"} · bibliothèque ${data.libraryId}`:undefined}
+      className="bunny-session"
+    />
+
+    {error&&<p role="alert" className="bunny-alert">{error}</p>}
+
+    {authState==="authenticated"&&<div className="bunny-workspace">
+      <div className="bunny-list" aria-label="Vidéos hébergées dans Bunny">
+        {loading&&!data&&<div className="bunny-loading"><LoaderCircle size={18} className="admin-spin"/><span>Chargement de la bibliothèque…</span></div>}
+        {data?.videos.map(video=><button key={video.id} type="button" onClick={()=>void selectVideo(video)} className={`bunny-list-item ${selectedVideo?.id===video.id?"is-selected":""}`.trim()}>
+          {video.thumbnailUrl?<img src={video.thumbnailUrl} alt="" loading="lazy"/>:<span className="bunny-list-thumb" aria-hidden="true"><Video size={17}/></span>}
+          <span className="bunny-list-copy"><strong>{video.title}</strong><small>{video.durationSeconds?`${Math.round(video.durationSeconds/60)} min`:"Durée en traitement"} · <code>{video.id}</code></small></span>
+          <ChevronRight size={15} aria-hidden="true"/>
+        </button>)}
+        {!loading&&data?.videos.length===0&&<div className="bunny-empty"><Video size={20}/><strong>Aucune vidéo dans Bunny</strong><span>Les fichiers téléversés apparaîtront ici.</span></div>}
+      </div>
+
+      <div className="bunny-detail">
+        {!selectedVideo?<div className="bunny-placeholder"><Video size={26}/><strong>Sélectionne une vidéo Bunny</strong><span>Choisis un fichier hébergé pour créer ou compléter sa fiche CinéBox.</span></div>:<>
+          <div className="bunny-detail-head">
+            <div><strong>{selectedVideo.title}</strong><p>Fichier déjà hébergé · aucun nouvel envoi</p></div>
+            <button type="button" className="bunny-ghost-btn" onClick={()=>setPreview(selectedVideo)}><Play size={13}/> Aperçu</button>
+          </div>
+          <div className="bunny-detail-facts">
+            <span><Video size={11} aria-hidden="true"/> {selectedVideo.durationSeconds?`${Math.round(selectedVideo.durationSeconds/60)} min`:"Durée en traitement"}</span>
+            <span><code>{selectedVideo.id}</code></span>
+            <span>{selectedVideo.status!=null?`Statut Bunny ${selectedVideo.status}`:"Statut Bunny inconnu"}</span>
+          </div>
+          <label className="bunny-label">Recherche TMDB</label>
+          <div className="bunny-search-row"><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void (async()=>{setSearching(true);try{const r=await fetch("/api/tmdb/search?query="+encodeURIComponent(query)+"&kind=multi");const j=await r.json();setHits((j.results||[]).filter((x:TmdbHit)=>x.media_type==="movie"||x.media_type==="tv"));}finally{setSearching(false);}})();}} style={{...inputStyle,flex:1}}/><button type="button" className="bunny-ghost-btn" disabled={searching||!query.trim()} onClick={async()=>{setSearching(true);try{const r=await fetch("/api/tmdb/search?query="+encodeURIComponent(query)+"&kind=multi");const j=await r.json();setHits((j.results||[]).filter((x:TmdbHit)=>x.media_type==="movie"||x.media_type==="tv"));}catch{setMessage("Recherche TMDB impossible.");}finally{setSearching(false);}}}>{searching?<LoaderCircle size={14} className="admin-spin"/>:<Search size={14}/>}</button></div>
+          {hits.length>0&&!detail&&<div className="bunny-hits">{hits.map(hit=><button key={hit.id+"-"+hit.media_type} type="button" onClick={()=>void chooseHit(hit)} className="bunny-hit">{hit.poster_path?<img src={image(hit.poster_path,"w92")} alt=""/>:<span className="bunny-hit-cover" aria-hidden="true"/>}<span><strong>{hit.title||hit.name}</strong><small>{hit.media_type==="tv"?"Série":"Film"} · {(hit.release_date||hit.first_air_date||"").slice(0,4)} · TMDB {hit.vote_average?.toFixed(1)||"—"}</small></span><ChevronRight size={14}/></button>)}</div>}
+          {detail&&<div className="bunny-detail-body">
+            <div className="bunny-detail-overview">{detail.poster_path&&<img src={image(detail.poster_path)} alt=""/>}<div><strong>{detail.title||detail.name}</strong><p>{detail.overview||"Synopsis indisponible."}</p><small><Star size={11} aria-hidden="true"/> {detail.vote_average?.toFixed(1)||"—"} · {detail.vote_count??0} votes · {(detail.release_date||detail.first_air_date||"").slice(0,4)}</small><p className="bunny-genres">{(detail.genres||[]).map(g=>g.name).join(" · ")}</p></div></div>
+            {mediaType==="tv"&&<div className="bunny-season-grid"><div><label className="bunny-label">Saison</label><select value={seasonNumber} onChange={e=>{const n=Number(e.target.value);setSeasonNumber(n);void loadSeason(detail.id,n);}} style={inputStyle}>{(detail.seasons||[]).map(s=><option key={s.season_number} value={s.season_number}>{s.name||"Saison "+s.season_number}</option>)}</select></div><div><label className="bunny-label">Épisode</label><select value={episodeNumber} onChange={e=>setEpisodeNumber(Number(e.target.value))} style={inputStyle} disabled={loadingSeason||!season}>{(season?.episodes||[]).map(ep=><option key={ep.episode_number} value={ep.episode_number}>E{String(ep.episode_number).padStart(2,"0")} · {ep.name}</option>)}</select></div></div>}
+            <div className="bunny-cast"><strong>Casting et avis TMDB</strong><p>{(detail.credits?.cast||[]).slice(0,6).map(c=>c.name).join(" · ")||"Casting non disponible"}</p><p>{reviews.length} avis TMDB récupérés · {(detail.credits?.crew||[]).find(c=>c.job==="Director")?.name||"Réalisation non renseignée"}</p></div>
+            <button type="button" className="bunny-publish" disabled={saving||authState!=="authenticated"||(mediaType==="tv"&&!season)} onClick={()=>void publish()}>{saving?<LoaderCircle size={15} className="admin-spin"/>:<Check size={15}/>} Publier la fiche et associer la vidéo</button>
           </div>}
-          {message&&<p role="status" style={{padding:9,borderRadius:8,background:"rgba(115,153,112,.10)",color:"#b8d5ae",fontSize:10,lineHeight:1.5,marginTop:12}}>{message}</p>}
+          {message&&<p role="status" className="bunny-message">{message}</p>}
         </>}
       </div>
-    </div>
-    {preview&&data&&<div role="dialog" aria-modal="true" onClick={e=>{if(e.target===e.currentTarget)setPreview(null);}} style={{position:"fixed",inset:0,zIndex:100,display:"grid",placeItems:"center",padding:20,background:"rgba(0,0,0,.9)"}}><div style={{width:"min(100%,1000px)",background:"#101114",borderRadius:12,overflow:"hidden"}}><div style={{display:"flex",justifyContent:"space-between",padding:12,color:"#eee"}}><strong>{preview.title}</strong><button type="button" onClick={()=>setPreview(null)} style={buttonStyle}><X size={15}/></button></div><div style={{aspectRatio:"16/9"}}><iframe title={preview.title} src={`https://iframe.mediadelivery.net/embed/${data.libraryId}/${preview.id}`} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen style={{width:"100%",height:"100%",border:0}}/></div></div></div>}
+    </div>}
+
+    {preview&&data&&<div role="dialog" aria-modal="true" className="bunny-preview" onClick={e=>{if(e.target===e.currentTarget)setPreview(null);}}><div className="bunny-preview-dialog"><div className="bunny-preview-head"><strong>{preview.title}</strong><button type="button" className="bunny-ghost-btn" onClick={()=>setPreview(null)} aria-label="Fermer l’aperçu"><X size={15}/></button></div><div className="bunny-preview-frame"><iframe title={preview.title} src={`https://iframe.mediadelivery.net/embed/${data.libraryId}/${preview.id}`} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen/></div></div></div>}
   </section>;
 }

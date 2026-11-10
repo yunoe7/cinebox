@@ -11,16 +11,15 @@ import {
   Film,
   HardDrive,
   LoaderCircle,
-  LogOut,
   RefreshCw,
   Save,
   Search,
-  ShieldCheck,
   Trash2,
   Tv,
   Video,
 } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
 type Episode = {
   id: string;
@@ -132,7 +131,7 @@ function searchable(item: Item): string {
 
 export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "series" | "video" }) {
   const headingId = useId();
-  const [authState, setAuthState] = useState<"checking" | "anonymous" | "authenticated">("checking");
+  const [authState, setAuthState] = useState<AdminAuthState>("checking");
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
@@ -335,53 +334,36 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   };
 
   return (
-    <section className="admin-shared-catalog" aria-labelledby={headingId}>
+    <section className={`admin-shared-catalog ${kindFilter === "video" ? "is-video-library" : ""}`} aria-labelledby={headingId}>
       <header className="admin-shared-header">
-        <div>
+        <div className="admin-shared-heading">
           <div className="eyebrow">CATALOGUE PARTAGÉ · D1</div>
           <h3 id={headingId}>Fiches {kindPlural} <span className="admin-source-badge is-d1">D1</span></h3>
           <p>Source distante, visible par tous les utilisateurs. Les droits sont vérifiés côté serveur.</p>
         </div>
-        <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading || authState !== "authenticated"}>
-          {loading ? <LoaderCircle size={14} className="admin-spin" /> : <RefreshCw size={14} />}
-          Actualiser
-        </button>
+        {authState === "authenticated" && (
+          <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}>
+            {loading ? <LoaderCircle size={14} className="admin-spin" /> : <RefreshCw size={14} />}
+            Actualiser
+          </button>
+        )}
       </header>
 
-      <div className="admin-shared-token">
-        {authState === "authenticated" ? (
+      <AdminSessionPanel
+        authState={authState}
+        password={password}
+        loggingIn={loggingIn}
+        onPasswordChange={setPassword}
+        onLogin={login}
+        onLogout={() => void logout()}
+        description="Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1."
+        status={
           <>
-            <span className="admin-shared-count">
-              {publishedCount} publié{publishedCount === 1 ? "" : "s"} · {kindItems.length} {kindLabel}{kindItems.length === 1 ? "" : "s"}
-            </span>
-            <button type="button" className="admin-shared-logout" onClick={() => void logout()} title="Fermer la session administrateur">
-              <LogOut size={13} aria-hidden="true" />
-              Déconnexion
-            </button>
+            {publishedCount} publié{publishedCount === 1 ? "" : "s"} · {kindItems.length} {kindLabel}{kindItems.length === 1 ? "" : "s"}
           </>
-        ) : authState === "anonymous" ? (
-          <form className="admin-shared-login" onSubmit={login}>
-            <label>
-              <ShieldCheck size={15} aria-hidden="true" />
-              <input
-                type="password"
-                autoComplete="current-password"
-                placeholder="Mot de passe administrateur"
-                aria-label="Mot de passe administrateur"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                disabled={loggingIn}
-              />
-            </label>
-            <button type="submit" className="admin-shared-login-submit" disabled={loggingIn || password.length === 0}>
-              {loggingIn ? <LoaderCircle size={13} className="admin-spin" aria-hidden="true" /> : <ShieldCheck size={13} aria-hidden="true" />}
-              Se connecter
-            </button>
-          </form>
-        ) : (
-          <span className="admin-shared-count">Vérification de la session…</span>
-        )}
-      </div>
+        }
+        className="admin-shared-session"
+      />
 
       {authState === "authenticated" && (
         <div className="admin-shared-toolbar" role="group" aria-label={`Recherche, filtres et tri des ${kindPlural} partagés`}>
@@ -423,19 +405,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
 
       {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
 
-      {authState === "checking" ? (
-        <div className="admin-shared-state">
-          <LoaderCircle size={22} className="admin-spin" aria-hidden="true" />
-          <strong>Vérification de la session…</strong>
-          <span>CinéBox vérifie la session administrateur auprès du serveur.</span>
-        </div>
-      ) : authState === "anonymous" ? (
-        <div className="admin-shared-state">
-          <ShieldCheck size={22} aria-hidden="true" />
-          <strong>Connexion administrateur requise</strong>
-          <span>Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1.</span>
-        </div>
-      ) : loading && !loadedOnce ? (
+      {authState === "authenticated" && (loading && !loadedOnce ? (
         <div className="admin-shared-skeletons" aria-label="Chargement du catalogue partagé">
           {[0, 1, 2].map((entry) => <div className="admin-shared-skeleton" key={entry}><i /><span><b /><b /><b /></span></div>)}
         </div>
@@ -460,7 +430,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
           <button type="button" onClick={() => { setQuery(""); setStatusFilter("all"); setSortMode("updated"); }}>Effacer les filtres</button>
         </div>
       ) : (
-        <div className="admin-shared-list">
+        <div className={`admin-shared-list ${kindFilter === "video" ? "is-video-library" : ""}`.trim()}>
           {visibleItems.map((item) => {
             const KindIcon = kindIcons[item.kind];
             const episodes = item.episodes || [];
@@ -583,7 +553,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
             );
           })}
         </div>
-      )}
+      ))}
     </section>
   );
 }
