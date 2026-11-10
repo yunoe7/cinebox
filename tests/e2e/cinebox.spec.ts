@@ -254,3 +254,138 @@ test("un nouvel affichage redémarre proprement le délai automatique", async ({
   await expectAutoDismissed(secondToast, secondShownAt);
   await expect(firstToast).toBeHidden();
 });
+
+test("l’administration sépare le catalogue D1 de la bibliothèque locale sur les trois pages", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
+  const nav = page.locator(".admin-section-nav");
+  const localGrid = page.locator(".admin-content-grid");
+
+  await nav.getByRole("button", { name: "Films" }).click();
+  await expect(page.locator(".admin-source-card.is-d1 strong")).toHaveText("Catalogue partagé · D1");
+  await expect(page.locator(".admin-source-card.is-local strong")).toHaveText("Bibliothèque locale · cet appareil");
+  await expect(page.getByRole("heading", { name: /Fiches films/ })).toBeVisible();
+  await expect(page.getByText("Connexion administrateur requise")).toBeVisible();
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Le Voyage Bleu"]);
+
+  await page.getByRole("combobox", { name: "Filtrer les films administrés par genre" }).selectOption("Aventure");
+  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Le Voyage Bleu"]);
+  await page.getByRole("combobox", { name: "Filtrer les films administrés par année" }).selectOption("2024");
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await page.locator(".admin-filter-reset").click();
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+
+  await nav.getByRole("button", { name: "Séries" }).click();
+  await expect(page.getByRole("heading", { name: /Fiches séries/ })).toBeVisible();
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await expect(localGrid.locator(".admin-card-details")).toContainText("1 saison · 1 ép.");
+  await expect(localGrid.locator(".admin-card-details")).toContainText("0/1 vidéos");
+  await page.getByRole("combobox", { name: "Filtrer les séries administrés par genre" }).selectOption("Thriller");
+  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Signal Rouge"]);
+  await page.getByRole("combobox", { name: "Trier les contenus administrés" }).selectOption("episodes-desc");
+  await page.getByRole("button", { name: "Actions pour Signal Rouge" }).click();
+  await page.getByRole("button", { name: "Saisons & épisodes" }).click();
+  const seriesDetails = page.getByRole("dialog");
+  await expect(seriesDetails.locator("#detail-modal-title")).toHaveText("Signal Rouge");
+  await seriesDetails.getByRole("button", { name: "Fermer les détails" }).click();
+
+  await nav.getByRole("button", { name: "Vidéos" }).click();
+  await expect(page.getByRole("heading", { name: /Fiches vidéos/ })).toBeVisible();
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await expect(localGrid.locator(".admin-card-details")).toContainText("18 min");
+  await page.getByRole("combobox", { name: "Filtrer les vidéos administrés par catégorie" }).selectOption("Voyage");
+  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Les routes du silence"]);
+  await page.getByRole("combobox", { name: "Filtrer les vidéos administrées par durée" }).selectOption("10-30");
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Trier les contenus administrés" }).selectOption("duration-desc");
+  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Les routes du silence"]);
+
+  await page.getByRole("textbox", { name: "Rechercher dans la bibliothèque" }).fill("contenu absent");
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(0);
+  await expect(page.getByText("Aucun contenu ne correspond")).toBeVisible();
+  await page.locator(".admin-empty-panel").getByRole("button", { name: "Effacer la recherche" }).click();
+  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+});
+
+test("la connexion administrateur utilise un cookie HttpOnly puis se déconnecte", async ({ page }) => {
+  let authenticated = false;
+
+  await page.route("**/api/auth/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated, configured: true }),
+    });
+  });
+
+  await page.route("**/api/auth/login", async (route) => {
+    const body = route.request().postDataJSON() as { password?: string } | null;
+    if (body?.password !== "correct horse battery staple") {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Mot de passe administrateur incorrect." }),
+      });
+      return;
+    }
+    authenticated = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        // The e2e server runs on plain HTTP, so the dev cookie name is used.
+        // The attributes are the ones that matter: HttpOnly and SameSite.
+        "set-cookie": "cinebox_admin=e2e-session; Path=/; HttpOnly; SameSite=Strict",
+      },
+      body: JSON.stringify({ authenticated: true, expiresAt: Date.now() + 3600_000 }),
+    });
+  });
+
+  await page.route("**/api/auth/logout", async (route) => {
+    authenticated = false;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        "set-cookie": "cinebox_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
+      },
+      body: JSON.stringify({ authenticated: false }),
+    });
+  });
+
+  await page.route("**/api/catalog/manage", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ titles: [] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
+  await page.locator(".admin-section-nav").getByRole("button", { name: "Films" }).click();
+
+  const panel = page.locator(".admin-shared-catalog");
+  await expect(panel.getByText("Connexion administrateur requise")).toBeVisible();
+  const passwordInput = panel.getByLabel("Mot de passe administrateur");
+
+  await passwordInput.fill("mauvais mot de passe");
+  await panel.getByRole("button", { name: "Se connecter" }).click();
+  await expect(panel.getByText("Mot de passe administrateur incorrect.")).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
+
+  await passwordInput.fill("correct horse battery staple");
+  await panel.getByRole("button", { name: "Se connecter" }).click();
+  await expect(panel.getByRole("button", { name: "Déconnexion" })).toBeVisible();
+
+  const cookies = await page.context().cookies();
+  const sessionCookie = cookies.find((cookie) => cookie.name === "cinebox_admin");
+  expect(sessionCookie?.httpOnly).toBe(true);
+  expect(sessionCookie?.sameSite).toBe("Strict");
+  expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
+
+  await panel.getByRole("button", { name: "Déconnexion" }).click();
+  await expect(panel.getByText("Connexion administrateur requise")).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
+});

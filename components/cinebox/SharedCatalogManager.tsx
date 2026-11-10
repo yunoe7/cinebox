@@ -1,34 +1,589 @@
 "use client";
-import {useCallback,useEffect,useState} from "react";
-import {Check,LoaderCircle,RefreshCw,Save,Trash2,Video,EyeOff,Edit3} from "lucide-react";
-type Episode={id:string;season_number:number;episode_number:number;title:string;stream_uid:string|null;duration_seconds:number|null};
-type Item={id:string;kind:"movie"|"series"|"video";title:string;overview:string;release_date:string|null;poster_path:string|null;published:number;metadata?:{bunnyVideoId?:string};episodes:Episode[]};
-const button={border:"1px solid rgba(213,180,122,.3)",borderRadius:8,padding:"8px 10px",background:"rgba(213,180,122,.08)",color:"#d9bb82",fontSize:10,cursor:"pointer"} as const;
-export function SharedCatalogManager({kindFilter}:{kindFilter?:"movie"|"series"|"video"}){
- const [token,setToken]=useState("");const [items,setItems]=useState<Item[]>([]);const [loading,setLoading]=useState(false);const [busy,setBusy]=useState("");const [message,setMessage]=useState("");const [editing,setEditing]=useState<string|null>(null);const [draftTitle,setDraftTitle]=useState("");const [draftOverview,setDraftOverview]=useState("");
- useEffect(()=>{const saved=sessionStorage.getItem("cinebox-admin-token")||"";setToken(saved)},[]);
- const request=useCallback(async(path:string,init:RequestInit={})=>{const headers=new Headers(init.headers);headers.set("content-type","application/json");headers.set("authorization","Bearer "+token);const r=await fetch(path,{...init,headers});const j=await r.json();if(!r.ok)throw new Error(j.error||"Erreur serveur");return j},[token]);
- const refresh=useCallback(async()=>{if(token.length<32){setMessage("Saisis le code administrateur pour charger le catalogue partagé.");return}setLoading(true);setMessage("");try{const data=await request("/api/catalog/manage",{cache:"no-store"});setItems(data.titles||[])}catch(e){setMessage(e instanceof Error?e.message:"Chargement impossible.")}finally{setLoading(false)}},[request,token]);
- useEffect(()=>{if(token.length>=32)void refresh()},[token,refresh]);
- const visibleItems=items.filter(item=>!kindFilter||item.kind===kindFilter);
- const detachVideo=async(videoId:string,item:Item)=>{if(!confirm("Dissocier cette vidéo de la fiche ? Le fichier restera dans Bunny."))return;setBusy(videoId);try{await request("/api/catalog/manage",{method:"PATCH",body:JSON.stringify({id:item.id,detachVideoId:videoId})});setMessage("Vidéo dissociée. Le fichier reste dans Bunny.");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"Dissociation impossible.")}finally{setBusy("")}};
- const save=async(item:Item)=>{setBusy(item.id);try{await request("/api/catalog/manage",{method:"PATCH",body:JSON.stringify({id:item.id,title:draftTitle,overview:draftOverview})});setEditing(null);setMessage("Fiche mise à jour.");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"Modification impossible.")}finally{setBusy("")}};
- const republish=async(item:Item)=>{setBusy(item.id);try{await request("/api/catalog/manage",{method:"PATCH",body:JSON.stringify({id:item.id,published:true})});setMessage("Fiche republiée dans le catalogue commun.");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"Publication impossible.")}finally{setBusy("")}};
- const unpublish=async(item:Item)=>{if(!confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée, sans supprimer la vidéo Bunny.`))return;setBusy(item.id);try{await request("/api/catalog/manage",{method:"DELETE",body:JSON.stringify({id:item.id})});setMessage("Fiche retirée du catalogue partagé. La vidéo reste dans Bunny.");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"Retrait impossible.")}finally{setBusy("")}};
- const deleteVideo=async(videoId:string,item:Item)=>{if(!confirm("Supprimer définitivement cette vidéo de la bibliothèque Bunny ? Cette action est irréversible."))return;setBusy(videoId);try{await request("/api/bunny/delete",{method:"POST",body:JSON.stringify({videoId})});setMessage("Vidéo supprimée de Bunny et association retirée.");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"Suppression impossible.")}finally{setBusy("")}};
- const kindLabel=(kind:string)=>kind==="series"?"Série":kind==="video"?"Vidéo":"Film";
- return <section style={{marginTop:22,padding:20,border:"1px solid rgba(220,195,146,.18)",borderRadius:15,background:"#111214"}}>
-  <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}><div><div style={{fontSize:9,letterSpacing:".18em",color:"#b99a67"}}>CATALOGUE CENTRAL · D1</div><h3 style={{margin:"6px 0",fontSize:18,color:"#f4f0e8"}}>Gérer les titres publiés</h3><p style={{margin:0,fontSize:11,color:"#888"}}>Modifications visibles par tous les utilisateurs de CinéBox.</p></div><button style={button} onClick={()=>void refresh()} disabled={loading||token.length<32}>{loading?<LoaderCircle size={13}/>:<RefreshCw size={13}/>} Actualiser</button></header>
-  <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}><input type="password" autoComplete="new-password" placeholder="Code administrateur" value={token} onChange={e=>{setToken(e.target.value);if(e.target.value.length>=32)sessionStorage.setItem("cinebox-admin-token",e.target.value);else sessionStorage.removeItem("cinebox-admin-token")}} style={{flex:"1 1 260px",minHeight:38,borderRadius:8,padding:"0 11px",background:"#090a0c",color:"#eee",border:"1px solid #333"}}/><span style={{alignSelf:"center",fontSize:10,color:"#888"}}>{visibleItems.filter(x=>x.published===1).length} publié(s) · {visibleItems.length} fiche(s)</span></div>
-  {message&&<p role="status" style={{fontSize:11,color:message.toLowerCase().includes("impossible")||message.toLowerCase().includes("erreur")?"#ffaaa0":"#b9d8ae"}}>{message}</p>}
-  <div style={{display:"grid",gap:9,marginTop:14}}>{visibleItems.map(item=><article key={item.id} style={{padding:12,borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.02)"}}>
-    <div style={{display:"flex",alignItems:"flex-start",gap:12}}>{item.poster_path?<img src={item.poster_path.startsWith("http")?item.poster_path:`https://image.tmdb.org/t/p/w185${item.poster_path}`} alt="" style={{width:48,height:68,objectFit:"cover",borderRadius:5}}/>:<div style={{width:48,height:68,background:"#222",display:"grid",placeItems:"center"}}><Video size={18}/></div>}
-    <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><strong style={{fontSize:12,color:"#eee"}}>{item.title}</strong><span style={{fontSize:9,color:item.published===1?"#b9d8ae":"#d8ad78"}}>{item.published===1?"Publié":"Masqué"}</span><small style={{fontSize:9,color:"#888"}}>{kindLabel(item.kind)}</small></div><p style={{fontSize:10,color:"#888",margin:"5px 0"}}>{item.overview?.slice(0,180)||"Sans synopsis"}</p><small style={{fontSize:9,color:"#888"}}>{item.episodes?.length||0} épisode(s) · {(item.episodes||[]).filter(e=>e.stream_uid).length} vidéo(s) associée(s)</small></div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}><button style={button} onClick={()=>{setEditing(editing===item.id?null:item.id);setDraftTitle(item.title);setDraftOverview(item.overview)}}><Edit3 size={12}/> Modifier</button>{item.published===1?<button style={button} onClick={()=>void unpublish(item)}><EyeOff size={12}/> Retirer</button>:<button style={button} onClick={()=>void republish(item)}><Check size={12}/> Republier</button>}</div></div>
-    {editing===item.id&&<div style={{display:"grid",gap:8,marginTop:12}}><input value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} aria-label="Titre" style={{minHeight:36,padding:"0 10px",borderRadius:7,background:"#090a0c",border:"1px solid #333",color:"#eee"}}/><textarea value={draftOverview} onChange={e=>setDraftOverview(e.target.value)} aria-label="Synopsis" rows={3} style={{padding:10,borderRadius:7,background:"#090a0c",border:"1px solid #333",color:"#eee"}}/><button style={button} disabled={busy===item.id||!draftTitle.trim()} onClick={()=>void save(item)}>{busy===item.id?<LoaderCircle size={12}/>:<Save size={12}/>} Enregistrer les modifications</button></div>}
-    {item.metadata?.bunnyVideoId&&<div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 0 0 60px",fontSize:10,color:"#aaa"}}><Video size={12}/><span style={{flex:1}}>Vidéo du titre</span><button style={{...button,padding:"5px 8px"}} disabled={busy===item.metadata.bunnyVideoId} onClick={()=>void detachVideo(item.metadata!.bunnyVideoId!,item)}>Dissocier</button><button style={{...button,padding:"5px 8px",color:"#e6a39a"}} disabled={busy===item.metadata.bunnyVideoId} onClick={()=>void deleteVideo(item.metadata!.bunnyVideoId!,item)}><Trash2 size={11}/> Supprimer Bunny</button></div>}
-    {(item.episodes||[]).filter(e=>e.stream_uid).map(ep=><div key={ep.id} style={{display:"flex",gap:8,alignItems:"center",padding:"7px 0 0 60px",fontSize:10,color:"#aaa"}}><Video size={12}/><span style={{flex:1}}>S{ep.season_number} · E{ep.episode_number} — {ep.title}</span><button style={{...button,padding:"5px 8px"}} disabled={busy===ep.stream_uid} onClick={()=>void detachVideo(ep.stream_uid!,item)}>Dissocier</button><button style={{...button,padding:"5px 8px",color:"#e6a39a"}} disabled={busy===ep.stream_uid} onClick={()=>void deleteVideo(ep.stream_uid!,item)}><Trash2 size={11}/> Supprimer Bunny</button></div>)}
-  </article>)}</div>
-  {!loading&&token.length>=32&&visibleItems.length===0&&<p style={{fontSize:11,color:"#888"}}>Aucun titre dans le catalogue distant.</p>}
- </section>;
+
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import {
+  Check,
+  ChevronDown,
+  Clock3,
+  Database,
+  Edit3,
+  EyeOff,
+  Film,
+  HardDrive,
+  LoaderCircle,
+  LogOut,
+  RefreshCw,
+  Save,
+  Search,
+  ShieldCheck,
+  Trash2,
+  Tv,
+  Video,
+} from "lucide-react";
+import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+
+type Episode = {
+  id: string;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  overview?: string;
+  duration_seconds: number | null;
+  stream_uid: string | null;
+  thumbnail_path?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+type Metadata = Record<string, unknown>;
+
+type Item = {
+  id: string;
+  kind: "movie" | "series" | "video";
+  title: string;
+  overview: string;
+  release_date: string | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  genres?: string[];
+  published: number;
+  updated_at?: string;
+  metadata?: Metadata;
+  episodes?: Episode[];
+};
+
+type StatusFilter = "all" | "published" | "hidden";
+type SortMode = "updated" | "title" | "year-desc" | "year-asc" | "episodes" | "duration";
+
+const kindLabels = { movie: "Film", series: "Série", video: "Vidéo" } as const;
+const kindIcons = { movie: Film, series: Tv, video: Video } as const;
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function numeric(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metaString(metadata: Metadata | undefined, key: string): string {
+  return text(metadata?.[key]);
+}
+
+function metaNumber(metadata: Metadata | undefined, key: string): number | null {
+  return numeric(metadata?.[key]);
+}
+
+function tmdbImage(path: string | null | undefined, size = "w185"): string {
+  if (!path) return "";
+  return path.startsWith("http") ? path : `https://image.tmdb.org/t/p/${size}${path}`;
+}
+
+function yearOf(item: Item): number {
+  if (!item.release_date) return 0;
+  const year = new Date(item.release_date).getUTCFullYear();
+  return Number.isFinite(year) ? year : 0;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds || seconds <= 0) return "Durée inconnue";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function runtimeLabel(item: Item): string {
+  const runtime = metaNumber(item.metadata, "runtime");
+  if (runtime && runtime > 0) return `${Math.round(runtime)} min`;
+  const seconds = metaNumber(item.metadata, "durationSeconds") ?? metaNumber(item.metadata, "duration");
+  if (seconds && seconds > 0) return formatDuration(seconds);
+  return "Durée inconnue";
+}
+
+function updatedLabel(value?: string): string {
+  if (!value) return "Date inconnue";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+function episodeCount(item: Item): number {
+  return (item.episodes || []).length;
+}
+
+function linkedEpisodeCount(item: Item): number {
+  return (item.episodes || []).filter((episode) => Boolean(episode.stream_uid)).length;
+}
+
+function seasonCount(item: Item): number {
+  return new Set((item.episodes || []).map((episode) => episode.season_number)).size;
+}
+
+function searchable(item: Item): string {
+  return [
+    item.title,
+    item.overview,
+    item.release_date || "",
+    kindLabels[item.kind],
+    ...(item.genres || []),
+    metaString(item.metadata, "bunnyVideoId"),
+    metaString(item.metadata, "bunnyLibraryId"),
+    ...(item.episodes || []).flatMap((episode) => [episode.title, episode.stream_uid || ""]),
+  ].join(" ").toLocaleLowerCase("fr");
+}
+
+export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "series" | "video" }) {
+  const headingId = useId();
+  const [authState, setAuthState] = useState<"checking" | "anonymous" | "authenticated">("checking");
+  const [password, setPassword] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [error, setError] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftOverview, setDraftOverview] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("updated");
+
+  useEffect(() => {
+    let cancelled = false;
+    void getAdminSession().then((session) => {
+      if (!cancelled) setAuthState(session.authenticated ? "authenticated" : "anonymous");
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const logout = async () => {
+    await logoutAdmin();
+    setAuthState("anonymous");
+    setPassword("");
+    setItems([]);
+    setLoadedOnce(false);
+    setMessage("");
+    setError(false);
+  };
+
+  const login = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (loggingIn || password.length === 0) return;
+    setLoggingIn(true);
+    setError(false);
+    setMessage("");
+    try {
+      await loginAdmin(password);
+      setPassword("");
+      setAuthState("authenticated");
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Connexion administrateur impossible.");
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    try {
+      return await adminJson(path, init);
+    } catch (reason) {
+      if (isAdminAuthError(reason) && reason.status === 401) {
+        setAuthState("anonymous");
+        setItems([]);
+        setLoadedOnce(false);
+      }
+      throw reason;
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (authState !== "authenticated") {
+      setItems([]);
+      setLoadedOnce(false);
+      setError(false);
+      setMessage("");
+      return;
+    }
+    setLoading(true);
+    setError(false);
+    setMessage("");
+    try {
+      const payload = await request("/api/catalog/manage", { cache: "no-store" });
+      const next = payload && typeof payload === "object" && Array.isArray((payload as { titles?: unknown }).titles)
+        ? (payload as { titles: Item[] }).titles
+        : [];
+      setItems(next);
+      setLoadedOnce(true);
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Chargement du catalogue partagé impossible.");
+    } finally {
+      setLoading(false);
+    }
+  }, [authState, request]);
+
+  useEffect(() => {
+    if (authState === "authenticated") void refresh();
+  }, [authState, refresh]);
+
+  const kindItems = useMemo(
+    () => items.filter((item) => !kindFilter || item.kind === kindFilter),
+    [items, kindFilter],
+  );
+
+  const visibleItems = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase("fr");
+    return kindItems
+      .filter((item) => {
+        if (statusFilter === "published" && Number(item.published) !== 1) return false;
+        if (statusFilter === "hidden" && Number(item.published) === 1) return false;
+        return !needle || searchable(item).includes(needle);
+      })
+      .sort((a, b) => {
+        if (sortMode === "title") return a.title.localeCompare(b.title, "fr");
+        if (sortMode === "year-desc") return yearOf(b) - yearOf(a) || a.title.localeCompare(b.title, "fr");
+        if (sortMode === "year-asc") return yearOf(a) - yearOf(b) || a.title.localeCompare(b.title, "fr");
+        if (sortMode === "episodes") return episodeCount(b) - episodeCount(a) || a.title.localeCompare(b.title, "fr");
+        if (sortMode === "duration") return (metaNumber(b.metadata, "runtime") || 0) - (metaNumber(a.metadata, "runtime") || 0) || a.title.localeCompare(b.title, "fr");
+        return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime() || a.title.localeCompare(b.title, "fr");
+      });
+  }, [kindItems, query, statusFilter, sortMode]);
+
+  const publishedCount = kindItems.filter((item) => Number(item.published) === 1).length;
+  const kindLabel = kindFilter ? kindLabels[kindFilter] : "fiche";
+  const kindPlural = kindFilter === "movie" ? "films" : kindFilter === "series" ? "séries" : kindFilter === "video" ? "vidéos" : "fiches";
+  const filtersActive = Boolean(query.trim()) || statusFilter !== "all" || sortMode !== "updated";
+
+  const detachVideo = async (videoId: string, item: Item) => {
+    if (!window.confirm("Dissocier cette vidéo de la fiche ? Le fichier restera dans Bunny.")) return;
+    setBusy(videoId);
+    setError(false);
+    try {
+      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, detachVideoId: videoId }) });
+      setMessage("Vidéo dissociée. Le fichier reste disponible dans Bunny.");
+      await refresh();
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Dissociation impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const save = async (item: Item) => {
+    setBusy(item.id);
+    setError(false);
+    try {
+      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, title: draftTitle, overview: draftOverview }) });
+      setEditing(null);
+      setMessage("Fiche mise à jour dans le catalogue partagé.");
+      await refresh();
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Modification impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const republish = async (item: Item) => {
+    setBusy(item.id);
+    setError(false);
+    try {
+      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, published: true }) });
+      setMessage("Fiche republiée dans le catalogue partagé.");
+      await refresh();
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Publication impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const unpublish = async (item: Item) => {
+    if (!window.confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée, sans supprimer la vidéo Bunny.`)) return;
+    setBusy(item.id);
+    setError(false);
+    try {
+      await request("/api/catalog/manage", { method: "DELETE", body: JSON.stringify({ id: item.id }) });
+      setMessage("Fiche retirée du catalogue partagé. La vidéo reste dans Bunny.");
+      await refresh();
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Retrait impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const deleteVideo = async (videoId: string, item: Item) => {
+    if (!window.confirm("Supprimer définitivement cette vidéo de la bibliothèque Bunny ? Cette action est irréversible.")) return;
+    setBusy(videoId);
+    setError(false);
+    try {
+      await request("/api/bunny/delete", { method: "POST", body: JSON.stringify({ videoId }) });
+      setMessage("Vidéo supprimée de Bunny et association retirée.");
+      await refresh();
+    } catch (reason) {
+      setError(true);
+      setMessage(reason instanceof Error ? reason.message : "Suppression impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <section className="admin-shared-catalog" aria-labelledby={headingId}>
+      <header className="admin-shared-header">
+        <div>
+          <div className="eyebrow">CATALOGUE PARTAGÉ · D1</div>
+          <h3 id={headingId}>Fiches {kindPlural} <span className="admin-source-badge is-d1">D1</span></h3>
+          <p>Source distante, visible par tous les utilisateurs. Les droits sont vérifiés côté serveur.</p>
+        </div>
+        <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading || authState !== "authenticated"}>
+          {loading ? <LoaderCircle size={14} className="admin-spin" /> : <RefreshCw size={14} />}
+          Actualiser
+        </button>
+      </header>
+
+      <div className="admin-shared-token">
+        {authState === "authenticated" ? (
+          <>
+            <span className="admin-shared-count">
+              {publishedCount} publié{publishedCount === 1 ? "" : "s"} · {kindItems.length} {kindLabel}{kindItems.length === 1 ? "" : "s"}
+            </span>
+            <button type="button" className="admin-shared-logout" onClick={() => void logout()} title="Fermer la session administrateur">
+              <LogOut size={13} aria-hidden="true" />
+              Déconnexion
+            </button>
+          </>
+        ) : authState === "anonymous" ? (
+          <form className="admin-shared-login" onSubmit={login}>
+            <label>
+              <ShieldCheck size={15} aria-hidden="true" />
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Mot de passe administrateur"
+                aria-label="Mot de passe administrateur"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                disabled={loggingIn}
+              />
+            </label>
+            <button type="submit" className="admin-shared-login-submit" disabled={loggingIn || password.length === 0}>
+              {loggingIn ? <LoaderCircle size={13} className="admin-spin" aria-hidden="true" /> : <ShieldCheck size={13} aria-hidden="true" />}
+              Se connecter
+            </button>
+          </form>
+        ) : (
+          <span className="admin-shared-count">Vérification de la session…</span>
+        )}
+      </div>
+
+      {authState === "authenticated" && (
+        <div className="admin-shared-toolbar" role="group" aria-label={`Recherche, filtres et tri des ${kindPlural} partagés`}>
+          <label className="admin-shared-search">
+            <Search size={14} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Rechercher une fiche…"
+              aria-label="Rechercher dans le catalogue partagé"
+            />
+          </label>
+          <label>
+            <span>Statut</span>
+            <select aria-label="Filtrer le catalogue partagé par statut" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+              <option value="all">Tous les statuts</option>
+              <option value="published">Publiés</option>
+              <option value="hidden">Masqués</option>
+            </select>
+          </label>
+          <label>
+            <span>Trier</span>
+            <select aria-label="Trier le catalogue partagé" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+              <option value="updated">Mise à jour récente</option>
+              <option value="title">Titre A à Z</option>
+              <option value="year-desc">Année décroissante</option>
+              <option value="year-asc">Année croissante</option>
+              <option value="episodes">Nombre d’épisodes</option>
+              <option value="duration">Durée décroissante</option>
+            </select>
+          </label>
+          {filtersActive && (
+            <button type="button" className="admin-shared-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setSortMode("updated"); }}>
+              Réinitialiser
+            </button>
+          )}
+        </div>
+      )}
+
+      {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
+
+      {authState === "checking" ? (
+        <div className="admin-shared-state">
+          <LoaderCircle size={22} className="admin-spin" aria-hidden="true" />
+          <strong>Vérification de la session…</strong>
+          <span>CinéBox vérifie la session administrateur auprès du serveur.</span>
+        </div>
+      ) : authState === "anonymous" ? (
+        <div className="admin-shared-state">
+          <ShieldCheck size={22} aria-hidden="true" />
+          <strong>Connexion administrateur requise</strong>
+          <span>Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1.</span>
+        </div>
+      ) : loading && !loadedOnce ? (
+        <div className="admin-shared-skeletons" aria-label="Chargement du catalogue partagé">
+          {[0, 1, 2].map((entry) => <div className="admin-shared-skeleton" key={entry}><i /><span><b /><b /><b /></span></div>)}
+        </div>
+      ) : error && !kindItems.length ? (
+        <div className="admin-shared-state is-error" role="alert">
+          <Database size={22} aria-hidden="true" />
+          <strong>Catalogue partagé indisponible</strong>
+          <span>{message || "La requête D1 n'a pas abouti. Vérifie la session administrateur et réessaie."}</span>
+          <button type="button" onClick={() => void refresh()}>Réessayer</button>
+        </div>
+      ) : !kindItems.length ? (
+        <div className="admin-shared-state">
+          <Database size={22} aria-hidden="true" />
+          <strong>Aucune fiche {kindLabel} dans le catalogue partagé</strong>
+          <span>Publie un contenu depuis l’onglet Médias pour le retrouver ici.</span>
+        </div>
+      ) : !visibleItems.length ? (
+        <div className="admin-shared-state">
+          <Search size={22} aria-hidden="true" />
+          <strong>Aucune fiche ne correspond</strong>
+          <span>Modifie la recherche ou le filtre de statut pour retrouver les fiches {kindPlural}.</span>
+          <button type="button" onClick={() => { setQuery(""); setStatusFilter("all"); setSortMode("updated"); }}>Effacer les filtres</button>
+        </div>
+      ) : (
+        <div className="admin-shared-list">
+          {visibleItems.map((item) => {
+            const KindIcon = kindIcons[item.kind];
+            const episodes = item.episodes || [];
+            const linked = linkedEpisodeCount(item);
+            const totalEpisodes = episodeCount(item);
+            const managementPercent = totalEpisodes ? Math.round((linked / totalEpisodes) * 100) : 0;
+            const bunnyVideoId = metaString(item.metadata, "bunnyVideoId");
+            const bunnyLibraryId = metaString(item.metadata, "bunnyLibraryId");
+            const poster = item.kind === "video"
+              ? tmdbImage(item.backdrop_path, "w300") || tmdbImage(item.poster_path, "w300")
+              : tmdbImage(item.poster_path, "w185");
+            const year = yearOf(item);
+            const isPublished = Number(item.published) === 1;
+            const isEditing = editing === item.id;
+            return (
+              <article className={`admin-shared-item ${item.kind === "video" ? "is-video" : ""} ${isEditing ? "is-editing" : ""}`} key={item.id}>
+                <div className={`admin-shared-poster ${item.kind === "video" ? "is-wide" : ""}`}>
+                  {poster ? <img src={poster} alt={`Affiche de ${item.title}`} loading="lazy" /> : <span aria-hidden="true"><Video size={19} /></span>}
+                </div>
+
+                <div className="admin-shared-body">
+                  <div className="admin-shared-title-row">
+                    <KindIcon size={14} aria-hidden="true" />
+                    <strong>{item.title}</strong>
+                    <span className={`admin-status-chip ${isPublished ? "is-published" : "is-hidden"}`}>{isPublished ? "Publié" : "Masqué"}</span>
+                    <span className="admin-kind-chip">{kindLabels[item.kind]}</span>
+                  </div>
+
+                  <div className="admin-shared-meta-row">
+                    <span>{year || "Année inconnue"}</span>
+                    <span>{(item.genres || []).join(" · ") || "Genre non renseigné"}</span>
+                    <span><Clock3 size={11} aria-hidden="true" /> {item.kind === "series" ? `${seasonCount(item)} saison${seasonCount(item) === 1 ? "" : "s"} · ${totalEpisodes} épisode${totalEpisodes === 1 ? "" : "s"}` : runtimeLabel(item)}</span>
+                    <span>Mise à jour {updatedLabel(item.updated_at)}</span>
+                  </div>
+
+                  <p className="admin-shared-overview">{item.overview || "Synopsis non renseigné."}</p>
+
+                  {item.kind === "series" && (
+                    <div className="admin-shared-series">
+                      <div className="admin-shared-meter">
+                        <span><Tv size={12} aria-hidden="true" /> Gestion des épisodes</span>
+                        <strong>{linked}/{totalEpisodes} vidéo{linked === 1 ? "" : "s"} associée{linked === 1 ? "" : "s"}</strong>
+                      </div>
+                      <div className="admin-progress-track" role="progressbar" aria-label={`Association Bunny de ${item.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={managementPercent}>
+                        <i style={{ width: `${managementPercent}%` }} />
+                      </div>
+                      {episodes.length > 0 && (
+                        <details className="admin-shared-episodes">
+                          <summary>Saisons &amp; épisodes <ChevronDown size={13} aria-hidden="true" /></summary>
+                          <div className="admin-shared-episode-list">
+                            {episodes.map((episode) => (
+                              <div className="admin-shared-episode" key={episode.id}>
+                                <span className="admin-episode-code">S{episode.season_number} E{episode.episode_number}</span>
+                                <span className="admin-episode-name">{episode.title}</span>
+                                <span className={`admin-episode-link ${episode.stream_uid ? "is-linked" : ""}`}>{episode.stream_uid ? "Bunny" : "Sans vidéo"}</span>
+                                <span className="admin-episode-duration">{formatDuration(episode.duration_seconds)}</span>
+                                {episode.stream_uid && (
+                                  <span className="admin-episode-actions">
+                                    <button type="button" disabled={busy === episode.stream_uid} onClick={() => void detachVideo(episode.stream_uid!, item)}>Dissocier</button>
+                                    <button type="button" className="is-danger" disabled={busy === episode.stream_uid} onClick={() => void deleteVideo(episode.stream_uid!, item)}><Trash2 size={11} /> Bunny</button>
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+
+                  {item.kind === "video" && (
+                    <div className="admin-shared-video-meta">
+                      <span><Clock3 size={11} aria-hidden="true" /> {runtimeLabel(item)}</span>
+                      {bunnyVideoId && <span className="admin-bunny-id"><Video size={11} aria-hidden="true" /> Bunny · <code title={bunnyVideoId}>{bunnyVideoId}</code></span>}
+                      {bunnyLibraryId && <span>Bibliothèque <code title={bunnyLibraryId}>{bunnyLibraryId}</code></span>}
+                      {!bunnyVideoId && <span className="admin-muted">Aucune vidéo Bunny associée</span>}
+                    </div>
+                  )}
+
+                  {item.kind === "movie" && bunnyVideoId && (
+                    <div className="admin-shared-video-meta">
+                      <span className="admin-bunny-id"><Video size={11} aria-hidden="true" /> Bunny · <code title={bunnyVideoId}>{bunnyVideoId}</code></span>
+                      {bunnyLibraryId && <span>Bibliothèque <code title={bunnyLibraryId}>{bunnyLibraryId}</code></span>}
+                    </div>
+                  )}
+
+                  {bunnyVideoId && item.kind !== "series" && (
+                    <div className="admin-shared-association">
+                      <Video size={12} aria-hidden="true" />
+                      <span>Vidéo du titre associée</span>
+                      <button type="button" disabled={busy === bunnyVideoId} onClick={() => void detachVideo(bunnyVideoId, item)}>Dissocier</button>
+                      <button type="button" className="is-danger" disabled={busy === bunnyVideoId} onClick={() => void deleteVideo(bunnyVideoId, item)}><Trash2 size={11} /> Supprimer Bunny</button>
+                    </div>
+                  )}
+
+                  <div className="admin-shared-actions">
+                    <button type="button" className={isEditing ? "is-active" : ""} onClick={() => { setEditing(isEditing ? null : item.id); setDraftTitle(item.title); setDraftOverview(item.overview); }}>
+                      <Edit3 size={13} /> {isEditing ? "Fermer" : "Modifier"}
+                    </button>
+                    {isPublished
+                      ? <button type="button" onClick={() => void unpublish(item)} disabled={busy === item.id}><EyeOff size={13} /> Retirer</button>
+                      : <button type="button" onClick={() => void republish(item)} disabled={busy === item.id}><Check size={13} /> Republier</button>}
+                    <span className="admin-shared-source"><HardDrive size={12} aria-hidden="true" /> D1 · {item.id.slice(0, 14)}{item.id.length > 14 ? "…" : ""}</span>
+                  </div>
+
+                  {isEditing && (
+                    <div className="admin-shared-editor">
+                      <label><span>Titre</span><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} aria-label="Titre" maxLength={300} /></label>
+                      <label><span>Synopsis</span><textarea value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} aria-label="Synopsis" rows={4} maxLength={12000} /></label>
+                      <div>
+                        <button type="button" className="is-primary" disabled={busy === item.id || !draftTitle.trim()} onClick={() => void save(item)}>
+                          {busy === item.id ? <LoaderCircle size={13} className="admin-spin" /> : <Save size={13} />} Enregistrer les modifications
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)}>Annuler</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }

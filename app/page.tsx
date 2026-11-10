@@ -18,6 +18,11 @@ import { SpotlightSurface } from "../components/ui/spotlight-surface";
 import { MagicCard } from "../components/magicui/magic-card";
 import { ShimmerButton } from "../components/magicui/shimmer-button";
 import { BlurFade } from "../components/magicui/blur-fade";
+import { NumberTicker } from "../components/magicui/number-ticker";
+import { AnimatedList } from "../components/magicui/animated-list";
+import { TextAnimate } from "../components/magicui/text-animate";
+import { AnimatedGridPattern } from "../components/magicui/animated-grid-pattern";
+import { AnimatedShinyText } from "../components/magicui/animated-shiny-text";
 import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
@@ -26,13 +31,16 @@ import { SharedCatalog } from "../components/cinebox/SharedCatalog";
 import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
-import { loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
+import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
+import { canShowSharedCatalog, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
+import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
+import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
 import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
-  Sparkles, Tv, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck,
+  Tv, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck,
   LayoutDashboard, Image as ImageIcon, Tags, Database, Clock3, Pencil,
-  Check, HardDrive, Library
+  Check, HardDrive, Library, Star, RotateCcw
 } from "lucide-react";
 
 const { stageAssets } = mediaLifecycle;
@@ -108,10 +116,6 @@ function isFavoriteList(value: unknown): value is number[] {
   return Array.isArray(value) && value.every((id) => Number.isSafeInteger(id));
 }
 
-function isChildRestrictedTitle(title: Title): boolean {
-  return /(?:18\+|adulte|porn(?:ographique)?|érotique|gore|horreur|épouvante)/i.test(`${title.name} ${title.genre}`);
-}
-
 function preserveLegacyPlaybackFields(next: Title[]): Title[] | null {
   const current = readLocalJson(() => window.localStorage, "cinebox-titles", isTitleList);
   if (current.status === "missing") return next;
@@ -177,6 +181,30 @@ function getSeriesViewingStatus(title: Title): "unwatched" | "in-progress" | "wa
   if (title.progress >= 100 || (episodes.length > 0 && episodes.every((episode) => (episode.progress || 0) >= 100))) return "watched";
   if (title.progress > 0 || episodes.some((episode) => (episode.progress || 0) > 0)) return "in-progress";
   return "unwatched";
+}
+
+function getSeriesManagementStats(title: Title) {
+  const episodes = (title.seasons || []).flatMap((season) => season.episodes);
+  const withVideo = episodes.filter((episode) => Boolean(episode.videoUrl)).length;
+  return {
+    seasons: (title.seasons || []).length,
+    total: episodes.length,
+    withVideo,
+    percent: episodes.length ? Math.round((withVideo / episodes.length) * 100) : 0,
+  };
+}
+
+function getViewingLabel(title: Title): string {
+  const progress = title.kind === "Série" ? getSeriesProgress(title) : title.progress || 0;
+  if (progress >= 100) return "Terminé";
+  if (progress > 0) return `${Math.round(progress)} % vu`;
+  return title.kind === "Série" ? "À découvrir" : "À voir";
+}
+
+function getBunnyVideoIdFromUrl(url?: string): string | null {
+  if (!url) return null;
+  const match = url.match(/mediadelivery\.net\/(?:embed|play)\/([^/]+)\/([a-f0-9-]{20,64})/i);
+  return match?.[2] || null;
 }
 
 const videoDurationBands = [
@@ -286,6 +314,10 @@ export default function HomePage() {
   const [videoSortBy, setVideoSortBy] = useState("recent");
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]["id"]>("overview");
   const [adminSortBy, setAdminSortBy] = useState("recent");
+  const [adminGenreFilter, setAdminGenreFilter] = useState("all");
+  const [adminYearFilter, setAdminYearFilter] = useState("all");
+  const [adminViewingFilter, setAdminViewingFilter] = useState("all");
+  const [adminDurationFilter, setAdminDurationFilter] = useState("all");
   const [renamingGenre, setRenamingGenre] = useState<string | null>(null);
   const [genreDraft, setGenreDraft] = useState("");
   const [adminAssetDetails, setAdminAssetDetails] = useState<Record<string, { size: number; type: string }>>({});
@@ -294,6 +326,7 @@ export default function HomePage() {
   const [selectedEpisodeUrl, setSelectedEpisodeUrl] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<{ season: number; episode: number } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [submittingTitle, setSubmittingTitle] = useState(false);
   const [addKind, setAddKind] = useState<Kind>("Film");
   const [editingTitle, setEditingTitle] = useState<Title | null>(null);
   const [openCardMenu, setOpenCardMenu] = useState<number | null>(null);
@@ -320,7 +353,7 @@ export default function HomePage() {
   const activeProfile = useMemo(() => profileStore?.profiles.find((profile) => profile.id === activeProfileId) || null, [profileStore, activeProfileId]);
   const activeProfileData = activeProfile && profileStore ? profileStore.data[activeProfile.id] : null;
   const isChildProfile = Boolean(activeProfile?.isChild);
-  const browseTitles = useMemo(() => isChildProfile ? titles.filter((title) => !isChildRestrictedTitle(title)) : titles, [titles, isChildProfile]);
+  const browseTitles = useMemo(() => filterTitlesForProfile(titles, isChildProfile), [titles, isChildProfile]);
 
   useEffect(() => { syncBlobUrlOwner(`${blobOwnerPrefix}:library`, getTitlesBlobUrls(titles)); }, [blobOwnerPrefix, titles]);
   useEffect(() => { syncBlobUrlOwner(`${blobOwnerPrefix}:selected`, getTitleBlobUrls(selected)); }, [blobOwnerPrefix, selected]);
@@ -479,11 +512,7 @@ export default function HomePage() {
     };
   });
 
-  const recordProfileView = (titleId: number) => saveActiveProfileData((data) => ({
-    ...data,
-    viewCounts: { ...data.viewCounts, [String(titleId)]: (data.viewCounts[String(titleId)] || 0) + 1 },
-    history: [{ titleId, viewedAt: Date.now() }, ...data.history].slice(0, 200),
-  }));
+  const recordProfileView = (titleId: number) => saveActiveProfileData((data) => addProfileView(data, titleId));
 
   const commitCatalogAndFavorites = (nextTitles: Title[], nextFavorites: number[]) => {
     if (!canWriteTitlesRef.current) {
@@ -727,22 +756,34 @@ export default function HomePage() {
   }), [browseTitles, favorites]);
   const videoCategories = useMemo(() => Array.from(new Set(videoTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [videoTitles]);
   const availableVideoDurationBands = useMemo(() => videoDurationBands.filter((band) => videoTitles.some((item) => getDurationBand(item.duration) === band.value)), [videoTitles]);
+  const adminKind: Kind | null = adminSection === "films" ? "Film" : adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : null;
+  const adminLocalTitles = useMemo(() => adminKind ? browseTitles.filter((item) => item.kind === adminKind) : [], [browseTitles, adminKind]);
+  const adminLocalGenres = useMemo(() => Array.from(new Set(adminLocalTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [adminLocalTitles]);
+  const adminLocalYears = useMemo(() => Array.from(new Set(adminLocalTitles.map((item) => item.year))).sort((a, b) => b - a), [adminLocalTitles]);
+  const adminLocalDurationBands = useMemo(() => videoDurationBands.filter((band) => adminLocalTitles.some((item) => getDurationBand(item.duration) === band.value)), [adminLocalTitles]);
+  const adminLocalEpisodeCount = useMemo(() => adminLocalTitles.reduce((count, item) => count + getSeriesManagementStats(item).total, 0), [adminLocalTitles]);
+  const adminLocalLinkedEpisodes = useMemo(() => adminLocalTitles.reduce((count, item) => count + getSeriesManagementStats(item).withVideo, 0), [adminLocalTitles]);
+  const adminFiltersActive = adminGenreFilter !== "all" || adminYearFilter !== "all" || adminViewingFilter !== "all" || adminDurationFilter !== "all";
   const visibleTitles = useMemo(() => browseTitles.filter((item) => {
     const pageMatch = activePage === "Accueil" || activePage === "Administration" ||
       (activePage === "Ma liste" ? favorites.includes(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
     const filmPage = activePage === "Films";
     const seriesPage = activePage === "Séries";
     const videoPage = activePage === "Vidéos";
-    const adminKind = adminSection === "films" ? "Film" : adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : null;
-    const filterMatch = filmPage ? item.kind === "Film" : seriesPage ? item.kind === "Série" : videoPage ? item.kind === "Vidéo" : activePage === "Administration" && adminKind ? item.kind === adminKind : filter === "Tout" || item.kind === filter;
-    const genreMatch = filmPage ? filmGenreFilter === "all" || item.genre === filmGenreFilter : seriesPage ? seriesGenreFilter === "all" || item.genre === seriesGenreFilter : videoPage ? videoCategoryFilter === "all" || item.genre === videoCategoryFilter : genreFilter === "Tous les genres" || item.genre === genreFilter;
-    const yearMatch = filmPage ? filmYearFilter === "all" || String(item.year) === filmYearFilter : !seriesPage || seriesYearFilter === "all" || String(item.year) === seriesYearFilter;
-    const durationMatch = !videoPage || videoDurationFilter === "all" || getDurationBand(item.duration) === videoDurationFilter;
+    const adminPage = activePage === "Administration" && Boolean(adminKind);
+    const adminVideoPage = adminPage && adminKind === "Vidéo";
+    const filterMatch = filmPage ? item.kind === "Film" : seriesPage ? item.kind === "Série" : videoPage ? item.kind === "Vidéo" : adminPage ? item.kind === adminKind : filter === "Tout" || item.kind === filter;
+    const genreMatch = filmPage ? filmGenreFilter === "all" || item.genre === filmGenreFilter : seriesPage ? seriesGenreFilter === "all" || item.genre === seriesGenreFilter : videoPage ? videoCategoryFilter === "all" || item.genre === videoCategoryFilter : adminPage ? adminGenreFilter === "all" || item.genre === adminGenreFilter : genreFilter === "Tous les genres" || item.genre === genreFilter;
+    const yearMatch = filmPage ? filmYearFilter === "all" || String(item.year) === filmYearFilter : seriesPage ? seriesYearFilter === "all" || String(item.year) === seriesYearFilter : adminPage ? adminYearFilter === "all" || String(item.year) === adminYearFilter : true;
+    const durationMatch = videoPage ? videoDurationFilter === "all" || getDurationBand(item.duration) === videoDurationFilter : adminVideoPage ? adminDurationFilter === "all" || getDurationBand(item.duration) === adminDurationFilter : true;
     const progress = item.progress || 0;
     const viewingStatus = seriesPage ? getSeriesViewingStatus(item) : null;
+    const adminViewingStatus = adminKind === "Série" ? getSeriesViewingStatus(item) : progress >= 100 ? "watched" : progress > 0 ? "in-progress" : "unwatched";
     const viewingMatch = filmPage
       ? filmViewingFilter === "all" || (filmViewingFilter === "unwatched" && progress === 0) || (filmViewingFilter === "in-progress" && progress > 0 && progress < 100) || (filmViewingFilter === "watched" && progress >= 100)
-      : !seriesPage || seriesViewingFilter === "all" || viewingStatus === seriesViewingFilter;
+      : seriesPage ? seriesViewingFilter === "all" || viewingStatus === seriesViewingFilter
+      : adminPage ? adminViewingFilter === "all" || adminViewingStatus === adminViewingFilter
+      : true;
     const searchable = [item.name, item.genre, item.kind, item.description, String(item.year), ...(item.seasons || []).flatMap(season => season.episodes.map(episode => episode.title))].join(" ").toLocaleLowerCase("fr");
     const searchMatch = searchable.includes(query.trim().toLocaleLowerCase("fr"));
     return pageMatch && filterMatch && genreMatch && yearMatch && durationMatch && viewingMatch && searchMatch;
@@ -773,13 +814,17 @@ export default function HomePage() {
           ? adminSortBy === "title" ? a.name.localeCompare(b.name, "fr")
             : adminSortBy === "year-desc" ? b.year - a.year || b.id - a.id
             : adminSortBy === "year-asc" ? a.year - b.year || b.id - a.id
+            : adminSortBy === "progress" ? (adminKind === "Série" ? getSeriesProgress(b) - getSeriesProgress(a) : (b.progress || 0) - (a.progress || 0)) || b.id - a.id
+            : adminSortBy === "duration-asc" ? (parseDurationMinutes(a.duration) ?? Number.POSITIVE_INFINITY) - (parseDurationMinutes(b.duration) ?? Number.POSITIVE_INFINITY) || a.name.localeCompare(b.name, "fr")
+            : adminSortBy === "duration-desc" ? (parseDurationMinutes(b.duration) ?? -1) - (parseDurationMinutes(a.duration) ?? -1) || a.name.localeCompare(b.name, "fr")
+            : adminSortBy === "episodes-desc" ? getSeriesManagementStats(b).total - getSeriesManagementStats(a).total || a.name.localeCompare(b.name, "fr")
             : b.id - a.id
-        : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy]);
+        : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy, adminKind, adminGenreFilter, adminYearFilter, adminViewingFilter, adminDurationFilter]);
 
   const featuredTitles = useMemo(() => {
     const local = [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5);
-    return titles.length === 0 && sharedFeaturedTitle ? [sharedFeaturedTitle] : local;
-  }, [browseTitles, titles.length, sharedFeaturedTitle]);
+    return selectFeaturedTitles({ localFeatured: local, sharedFeaturedTitle, localLibrarySize: titles.length, isChildProfile });
+  }, [browseTitles, titles.length, sharedFeaturedTitle, isChildProfile]);
   const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
   useEffect(() => {
     if (featuredTitles.length < 2 || prefersReducedMotion) return;
@@ -837,10 +882,16 @@ export default function HomePage() {
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: browseTitles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...browseTitles].sort((a, b) => b.id - a.id).slice(0, 10) }
   ].filter(row => row.items.length), [browseTitles]);
+  const withActiveProfilePlayback = (item: Title): Title => {
+    const profileId = activeProfileIdRef.current;
+    const data = profileId ? profileStoreRef.current?.data[profileId] : undefined;
+    return data ? overlayProfileData([item], data)[0] : item;
+  };
+
   const openTitle = (item: Title) => {
     setSelectedEpisodeUrl(null);
     setSelectedEpisode(null);
-    setSelected(item);
+    setSelected(withActiveProfilePlayback(item));
   };
 
   const resumeTitle = (item: Title) => {
@@ -882,6 +933,7 @@ export default function HomePage() {
   const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isChildProfile) return;
+    if (submittingTitle) return;
     if (!canWriteTitlesRef.current) {
       setNotice({ title: "Bibliothèque protégée", message: "Les données existantes n’ont pas pu être lues. Elles sont conservées ; corrigez le problème de stockage avant toute modification." });
       return;
@@ -920,6 +972,7 @@ export default function HomePage() {
     const removedEpisodeKeys = form.getAll("removeEpisode").map(String);
     const name = String(form.get("name") || "").trim();
     if (!name) return;
+    setSubmittingTitle(true);
     const newId = editingTitle?.id ?? Date.now();
     const editingSeasons = editingTitle?.kind === "Série" ? editingTitle.seasons || [] : [];
     const initialEpisodeCount = episodeCount || Math.ceil(Math.max(episodeNames.length, episodeFiles.length) / seasonCount);
@@ -953,6 +1006,7 @@ export default function HomePage() {
       } else {
         reportUnpublishedCleanupIssue("La préparation du titre", cleanup);
       }
+      setSubmittingTitle(false);
       return;
     }
     const stagedKeys = staging.references;
@@ -962,6 +1016,8 @@ export default function HomePage() {
     try {
       newTitle = {
       id: newId, name, kind,
+      tmdbId: smartImport?.tmdbId ?? editingTitle?.tmdbId,
+      sharedId: resolveSharedId({ tmdbId: smartImport?.tmdbId ?? editingTitle?.tmdbId, kind, localId: newId, existingSharedId: editingTitle?.sharedId }),
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       collection: String(form.get("collection") || "").trim() || undefined,
@@ -1036,6 +1092,7 @@ export default function HomePage() {
       const cleanup = await cleanupStagedReferences(stagedKeys);
       if (cleanup.status === "cleaned") setNotice({ title: "Import impossible", message: "Une URL temporaire n’a pas pu être créée. Les anciennes métadonnées et les médias restent inchangés." });
       else reportUnpublishedCleanupIssue("La préparation des URL du titre", cleanup);
+      setSubmittingTitle(false);
       return;
     }
     const nextTitles = editingTitle
@@ -1056,12 +1113,13 @@ export default function HomePage() {
       } else {
         reportUnpublishedCleanupIssue("La publication du titre", cleanup);
       }
+      setSubmittingTitle(false);
       return;
     }
     importBatch.transferTo(`${blobOwnerPrefix}:library`);
     let sharedPublishMessage = "";
-    const adminToken = window.sessionStorage.getItem("cinebox-admin-token") || "";
-    if (adminToken.length >= 32) {
+    const adminSession = await getAdminSession();
+    if (adminSession.authenticated) {
       try {
         const imagePath = (value?: string) => {
           if (!value) return null;
@@ -1070,14 +1128,17 @@ export default function HomePage() {
             return parsed.searchParams.get("path") || (parsed.hostname === "image.tmdb.org" ? parsed.pathname : null);
           } catch { return null; }
         };
-        const sharedId = smartImport
-          ? `tmdb:${kind === "Série" ? "series" : "movie"}:${smartImport.tmdbId}`
-          : `cinebox:${newId}`;
-        const response = await fetch("/api/catalog/publish", {
+        const publishTmdbId = smartImport?.tmdbId ?? editingTitle?.tmdbId;
+        const sharedId = resolveSharedId({
+          tmdbId: publishTmdbId,
+          kind,
+          localId: newId,
+          existingSharedId: editingTitle?.sharedId,
+        });
+        const result = await adminJson("/api/catalog/publish", {
           method: "POST",
-          headers: { "content-type": "application/json", authorization: "Bearer " + adminToken },
           body: JSON.stringify({
-            id: sharedId, ...(smartImport ? { tmdbId: smartImport.tmdbId } : {}),
+            id: sharedId, ...(publishTmdbId ? { tmdbId: publishTmdbId } : {}),
             kind: kind === "Série" ? "series" : kind === "Film" ? "movie" : "video",
             title: newTitle.name, overview: newTitle.description,
             releaseDate: smartImport?.releaseDate || (newTitle.year ? `${newTitle.year}-01-01` : ""),
@@ -1101,14 +1162,13 @@ export default function HomePage() {
               })),
             })),
           }),
-        });
-        const result = await response.json() as { published?: boolean; error?: string };
-        sharedPublishMessage = response.ok && result.published
+        }) as { published?: boolean; error?: string };
+        sharedPublishMessage = result.published
           ? " La fiche est publiée dans le catalogue partagé."
           : " Publication partagée échouée : " + (result.error || "erreur inconnue");
       } catch { sharedPublishMessage = " Le catalogue partagé n'a pas répondu ; la fiche reste enregistrée localement."; }
     } else {
-      sharedPublishMessage = " Pour publier cette fiche pour tous, saisis d'abord le code administrateur dans Administration > Médias.";
+      sharedPublishMessage = " Pour publier cette fiche pour tous, connecte-toi comme administrateur dans Administration > Médias.";
     }
     setEditingTitle(null);
     setShowAdd(false);
@@ -1122,6 +1182,7 @@ export default function HomePage() {
       ? { title: "Contenu enregistré", message: `« ${name} » est enregistré. Le travail de nettoyage sera réessayé au prochain démarrage.${sharedPublishMessage}` }
       : { title: editingTitle ? "Modifications enregistrées" : "Ajout à la bibliothèque réussi", message: `« ${name} » a été sauvegardé dans votre collection.${sharedPublishMessage}` });
     window.setTimeout(() => setNotice(null), 3600);
+    setSubmittingTitle(false);
   };
 
   const pageTitle = activePage === "Accueil" ? <>Le plaisir de <em>choisir.</em></> :
@@ -1161,7 +1222,7 @@ export default function HomePage() {
             <a className="brand topbar-brand" href="#" aria-label="CinéBox, accueil" onClick={(event) => { event.preventDefault(); setActivePage("Accueil"); setFilter("Tout"); }}><CineboxLogo variant="sidebar" /></a>
             <MagicCard className="primary-nav-surface">
               <nav className="side-nav primary-nav" aria-label="Rubriques CinéBox">
-                {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><Icon size={16}/><span>{label}</span>{label === "Ma liste" && <small>{favorites.length}</small>}</button>)}
+                {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{favorites.length}</small>}</button>)}
               </nav>
             </MagicCard>
             <div className="top-actions">
@@ -1176,112 +1237,127 @@ export default function HomePage() {
       <section className="main-area">
 
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
-          {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion du catalogue est masquée. Le filtrage utilise uniquement quelques mentions explicites, car les titres ne possèdent pas de classification d’âge.</div>}
+          {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion et le catalogue partagé sont masqués. Les titres partagés ne possèdent pas de classification d’âge fiable ; le filtrage de la bibliothèque locale reste indicatif.</div>}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${favorites.length} favori${favorites.length === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
-          {activePage !== "Administration" && activePage !== "Ma liste" && <SharedCatalog onOpen={openTitle} onFeatured={setSharedFeaturedTitle}/>}
-          {activePage === "Accueil" && <MagicCard className={`hero-surface ${activeFeatured?.backdrop ? "has-backdrop" : activeFeatured?.poster ? "has-poster" : "is-empty"}`}>
-            {activeFeatured ? <section className="hero hero-carousel" aria-label="Sélection à la une">
-              <div className={`hero-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
-              <div className="hero-overlay"/>
-              <BlurFade className="hero-copy" key={activeFeatured.id}>
-                <div className="hero-kicker"><i/> À LA UNE <span/> SÉLECTION CINÉBOX</div>
-                <div className="hero-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
-                <h1>{activeFeatured.name}</h1>
-                <div className="hero-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
-                <p>{activeFeatured.description}</p>
-                <div className="hero-actions">
-                  <ShimmerButton className="hero-play-button" onClick={() => setSelected(activeFeatured)}><Play size={14} fill="currentColor"/> Lecture</ShimmerButton>
-                  <button className="hero-info-btn" onClick={() => setSelected(activeFeatured)}><span>ⓘ</span> Détails</button>
-                </div>
-              </BlurFade>
-              {featuredTitles.length > 1 && <div className="hero-controls">
-                <button type="button" aria-label="Titre précédent" onClick={() => setHeroIndex(index => (index - 1 + featuredTitles.length) % featuredTitles.length)}><ChevronRight size={15} className="hero-prev-icon"/></button>
-                <div className="hero-dots" role="group" aria-label="Choisir le titre à la une">{featuredTitles.map((item, index) => <button type="button" key={item.id} aria-label={`Afficher ${item.name}`} aria-current={index === heroIndex ? "true" : undefined} aria-pressed={index === heroIndex} className={index === heroIndex ? "active" : ""} onClick={() => setHeroIndex(index)}/>)}</div>
-                <button type="button" aria-label="Titre suivant" onClick={() => setHeroIndex(index => (index + 1) % featuredTitles.length)}><ChevronRight size={15}/></button>
-              </div>}
-            </section> : <section className="hero hero-carousel hero-empty" aria-label="Bienvenue dans CinéBox">
-              <div className="hero-empty-content"><span className="hero-kicker"><i/> VOTRE CINÉMA PERSONNEL</span><h1>Votre prochaine<br/><em>histoire commence ici.</em></h1><p>Ajoutez vos films et séries pour composer une collection à votre image.</p><ShimmerButton className="hero-play-button" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</ShimmerButton></div>
-            </section>}
-          </MagicCard>}
-
-          {activePage === "Accueil" && <MagicCard className="library-overview" aria-label="Aperçu de votre bibliothèque">
-            <div className="library-overview-intro"><span className="overview-mark"><Clapperboard size={18}/></span><div><small>VOTRE ESPACE CINÉMA</small><strong>La collection, en un regard</strong></div></div>
-            <div className="overview-stat"><strong>{browseTitles.length.toString().padStart(2,"0")}</strong><span>TITRES</span></div>
-            <div className="overview-stat"><strong>{filmTitles.length.toString().padStart(2,"0")}</strong><span>FILMS</span></div>
-            <div className="overview-stat"><strong>{seriesTitles.length.toString().padStart(2,"0")}</strong><span>SÉRIES</span></div>
-            <div className="overview-stat"><strong>{favorites.length.toString().padStart(2,"0")}</strong><span>FAVORIS</span></div>
-          </MagicCard>}
-
-          {activePage === "Accueil" && ongoing.length > 0 && <section className="section-block">
-            <div className="section-head"><div><div className="eyebrow">REPRENDRE LÀ OÙ VOUS EN ÉTIEZ</div><h2>À continuer <em>pour vous</em></h2></div><span className="subtle">{ongoing.length} titre{ongoing.length > 1 ? "s" : ""} en cours</span></div>
-            <div className="continue-grid">
-              {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => resumeTitle(item)}>{item.poster ? <img src={item.poster} alt=""/> : <span className="artwork-empty" aria-hidden="true"/>}<div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
+          {activePage !== "Administration" && activePage !== "Ma liste" && canShowSharedCatalog(isChildProfile) && <SharedCatalog onOpen={openTitle} onFeatured={setSharedFeaturedTitle}/>}
+          {activePage === "Accueil" && (activeFeatured ? <section className={`hero-cinema ${activeFeatured.backdrop ? "has-backdrop" : activeFeatured.poster ? "has-poster" : "is-empty"}`} aria-label="Sélection à la une">
+            <AnimatedGridPattern className="hero-cinema-grid" numSquares={8} maxOpacity={0.06} duration={6} />
+            <div className={`hero-cinema-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
+            <div className="hero-cinema-overlay"/>
+            <BlurFade className="hero-cinema-copy" key={activeFeatured.id} direction="up" offset={14} duration={0.55}>
+              <div className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>À LA UNE · SÉLECTION CINÉBOX</AnimatedShinyText></div>
+              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
+              <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} delay={0.05} once>{activeFeatured.name}</TextAnimate></h1>
+              <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
+              <p className="hero-cinema-desc">{activeFeatured.description}</p>
+              <div className="hero-cinema-actions">
+                <ShimmerButton className="hero-cinema-play" onClick={() => setSelected(withActiveProfilePlayback(activeFeatured))}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
+                <button className="hero-cinema-info" onClick={() => setSelected(withActiveProfilePlayback(activeFeatured))}>Détails</button>
+              </div>
+            </BlurFade>
+            {featuredTitles.length > 1 && <div className="hero-cinema-controls">
+              <button type="button" className="hero-cinema-nav" aria-label="Titre précédent" onClick={() => setHeroIndex(index => (index - 1 + featuredTitles.length) % featuredTitles.length)}><ChevronRight size={16} className="hero-prev-icon"/></button>
+              <span className="hero-cinema-counter" aria-live="polite">{(heroIndex % featuredTitles.length) + 1} <em>/</em> {featuredTitles.length}</span>
+              <button type="button" className="hero-cinema-nav" aria-label="Titre suivant" onClick={() => setHeroIndex(index => (index + 1) % featuredTitles.length)}><ChevronRight size={16}/></button>
+            </div>}
+          </section> : <section className="hero-cinema hero-cinema-empty" aria-label="Bienvenue dans CinéBox">
+            <AnimatedGridPattern className="hero-cinema-grid" numSquares={10} maxOpacity={0.08} duration={6} />
+            <div className="hero-cinema-empty-content">
+              <span className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>VOTRE CINÉMA PERSONNEL</AnimatedShinyText></span>
+              <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} once>Votre prochaine histoire commence ici.</TextAnimate></h1>
+              <p className="hero-cinema-desc">Ajoutez vos films et séries pour composer une collection à votre image.</p>
+              <ShimmerButton className="hero-cinema-play" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</ShimmerButton>
             </div>
-          </section>}
+          </section>)}
 
-          {activePage === "Accueil" && personalizedPicks.length > 0 && <section className="section-block discovery-block">
-            <div className="section-head"><div><div className="eyebrow">SELON VOS ENVIES</div><h2>À découvrir <em>ensuite</em></h2></div><span className="subtle">Une sélection issue de vos favoris</span></div>
-            <div className="discovery-grid">
-              {personalizedPicks.map(item => <SpotlightSurface className="discovery-spotlight" key={item.id}><button className="discovery-card" onClick={() => openTitle(item)}>
-                {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}
-                <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
-                <Play className="discovery-play" size={16}/>
-              </button></SpotlightSurface>)}
-            </div>
-          </section>}
 
-          {activePage === "Accueil" && <>
-            <section className="streaming-genres section-block">
-              <div className="section-head"><div><div className="eyebrow">TROUVEZ VOTRE PROCHAINE HISTOIRE</div><h2>Explorer par <em>genre</em></h2></div></div>
-              <div className="genre-pills">
-                <button className={genreFilter === "Tous les genres" ? "active" : ""} onClick={() => setGenreFilter("Tous les genres")}>Tout voir</button>
-                {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
+
+          {activePage === "Accueil" && ongoing.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+            <section className="section-block">
+              <div className="section-head"><div><div className="eyebrow">REPRENDRE LÀ OÙ VOUS EN ÉTIEZ</div><h2>À continuer <em>pour vous</em></h2></div><span className="subtle">{ongoing.length} titre{ongoing.length > 1 ? "s" : ""} en cours</span></div>
+              <div className="continue-grid">
+                {ongoing.map((item) => <button className="continue-card" key={item.id} onClick={() => resumeTitle(item)}>{item.poster ? <img src={item.poster} alt=""/> : <span className="artwork-empty" aria-hidden="true"/>}<div className="continue-info"><small>{item.kind.toUpperCase()} · {item.year}</small><b>{item.name}</b><span>{item.progress}% regardé</span><div className="progress"><i style={{ width: `${item.progress}%` }}/></div></div><Play className="continue-play" size={17}/></button>)}
               </div>
             </section>
-            {upNext.length > 0 && <section className="section-block streaming-row-section">
-              <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
-              <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><img src={episode.thumbnailUrl || item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
-            </section>}
-            {collections.length > 0 && <section className="section-block streaming-row-section collections-section">
-              <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
-              {collections.map(([name, items]) => <div className="collection-saga" key={name}>
-                <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
-                <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
-              </div>)}
-            </section>}
-            {topTenFilms.length > 0 && <section className="section-block streaming-row-section">
-              <div className="section-head"><div><div className="eyebrow">VOS FILMS LES PLUS REGARDÉS</div><h2>Top 10 <em>Films</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-              <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
-            </section>}
-            {topTenSeries.length > 0 && <section className="section-block streaming-row-section">
-              <div className="section-head"><div><div className="eyebrow">VOS SÉRIES LES PLUS REGARDÉES</div><h2>Top 10 <em>Séries</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-              <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
-            </section>}
-            {homeRows.map(row => <section className="section-block streaming-row-section" key={row.title}>
-              <div className="section-head"><div><div className="eyebrow">{row.kicker}</div><h2>{row.title}</h2></div><span className="subtle">{row.items.length} contenu{row.items.length > 1 ? "s" : ""}</span></div>
-              <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
-            </section>)}
+          </BlurFade>}
+
+          {activePage === "Accueil" && personalizedPicks.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+            <section className="section-block discovery-block">
+              <div className="section-head"><div><div className="eyebrow">SELON VOS ENVIES</div><h2>À découvrir <em>ensuite</em></h2></div><span className="subtle">Une sélection issue de vos favoris</span></div>
+              <div className="discovery-grid">
+                {personalizedPicks.map(item => <SpotlightSurface className="discovery-spotlight" key={item.id}><button className="discovery-card" onClick={() => openTitle(item)}>
+                  {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}
+                  <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
+                  <Play className="discovery-play" size={16}/>
+                </button></SpotlightSurface>)}
+              </div>
+            </section>
+          </BlurFade>}
+
+          {activePage === "Accueil" && <>
+            <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+              <section className="streaming-genres section-block">
+                <div className="section-head"><div><div className="eyebrow">TROUVEZ VOTRE PROCHAINE HISTOIRE</div><h2>Explorer par <em>genre</em></h2></div></div>
+                <div className="genre-pills">
+                  <button className={genreFilter === "Tous les genres" ? "active" : ""} onClick={() => setGenreFilter("Tous les genres")}>Tout voir</button>
+                  {homeGenres.map(genre => <button key={genre} className={genreFilter === genre ? "active" : ""} onClick={() => { setGenreFilter(genre); document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth" }); }}>{genre}</button>)}
+                </div>
+              </section>
+            </BlurFade>
+            {upNext.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+              <section className="section-block streaming-row-section">
+                <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
+                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><img src={episode.thumbnailUrl || item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
+              </section>
+            </BlurFade>}
+            {collections.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+              <section className="section-block streaming-row-section collections-section">
+                <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
+                {collections.map(([name, items]) => <div className="collection-saga" key={name}>
+                  <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
+                  <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                </div>)}
+              </section>
+            </BlurFade>}
+            {topTenFilms.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+              <section className="section-block streaming-row-section">
+                <div className="section-head"><div><div className="eyebrow">VOS FILMS LES PLUS REGARDÉS</div><h2>Top 10 <em>Films</em></h2></div><span className="subtle">Selon vos lectures</span></div>
+                <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+              </section>
+            </BlurFade>}
+            {topTenSeries.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
+              <section className="section-block streaming-row-section">
+                <div className="section-head"><div><div className="eyebrow">VOS SÉRIES LES PLUS REGARDÉES</div><h2>Top 10 <em>Séries</em></h2></div><span className="subtle">Selon vos lectures</span></div>
+                <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+              </section>
+            </BlurFade>}
+            {homeRows.map(row => <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap" key={row.title}>
+              <section className="section-block streaming-row-section">
+                <div className="section-head"><div><div className="eyebrow">{row.kicker}</div><h2>{row.title}</h2></div><span className="subtle">{row.items.length} contenu{row.items.length > 1 ? "s" : ""}</span></div>
+                <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
+              </section>
+            </BlurFade>)}
           </>}
           {activePage === "Administration" && <nav className="admin-section-nav" aria-label="Sections d’administration">
-            {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}><Icon size={16}/><span>{label}</span></button>)}
+            {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); setAdminGenreFilter("all"); setAdminYearFilter("all"); setAdminViewingFilter("all"); setAdminDurationFilter("all"); setAdminSortBy("recent"); }}><Icon size={16}/><span>{label}</span></button>)}
           </nav>}
 
-          {activePage === "Administration" && adminSection === "overview" && <SharedCatalogManager/>}
-
-          {activePage === "Administration" && adminSection === "overview" && <section className="admin-overview" aria-labelledby="admin-dashboard-title">
-            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord</h2><p>Un aperçu en temps réel du catalogue commun et de ses contenus publiés.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
+          {activePage === "Administration" && adminSection === "overview" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-overview-wrap">
+            <section className="admin-overview" aria-labelledby="admin-dashboard-title">
+              <AnimatedGridPattern className="admin-overview-grid" numSquares={10} maxOpacity={0.06} duration={6} />
+            <div className="admin-heading"><div><div className="eyebrow">VUE SYNTHÉTIQUE</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord <span className={`admin-source-badge ${sharedAdminStats.loaded ? "is-d1" : "is-local"}`}>{sharedAdminStats.loaded ? "D1" : "LOCAL"}</span></h2><p>Deux sources distinctes : le catalogue partagé D1 et la bibliothèque locale de cet appareil.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</button></div>
             <div className="admin-stats">
-              <div><span><Library size={14}/> TITRES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.titles : titles.length}</strong><small>dans le catalogue commun</small></div>
-              <div><span><Film size={14}/> FILMS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.films : filmTitles.length}</strong><small>films publiés</small></div>
-              <div><span><Tv size={14}/> SÉRIES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.series : seriesTitles.length}</strong><small>séries publiées</small></div>
-              <div><span><Play size={14}/> ÉPISODES</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.episodes : episodeCount}</strong><small>dans les saisons publiées</small></div>
-              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{sharedAdminStats.loaded ? sharedAdminStats.videos : videoTitles.length}</strong><small>vidéos publiées</small></div>
-              <div><span><Heart size={14}/> FAVORIS</span><strong>{favorites.length}</strong><small>dans Ma liste</small></div>
+              <div><span><Library size={14}/> TITRES</span><strong><NumberTicker value={sharedAdminStats.loaded ? sharedAdminStats.titles : titles.length} /></strong><small>{sharedAdminStats.loaded ? "catalogue partagé D1" : "bibliothèque locale · D1 non chargé"}</small></div>
+              <div><span><Film size={14}/> FILMS</span><strong><NumberTicker value={sharedAdminStats.loaded ? sharedAdminStats.films : filmTitles.length} /></strong><small>{sharedAdminStats.loaded ? "films publiés dans D1" : "films locaux"}</small></div>
+              <div><span><Tv size={14}/> SÉRIES</span><strong><NumberTicker value={sharedAdminStats.loaded ? sharedAdminStats.series : seriesTitles.length} /></strong><small>{sharedAdminStats.loaded ? "séries publiées dans D1" : "séries locales"}</small></div>
+              <div><span><Play size={14}/> ÉPISODES</span><strong><NumberTicker value={sharedAdminStats.loaded ? sharedAdminStats.episodes : episodeCount} /></strong><small>{sharedAdminStats.loaded ? "épisodes publiés dans D1" : "épisodes locaux"}</small></div>
+              <div><span><Clapperboard size={14}/> VIDÉOS</span><strong><NumberTicker value={sharedAdminStats.loaded ? sharedAdminStats.videos : videoTitles.length} /></strong><small>{sharedAdminStats.loaded ? "vidéos publiées dans D1" : "vidéos locales"}</small></div>
+              <div><span><Heart size={14}/> FAVORIS</span><strong><NumberTicker value={favorites.length} /></strong><small>profil actif · stockage local</small></div>
             </div>
             <div className="admin-dashboard-grid">
               <section className="admin-panel admin-activity" aria-labelledby="admin-activity-title">
-                <div className="admin-panel-heading"><div><span className="eyebrow">DERNIERS AJOUTS</span><h3 id="admin-activity-title"><Clock3 size={16}/> Activité récente</h3></div><button type="button" onClick={() => { setAdminSection("films"); setAdminSortBy("recent"); }}>Tout gérer <ChevronRight size={14}/></button></div>
-                {adminRecentTitles.length ? <div className="admin-activity-list">{adminRecentTitles.map((item) => {
+                <div className="admin-panel-heading"><div><span className="eyebrow">BIBLIOTHÈQUE LOCALE · DERNIERS AJOUTS</span><h3 id="admin-activity-title"><Clock3 size={16}/> Activité récente</h3></div><button type="button" onClick={() => { setAdminSection("films"); setAdminSortBy("recent"); setAdminGenreFilter("all"); setAdminYearFilter("all"); setAdminViewingFilter("all"); setAdminDurationFilter("all"); }}>Tout gérer <ChevronRight size={14}/></button></div>
+                {adminRecentTitles.length ? <AnimatedList className="admin-activity-list" delay={120} reverse={false}>{adminRecentTitles.map((item) => {
                   const timestampIsDate = item.id > Date.UTC(2000, 0, 1) && item.id <= Date.now() + 86400000;
                   const addedLabel = timestampIsDate ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(item.id)) : "Ajout récent";
                   return <div className="admin-activity-row" key={item.id}>
@@ -1289,12 +1365,13 @@ export default function HomePage() {
                     <button type="button" className="admin-activity-copy" onClick={() => openTitle(item)}><small>{item.kind.toUpperCase()} · {addedLabel}</small><strong>{item.name}</strong><span>{item.year} · {item.genre}</span></button>
                     <button type="button" className="admin-icon-action" aria-label={`Modifier ${item.name}`} onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); }}><Pencil size={14}/></button>
                   </div>;
-                })}</div> : <div className="admin-activity-empty">Aucun contenu pour l’instant. Ajoutez un film, une série ou une vidéo pour démarrer.</div>}
+                })}</AnimatedList> : <div className="admin-activity-empty">Aucun contenu pour l’instant. Ajoutez un film, une série ou une vidéo pour démarrer.</div>}
               </section>
               <aside className="admin-dashboard-aside">
                 <section className="admin-panel admin-distribution" aria-labelledby="admin-distribution-title">
-                  <div className="admin-panel-heading"><div><span className="eyebrow">VOTRE COLLECTION</span><h3 id="admin-distribution-title">Répartition</h3></div><span className="admin-total-badge">{titles.length} au total</span></div>
+                  <div className="admin-panel-heading"><div><span className="eyebrow">BIBLIOTHÈQUE LOCALE · CET APPAREIL</span><h3 id="admin-distribution-title"><HardDrive size={16}/> Répartition</h3></div><span className="admin-total-badge">{titles.length} local{titles.length === 1 ? "" : "aux"}</span></div>
                   {[{ label: "Films", count: filmTitles.length }, { label: "Séries", count: seriesTitles.length }, { label: "Vidéos", count: videoTitles.length }].map(({ label, count }) => <div className="admin-distribution-row" key={label}><div><span>{label}</span><strong>{count}</strong></div><div className="admin-distribution-track"><i style={{ width: `${titles.length ? Math.max(count ? 4 : 0, count / titles.length * 100) : 0}%` }}/></div></div>)}
+                  <div className="admin-local-stats"><span><Play size={13}/> {episodeCount} épisode{episodeCount === 1 ? "" : "s"} local{episodeCount === 1 ? "" : "aux"}</span><span><Heart size={13}/> {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div>
                 </section>
                 <section className="admin-panel admin-quick-actions" aria-labelledby="admin-quick-title">
                   <div className="admin-panel-heading"><div><span className="eyebrow">AJOUT RAPIDE</span><h3 id="admin-quick-title">Nouveau contenu</h3></div></div>
@@ -1302,10 +1379,13 @@ export default function HomePage() {
                 </section>
               </aside>
             </div>
-            <div className="admin-hint"><Database size={14}/> Les compteurs proviennent du catalogue central (D1). Les modifications sont synchronisées pour tous les utilisateurs.</div>
-          </section>}
+            <div className="admin-hint"><Database size={14}/> Les compteurs D1 proviennent du catalogue partagé et sont vérifiés côté serveur. Les panneaux « bibliothèque locale » reflètent uniquement le stockage de ce navigateur : les deux sources ne sont jamais additionnées.</div>
+          </section>
+          </BlurFade>}
 
-          {activePage === "Administration" && adminSection === "media" && <section className="admin-media-page" aria-labelledby="admin-media-title">
+          {activePage === "Administration" && adminSection === "media" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-media-wrap">
+            <section className="admin-media-page" aria-labelledby="admin-media-title">
+              <AnimatedGridPattern className="admin-media-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
             <BunnyLibraryPanel/>
             <div className="admin-page-heading"><div><div className="eyebrow">AFFICHES & MINIATURES</div><h2 id="admin-media-title">Gestion des médias</h2><p>Prévisualisez les images enregistrées et vérifiez leurs métadonnées locales.</p></div><button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Importer une affiche</button></div>
             <div className="admin-media-summary"><div><ImageIcon size={17}/><span><strong>{adminMedia.length}</strong> image{adminMedia.length === 1 ? "" : "s"} associée{adminMedia.length === 1 ? "" : "s"}</span></div><div><Play size={17}/><span><strong>{adminVideoFileCount}</strong> fichier{adminVideoFileCount === 1 ? "" : "s"} vidéo lié{adminVideoFileCount === 1 ? "" : "s"}</span></div><p>Formats d’image acceptés à l’import : JPG, PNG et WebP · maximum 20 Mo par image.</p></div>
@@ -1319,9 +1399,12 @@ export default function HomePage() {
               </article>;
             })}</div> : <div className="admin-empty-panel"><ImageIcon size={23}/><strong>Aucune affiche ou miniature enregistrée</strong><span>Ajoutez un contenu avec une image pour la retrouver ici.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter un contenu</button></div>}
             <div className="admin-media-footnote"><HardDrive size={15}/> Les fichiers existants restent dans IndexedDB. Cette vue ne déplace ni ne supprime aucun média.</div>
-          </section>}
+          </section>
+          </BlurFade>}
 
-          {activePage === "Administration" && adminSection === "settings" && <section className="admin-settings-page" aria-labelledby="admin-settings-title">
+          {activePage === "Administration" && adminSection === "settings" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-settings-wrap">
+            <section className="admin-settings-page" aria-labelledby="admin-settings-title">
+              <AnimatedGridPattern className="admin-settings-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
             <div className="admin-page-heading"><div><div className="eyebrow">ORGANISATION LOCALE</div><h2 id="admin-settings-title">Paramètres de la bibliothèque</h2><p>Gérez les genres utilisés et vérifiez où vos contenus sont conservés.</p></div></div>
             <div className="admin-settings-grid">
               <section className="admin-panel admin-settings-genres" aria-labelledby="admin-genres-title"><div className="admin-panel-heading"><div><span className="eyebrow">TAXONOMIE</span><h3 id="admin-genres-title"><Tags size={16}/> Genres & catégories</h3></div><span className="admin-total-badge">{adminGenres.length}</span></div>
@@ -1333,17 +1416,50 @@ export default function HomePage() {
                 <p className="admin-setting-note">Les données et médias restent dans le stockage existant de ce navigateur. Aucun réglage externe ni synchronisation en ligne n’est activé.</p>
               </section>
             </div>
-          </section>}
+          </section>
+          </BlurFade>}
 
-          {activePage === "Administration" && adminSection === "films" && <SharedCatalogManager kindFilter="movie"/>}
-          {activePage === "Administration" && adminSection === "series" && <SharedCatalogManager kindFilter="series"/>}
-          {activePage === "Administration" && adminSection === "videos" && <SharedCatalogManager kindFilter="video"/>}
+          {activePage === "Administration" && (adminSection === "films" || adminSection === "series" || adminSection === "videos") && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-type-wrap">
+            <section className="admin-type-page" aria-labelledby="admin-type-title">
+              <AnimatedGridPattern className="admin-type-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
+              <div className="admin-page-heading">
+                <div>
+                  <div className="eyebrow">{adminSection === "films" ? "CATALOGUE FILMS" : adminSection === "series" ? "CATALOGUE SÉRIES" : "CATALOGUE VIDÉOS"}</div>
+                  <h2 id="admin-type-title">{adminSection === "films" ? "Gérer les films" : adminSection === "series" ? "Gérer les séries" : "Gérer les vidéos"} <span className="admin-source-badge is-split">D1 + LOCAL</span></h2>
+                  <p>{adminSection === "films" ? "Affiches, informations, statut de publication et actions sur les fiches partagées et locales." : adminSection === "series" ? "Saisons, épisodes, associations Bunny et progression de gestion des séries." : "Miniatures, durée, identifiants Bunny et informations des vidéos."}</p>
+                </div>
+                <button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button>
+              </div>
+              <div className="admin-source-summary">
+                <div className="admin-source-card is-d1">
+                  <span className="admin-source-icon"><Database size={16}/></span>
+                  <div><strong>Catalogue partagé · D1</strong><small>{sharedAdminStats.loaded ? `${adminSection === "films" ? sharedAdminStats.films : adminSection === "series" ? sharedAdminStats.series : sharedAdminStats.videos} ${adminSection === "films" ? "film(s)" : adminSection === "series" ? "série(s)" : "vidéo(s)"} publié(s)` : "Compteurs disponibles après connexion administrateur"}</small></div>
+                  <span className="admin-source-badge is-d1">D1</span>
+                </div>
+                <div className="admin-source-card is-local">
+                  <span className="admin-source-icon"><HardDrive size={16}/></span>
+                  <div><strong>Bibliothèque locale · cet appareil</strong><small>{adminSection === "series" ? `${adminLocalTitles.length} série(s) · ${adminLocalEpisodeCount} épisode(s) · ${adminLocalLinkedEpisodes} vidéo(s) associée(s)` : adminSection === "videos" ? `${adminLocalTitles.length} vidéo(s) · ${adminLocalTitles.filter((item) => Boolean(item.duration)).length} durée(s) renseignée(s)` : `${adminLocalTitles.length} film(s) local(aux)`}</small></div>
+                  <span className="admin-source-badge is-local">LOCAL</span>
+                </div>
+                <p className="admin-source-note"><ShieldCheck size={13}/> Les actions D1 sont vérifiées côté serveur. Les contenus locaux restent dans le stockage de ce navigateur.</p>
+              </div>
+              <SharedCatalogManager kindFilter={adminSection === "films" ? "movie" : adminSection === "series" ? "series" : "video"} />
+            </section>
+          </BlurFade>}
 
           {(activePage !== "Administration" || adminSection === "films" || adminSection === "series" || adminSection === "videos") && <section className={`section-block catalogue ${activePage === "Films" ? "films-catalogue" : activePage === "Séries" ? "series-catalogue" : activePage === "Vidéos" ? "videos-catalogue" : activePage === "Ma liste" ? "ma-list-catalogue" : activePage === "Administration" ? "admin-catalogue" : ""}`} id="catalogue">
-            <div className="section-head"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE CINÉMATHÈQUE" : activePage === "Séries" ? "VOTRE ESPACE SÉRIES" : activePage === "Vidéos" ? "VOTRE COLLECTION VIDÉO" : activePage === "Ma liste" ? "VOTRE SÉLECTION PERSONNELLE" : activePage === "Administration" ? `GESTION DES ${adminSection === "films" ? "FILMS" : adminSection === "series" ? "SÉRIES" : "VIDÉOS"}` : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Films" ? "Tous vos films" : activePage === "Séries" ? "Toutes vos séries" : activePage === "Vidéos" ? "Toutes vos vidéos" : activePage === "Administration" ? `Gérer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"}` : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Films" || activePage === "Séries" || activePage === "Vidéos" ? "à explorer" : activePage === "Administration" ? "bibliothèque" : activePage === "Ma liste" ? "à retrouver" : "à explorer"}</em></h2></div>
-              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{sharedAdminStats.loaded ? (adminSection === "films" ? sharedAdminStats.films : adminSection === "series" ? sharedAdminStats.series : sharedAdminStats.videos) : visibleTitles.length} élément{(sharedAdminStats.loaded ? (adminSection === "films" ? sharedAdminStats.films : adminSection === "series" ? sharedAdminStats.series : sharedAdminStats.videos) : visibleTitles.length) === 1 ? "" : "s"} <span>dans le catalogue commun</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
+            {activePage === "Administration" && <div className="admin-local-source-banner"><span className="admin-source-icon"><HardDrive size={16}/></span><div><strong>Bibliothèque locale · cet appareil</strong><small>Recherche, filtres et tri s’appliquent uniquement aux contenus stockés dans ce navigateur.</small></div><span className="admin-source-badge is-local">LOCAL</span></div>}
+            <div className="section-head"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE CINÉMATHÈQUE" : activePage === "Séries" ? "VOTRE ESPACE SÉRIES" : activePage === "Vidéos" ? "VOTRE COLLECTION VIDÉO" : activePage === "Ma liste" ? "VOTRE SÉLECTION PERSONNELLE" : activePage === "Administration" ? `GESTION DES ${adminSection === "films" ? "FILMS" : adminSection === "series" ? "SÉRIES" : "VIDÉOS"}` : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Films" ? "Tous vos films" : activePage === "Séries" ? "Toutes vos séries" : activePage === "Vidéos" ? "Toutes vos vidéos" : activePage === "Administration" ? `Gérer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"}` : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Films" || activePage === "Séries" || activePage === "Vidéos" ? "à explorer" : activePage === "Administration" ? "bibliothèque locale" : activePage === "Ma liste" ? "à retrouver" : "à explorer"}</em></h2></div>
+              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {adminLocalTitles.length} dans la bibliothèque locale</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
             </div>
-            {activePage === "Administration" && <div className="admin-content-toolbar"><span>{visibleTitles.length} contenu{visibleTitles.length === 1 ? "" : "s"}</span><label><span>Trier</span><select className="sort-select" aria-label="Trier les contenus administrés" value={adminSortBy} onChange={(event) => setAdminSortBy(event.target.value)}><option value="recent">Ajouts récents</option><option value="title">Titre A à Z</option><option value="year-desc">Année décroissante</option><option value="year-asc">Année croissante</option></select></label><button type="button" className="admin-toolbar-add" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button></div>}
+            {activePage === "Administration" && adminKind && <div className="films-filters admin-local-filters" aria-label={`Filtres des ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} locaux`}>
+              <label><span>{adminKind === "Vidéo" ? "Catégorie" : "Genre"}</span><select aria-label={`Filtrer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} administrés par ${adminKind === "Vidéo" ? "catégorie" : "genre"}`} value={adminGenreFilter} onChange={(event) => setAdminGenreFilter(event.target.value)}><option value="all">Tous les genres</option>{adminLocalGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}</select></label>
+              <label><span>Année</span><select aria-label={`Filtrer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} administrés par année`} value={adminYearFilter} onChange={(event) => setAdminYearFilter(event.target.value)}><option value="all">Toutes les années</option>{adminLocalYears.map((year) => <option key={year} value={String(year)}>{year}</option>)}</select></label>
+              {adminKind === "Vidéo" && <label><span>Durée</span><select aria-label="Filtrer les vidéos administrées par durée" value={adminDurationFilter} onChange={(event) => setAdminDurationFilter(event.target.value)}><option value="all">Toutes les durées</option>{adminLocalDurationBands.map((band) => <option key={band.value} value={band.value}>{band.label}</option>)}</select></label>}
+              <label><span>Visionnage</span><select aria-label={`Filtrer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} administrés par état de visionnage`} value={adminViewingFilter} onChange={(event) => setAdminViewingFilter(event.target.value)}><option value="all">Tous les états</option><option value="unwatched">{adminKind === "Série" ? "À découvrir" : "À voir"}</option><option value="in-progress">En cours</option><option value="watched">{adminKind === "Série" ? "Épisodes terminés" : "Terminés"}</option></select></label>
+              {adminFiltersActive && <button type="button" className="admin-filter-reset" onClick={() => { setAdminGenreFilter("all"); setAdminYearFilter("all"); setAdminViewingFilter("all"); setAdminDurationFilter("all"); setAdminSortBy("recent"); }}><RotateCcw size={13}/> Réinitialiser</button>}
+            </div>}
+            {activePage === "Administration" && <div className="admin-content-toolbar"><span>{visibleTitles.length} contenu{visibleTitles.length === 1 ? "" : "s"} local{visibleTitles.length === 1 ? "" : "aux"}</span><label><span>Trier</span><select className="sort-select" aria-label="Trier les contenus administrés" value={adminSortBy} onChange={(event) => setAdminSortBy(event.target.value)}><option value="recent">Ajouts récents</option><option value="title">Titre A à Z</option><option value="year-desc">Année décroissante</option><option value="year-asc">Année croissante</option><option value="progress">Progression</option>{adminKind === "Série" && <option value="episodes-desc">Nombre d’épisodes</option>}{adminKind === "Vidéo" && <><option value="duration-asc">Durée croissante</option><option value="duration-desc">Durée décroissante</option></>}</select></label><button type="button" className="admin-toolbar-add" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button></div>}
             {activePage === "Ma liste" && <div className="list-library-controls">
               <div className="filters list-type-filters" role="group" aria-label="Filtrer mes favoris par type">
                 <button type="button" className={filter === "Tout" ? "selected" : ""} aria-pressed={filter === "Tout"} onClick={() => setFilter("Tout")}>Tout <small>{favorites.length}</small></button>
@@ -1372,8 +1488,14 @@ export default function HomePage() {
             </div>}
             <div className={`poster-grid ${activePage === "Films" || activePage === "Séries" ? "films-poster-grid" : activePage === "Vidéos" ? "video-library-grid" : activePage === "Ma liste" ? "ma-list-poster-grid" : activePage === "Administration" ? "admin-content-grid" : ""} ${(activePage === "Films" || activePage === "Séries") && visibleTitles.length > 4 && visibleTitles.length % 4 === 1 ? "films-poster-grid-balanced" : ""}`}>
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className={`poster-card ${activePage === "Vidéos" ? "video-library-card" : activePage === "Ma liste" ? "favorite-card" : activePage === "Administration" ? "admin-content-card" : ""}`} initial={{ opacity: 0, y: 16, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} whileHover={{ y: -6, scale: 1.018 }} whileTap={{ scale: .992 }} transition={{ layout: { duration: .28 }, opacity: { duration: .32, delay: Math.min(index * .035, .25) }, y: { type: "spring", stiffness: 280, damping: 22 }, scale: { type: "spring", stiffness: 300, damping: 24 } }}>
-                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
-                {activePage === "Administration" ? <div className="card-menu-wrap"><button className="heart-btn card-menu-trigger" onClick={() => setOpenCardMenu(openCardMenu === item.id ? null : item.id)} aria-label={`Actions pour ${item.name}`} aria-expanded={openCardMenu === item.id} title="Actions"><MoreHorizontal size={18}/></button>{openCardMenu === item.id && <><button className="menu-dismiss" aria-label="Fermer le menu" onClick={() => setOpenCardMenu(null)}/><div className="card-action-menu"><button onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); setOpenCardMenu(null); }}><Settings size={15}/> Modifier</button><button className="danger" onClick={() => { setOpenCardMenu(null); setConfirmDelete(item); }}><Trash2 size={15}/> Supprimer</button></div></>}</div> : <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
+                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{(activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos")) && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{(activePage === "Séries" || (activePage === "Administration" && adminSection === "series")) && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
+                {activePage === "Administration" && <div className="admin-card-details">
+                  <span className={`admin-status-chip ${getViewingLabel(item) === "Terminé" ? "is-published" : ""}`}>{getViewingLabel(item)}</span>
+                  {adminSection === "series" && <><span>{getSeriesManagementStats(item).seasons} saison{getSeriesManagementStats(item).seasons === 1 ? "" : "s"} · {getSeriesManagementStats(item).total} ép.</span><span>{getSeriesManagementStats(item).withVideo}/{getSeriesManagementStats(item).total} vidéos</span><div className="admin-progress-track" role="progressbar" aria-label={`Association des vidéos de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesManagementStats(item).percent}><i style={{ width: `${getSeriesManagementStats(item).percent}%` }}/></div></>}
+                  {adminSection === "videos" && <><span>{item.duration || "Durée inconnue"}</span>{getBunnyVideoIdFromUrl(item.videoUrl) ? <span className="admin-status-chip is-bunny"><Clapperboard size={10}/> Bunny</span> : <span className="admin-muted">Sans Bunny</span>}</>}
+                  {adminSection === "films" && <span>{item.duration || "Durée inconnue"}</span>}
+                </div>}
+                {activePage === "Administration" ? <div className="card-menu-wrap"><button className="heart-btn card-menu-trigger" onClick={() => setOpenCardMenu(openCardMenu === item.id ? null : item.id)} aria-label={`Actions pour ${item.name}`} aria-expanded={openCardMenu === item.id} title="Actions"><MoreHorizontal size={18}/></button>{openCardMenu === item.id && <><button className="menu-dismiss" aria-label="Fermer le menu" onClick={() => setOpenCardMenu(null)}/><div className="card-action-menu"><button onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); setOpenCardMenu(null); }}><Settings size={15}/> Modifier</button>{adminSection === "series" && <button onClick={() => { setOpenCardMenu(null); openTitle(item); }}><Tv size={15}/> Saisons &amp; épisodes</button>}<button className="danger" onClick={() => { setOpenCardMenu(null); setConfirmDelete(item); }}><Trash2 size={15}/> Supprimer</button></div></>}</div> : <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>}
               </motion.article>)}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Votre cinémathèque commence ici</strong><span>Ajoutez un film à votre bibliothèque pour le retrouver sur cet écran.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter un film</button></div>}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length > 0 && <div className="empty-state films-empty"><strong>Aucun film ne correspond à votre recherche</strong><span>Essayez un autre terme ou réinitialisez les filtres.</span><button type="button" onClick={() => { setQuery(""); setFilmGenreFilter("all"); setFilmYearFilter("all"); setFilmViewingFilter("all"); setFilmSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
@@ -1387,7 +1509,7 @@ export default function HomePage() {
               {!visibleTitles.length && activePage !== "Films" && activePage !== "Séries" && activePage !== "Vidéos" && activePage !== "Administration" && <div className="empty-state"><strong>Aucun titre trouvé</strong><span>Modifiez votre recherche ou réinitialisez les filtres pour retrouver votre collection.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); setGenreFilter("Tous les genres"); }}>Réinitialiser la recherche et les filtres</button></div>}
             </div>
           </section>}
-          <footer><span>© 2026 CINÉBOX</span><span>VOTRE CINÉMA PERSONNEL <b>✦</b></span></footer>
+          <footer><span>© 2026 CINÉBOX</span><span>VOTRE CINÉMA PERSONNEL <Star size={10} aria-hidden="true"/></span></footer>
         </div>
       </section>
 
@@ -1431,7 +1553,8 @@ export default function HomePage() {
           adminMode={activePage === "Administration"}
           fileRef={fileRef}
           posterRef={posterRef}
-          onClose={() => { setShowAdd(false); setEditingTitle(null); }}
+          submitting={submittingTitle}
+          onClose={() => { setShowAdd(false); setEditingTitle(null); setSubmittingTitle(false); }}
           onSubmit={addTitle}
         />}
         <EpisodeEditor key="episode-editor"

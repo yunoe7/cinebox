@@ -9,11 +9,15 @@
   "scripts": {
     "dev": "next dev",
     "dev:cf": "npm run build && wrangler pages dev out --port 3000 --compatibility-date=2024-01-01",
-    "build": "next build",
+    "build": "next build && node scripts/generate-csp.mjs",
     "start": "wrangler pages dev out --port 3000 --compatibility-date=2024-01-01",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:integration": "playwright test --config=playwright.integration.config.ts",
+    "test:csp": "playwright test --config=playwright.csp.config.ts",
+    "check:csp": "node scripts/check-csp.mjs",
+    "hash:admin": "node scripts/hash-admin-password.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.23.12",

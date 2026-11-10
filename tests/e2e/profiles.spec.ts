@@ -155,7 +155,7 @@ test("modifie le nom, l’avatar, le mode enfant et les préférences", async ({
   expect(profile).toMatchObject({ avatarId: "moon-cat", isChild: true });
   expect(state.data[profile.id].preferences.autoplayNext).toBe(false);
   await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Administration" })).toHaveCount(0);
-  await expect(page.getByText(/Mode enfant : la gestion du catalogue est masquée/)).toBeVisible();
+  await expect(page.getByText(/Mode enfant : la gestion et le catalogue partagé sont masqués/)).toBeVisible();
 });
 
 test("supprime un profil secondaire sans toucher à la bibliothèque partagée", async ({ page }) => {
