@@ -71,7 +71,7 @@ footer{padding-top:23px}
 .result-count{font-size:8px;letter-spacing:1.5px;color:#777e89;white-space:nowrap}
 .sort-select{height:34px;max-width:155px;padding:0 27px 0 10px;border:1px solid #303640;border-radius:7px;background:#11141a;color:#bfc2c9;font-size:9px;outline:none}
 .sort-select:focus{border-color:#8c7657}
-@media(max-width:760px){.catalogue-tools{gap:6px;flex-wrap:wrap;justify-content:flex-end}.result-count{display:none}.sort-select{height:30px;max-width:115px;font-size:8px;padding-left:7px}.section-head{align-items:center;gap:8px}.filters button{font-size:8px}}
+@media(max-width:760px){.section-head{flex-wrap:wrap;align-items:center;gap:8px}.section-head>div:first-child{min-width:0;flex:1 1 100%}.catalogue-tools{flex:1 1 100%;min-width:0;max-width:100%;gap:6px;flex-wrap:wrap;justify-content:flex-start}.catalogue-tools .filters{max-width:100%;flex-wrap:wrap}.result-count{display:none}.sort-select{height:30px;max-width:115px;font-size:8px;padding-left:7px}.filters button{font-size:8px}}
 
 /* Private admin area */
 .admin-overview{margin:0 0 35px;padding:23px;border:1px solid #303640;border-radius:12px;background:linear-gradient(135deg,#171a20,#101217 75%);box-shadow:0 12px 30px #0003}
@@ -1778,7 +1778,7 @@ body{background-image:none}
  .primary-nav .nav-item{gap:5px;padding-inline:7px;font-size:9px}
  .primary-nav .nav-item svg{width:14px;height:14px}
  .top-actions{gap:6px}
- .top-actions .search{width:clamp(132px,15vw,168px)}
+ .top-actions .search{width:clamp(150px,18vw,180px)}
  .top-actions .add-btn{width:38px;padding:0;justify-content:center;font-size:0}
  .top-actions .add-btn span{display:none}
  .top-actions .profile-menu-trigger{width:40px;min-width:40px;justify-content:center;padding:3px}

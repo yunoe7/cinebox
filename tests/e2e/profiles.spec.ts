@@ -155,7 +155,7 @@ test("modifie le nom, l’avatar, le mode enfant et les préférences", async ({
   expect(profile).toMatchObject({ avatarId: "moon-cat", isChild: true });
   expect(state.data[profile.id].preferences.autoplayNext).toBe(false);
   await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Administration" })).toHaveCount(0);
-  await expect(page.getByText(/Mode enfant : la gestion et le catalogue partagé sont masqués/)).toBeVisible();
+  await expect(page.getByText(/Mode enfant : seuls les contenus dont la classification d’âge est connue et adaptée sont affichés/)).toBeVisible();
 });
 
 test("supprime un profil secondaire sans toucher à la bibliothèque partagée", async ({ page }) => {
@@ -226,14 +226,19 @@ test("un PIN est demandé, vérifié et stocké uniquement sous forme hachée", 
   expect(locked.pin.iterations).toBe(180000);
 });
 
-test("le mode enfant filtre quelques mentions explicites et masque l’administration", async ({ page }) => {
-  await seed(page, [film(88003, "Titre familial"), film(88004, "Archive horreur", { genre: "Horreur" })]);
+test("le mode enfant masque les contenus non classés et les mentions explicites", async ({ page }) => {
+  await seed(page, [
+    film(88003, "Titre familial", { minAge: 6, ageRating: "6" }),
+    film(88010, "Titre non classé"),
+    film(88004, "Archive horreur", { genre: "Horreur" }),
+  ]);
   await createProfile(page, "Enfant", { child: true });
   await enter(page, "Enfant");
   await expect(page.getByRole("button", { name: "Ouvrir Titre familial" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ouvrir Titre non classé" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ouvrir Archive horreur" })).toHaveCount(0);
   await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Administration" })).toHaveCount(0);
-  await expect(page.getByText(/pas de classification d’âge/)).toBeVisible();
+  await expect(page.getByText(/seuls les contenus dont la classification d’âge est connue et adaptée sont affichés/)).toBeVisible();
 });
 
 test("les favoris et les progressions sont isolés entre profils", async ({ page }) => {

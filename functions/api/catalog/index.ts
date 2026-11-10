@@ -1,3 +1,5 @@
+import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
+
 interface D1Result<T> {
   results: T[];
   success: boolean;
@@ -81,24 +83,52 @@ export async function onRequestGet({
     return json({ error: "Les paramètres de pagination sont invalides." }, 400);
   }
 
+  // Optional child-profile filter. When present, the server only returns
+  // titles that carry a real classification at or below `maxAge`. Unclassified
+  // content is excluded (fail closed); the browser filters again as defence in
+  // depth. A future authenticated identity will let this be enforced without
+  // trusting the query string.
+  const rawMaxAge = url.searchParams.get("maxAge");
+  const maxAge = rawMaxAge === null ? null : Number(rawMaxAge);
+  if (maxAge !== null && (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 18)) {
+    return json({ error: "La limite d’âge demandée est invalide." }, 400);
+  }
+  // Age filtering happens in JavaScript because the classification lives in
+  // JSON metadata. Fetch a wider window so a filtered page is still complete.
+  const queryLimit = maxAge === null ? rawLimit : 500;
+  const queryOffset = maxAge === null ? rawOffset : 0;
+
   try {
     const statement = kind
       ? env.DB.prepare(
           "SELECT id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, updated_at FROM catalog_titles WHERE published = 1 AND kind = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-        ).bind(kind, rawLimit, rawOffset)
+        ).bind(kind, queryLimit, queryOffset)
       : env.DB.prepare(
           "SELECT id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, updated_at FROM catalog_titles WHERE published = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-        ).bind(rawLimit, rawOffset);
+        ).bind(queryLimit, queryOffset);
 
     const result = await statement.all<CatalogTitleRow>();
     if (!result.success) throw new Error("D1 query failed");
 
-    const episodeResult = result.results.length
+    const parsedRows = result.results.map((row) => {
+      let genres: unknown = [];
+      let metadata: unknown = {};
+      try { genres = JSON.parse(row.genres_json); } catch { /* Keep a safe default. */ }
+      try { metadata = JSON.parse(row.metadata_json); } catch { /* Keep a safe default. */ }
+      return {
+        row,
+        genres: Array.isArray(genres) ? genres : [],
+        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata as Record<string, unknown> : {},
+      };
+    }).filter((entry) => maxAge === null || isContentAllowedForAge(entry.metadata, maxAge));
+    const pageRows = maxAge === null ? parsedRows : parsedRows.slice(rawOffset, rawOffset + rawLimit);
+
+    const episodeResult = pageRows.length
       ? await env.DB.prepare(
           `SELECT id, title_id, season_number, episode_number, title, overview, duration_seconds, stream_uid, thumbnail_path, metadata_json
-           FROM catalog_episodes WHERE title_id IN (${result.results.map(() => "?").join(",")})
+           FROM catalog_episodes WHERE title_id IN (${pageRows.map(() => "?").join(",")})
            ORDER BY season_number, episode_number`,
-        ).bind(...result.results.map(row => row.id)).all<CatalogEpisodeRow>()
+        ).bind(...pageRows.map(entry => entry.row.id)).all<CatalogEpisodeRow>()
       : { results: [], success: true };
     if (!episodeResult.success) throw new Error("D1 episode query failed");
     const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();
@@ -108,11 +138,7 @@ export async function onRequestGet({
       episodesByTitle.set(episode.title_id, list);
     }
 
-    const titles = result.results.map((row) => {
-      let genres: unknown = [];
-      let metadata: unknown = {};
-      try { genres = JSON.parse(row.genres_json); } catch { /* Keep a safe default. */ }
-      try { metadata = JSON.parse(row.metadata_json); } catch { /* Keep a safe default. */ }
+    const titles = pageRows.map(({ row, genres, metadata }) => {
       const episodeRows = episodesByTitle.get(row.id) || [];
       const seasons = new Map<number, { number: number; episodes: Array<Record<string, unknown>> }>();
       for (const episode of episodeRows) {
@@ -140,8 +166,8 @@ export async function onRequestGet({
         releaseDate: row.release_date,
         posterPath: row.poster_path,
         backdropPath: row.backdrop_path,
-        genres: Array.isArray(genres) ? genres : [],
-        metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...(metadata as Record<string, unknown>), ...(env.BUNNY_STREAM_LIBRARY_ID ? { bunnyLibraryId: env.BUNNY_STREAM_LIBRARY_ID } : {}) } : {},
+        genres,
+        metadata: { ...metadata, ...(env.BUNNY_STREAM_LIBRARY_ID ? { bunnyLibraryId: env.BUNNY_STREAM_LIBRARY_ID } : {}) },
         seasons: [...seasons.values()],
         updatedAt: row.updated_at,
       };

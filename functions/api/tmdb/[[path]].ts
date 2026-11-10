@@ -42,7 +42,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: { 
   } else if (route.length === 2 && ["movie", "tv"].includes(route[0]) && safeId(route[1])) {
     upstreamUrl = new URL(`${TMDB_API}/${route[0]}/${route[1]}`);
     upstreamUrl.searchParams.set("language", "fr-FR");
-    upstreamUrl.searchParams.set("append_to_response", "credits");
+    upstreamUrl.searchParams.set("append_to_response", "credits,release_dates,content_ratings");
   } else if (route.length === 3 && ["movie", "tv"].includes(route[0]) && safeId(route[1]) && route[2] === "reviews") {
     upstreamUrl = new URL(`${TMDB_API}/${route[0]}/${route[1]}/reviews`);
     upstreamUrl.searchParams.set("language", "fr-FR");
