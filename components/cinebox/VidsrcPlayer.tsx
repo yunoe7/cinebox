@@ -19,7 +19,10 @@ type Props = {
 export default function VidsrcPlayer({ kind, id, season, episode, resumeAt = 0, title, onProgress, onEnded }: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frameLoaded, setFrameLoaded] = useState(false);
-  const src = useMemo(() => buildVidsrcEmbedUrl({ kind, id, season, episode, startAt: resumeAt, subtitleLanguage: "fr" }), [kind, id, season, episode, resumeAt]);
+  // Progress updates change resumeAt every few seconds. Keep the initial resume
+  // position for this player instance so those updates never reload the iframe.
+  const initialResumeAt = useRef(resumeAt).current;
+  const src = useMemo(() => buildVidsrcEmbedUrl({ kind, id, season, episode, startAt: initialResumeAt, subtitleLanguage: "fr" }), [kind, id, season, episode, initialResumeAt]);
 
   // Do not preflight the Vidsrc info endpoint from the browser: it is cross-origin
   // and commonly blocked by CORS. The embed itself is the authoritative check.
