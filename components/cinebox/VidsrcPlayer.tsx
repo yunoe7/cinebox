@@ -22,20 +22,24 @@ export default function VidsrcPlayer({ kind, id, season, episode, resumeAt = 0, 
   // Progress updates change resumeAt every few seconds. Keep the initial resume
   // position for this player instance so those updates never reload the iframe.
   const initialResumeAt = useRef(resumeAt).current;
-  const src = useMemo(() => buildVidsrcEmbedUrl({ kind, id, season, episode, startAt: initialResumeAt, subtitleLanguage: "fr" }), [kind, id, season, episode, initialResumeAt]);
+  const completionHandled = useRef(false);
+  const src = useMemo(() => buildVidsrcEmbedUrl({ kind, id, season, episode, startAt: initialResumeAt, subtitleLanguage: "fr,en" }), [kind, id, season, episode, initialResumeAt]);
 
   // Do not preflight the Vidsrc info endpoint from the browser: it is cross-origin
   // and commonly blocked by CORS. The embed itself is the authoritative check.
   useEffect(() => {
     const listener = (event: MessageEvent) => {
-      const parsed = parseVidsrcPlayerEvent(event, frameRef.current?.contentWindow, { mediaType: kind, id });
+      const parsed = parseVidsrcPlayerEvent(event, frameRef.current?.contentWindow, { mediaType: kind, id, season, episode });
       if (!parsed) return;
       onProgress(Math.floor(parsed.progress), Math.min(99, Math.round(parsed.progress / parsed.duration * 100)));
-      if (parsed.status === "completed") onEnded();
+      if (parsed.status === "completed" && !completionHandled.current) {
+        completionHandled.current = true;
+        onEnded();
+      }
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
-  }, [kind, id, onProgress, onEnded]);
+  }, [kind, id, season, episode, onProgress, onEnded]);
 
   return <div className={styles.shell}>
     <div className={styles.topline}><span><i/> VIDSRC</span></div>
