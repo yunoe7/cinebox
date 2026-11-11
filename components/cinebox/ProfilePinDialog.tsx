@@ -99,39 +99,51 @@ export function ProfilePinDialog({ profile, action, onCancel, onVerified }: {
         {...dialogProps}
         aria-labelledby={headingId}
         aria-describedby={helpId}
+        aria-busy={busy}
         className="profile-pin-dialog"
         onSubmit={submit}
         initial={reducedMotion ? false : { opacity: 0, y: 10, scale: .985 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={reducedMotion ? undefined : { opacity: 0, y: 8 }}
       >
-        <span className="profile-pin-dialog-icon"><LockKeyhole size={19} /></span>
-        <h2 id={headingId}>Profil protégé</h2>
+        <div className="profile-pin-dialog-head">
+          <span className="profile-pin-dialog-icon" aria-hidden="true"><LockKeyhole size={19} /></span>
+          <div className="profile-pin-dialog-heading">
+            <span className="eyebrow">ACCÈS PROTÉGÉ</span>
+            <h2 id={headingId}>Profil protégé</h2>
+          </div>
+        </div>
         <p id={helpId} className="profile-pin-dialog-help">Saisissez le code PIN de « {profile.name} » pour {ACTION_LABELS[action]}.</p>
         <div className="profile-pin-dialog-profile">
-          <ProfileAvatar avatarId={profile.avatarId} size={38} />
-          <div><strong>{profile.name}</strong><small>{profile.isChild ? "Profil enfant" : profile.isPrimary ? "Profil principal" : "Profil"}</small></div>
+          <ProfileAvatar avatarId={profile.avatarId} size={40} />
+          <div className="profile-pin-dialog-profile-copy"><strong>{profile.name}</strong><small>{profile.isChild ? "Profil enfant" : profile.isPrimary ? "Profil principal" : "Profil"}</small></div>
+          <span className="profile-pin-dialog-badge"><LockKeyhole size={11} /> Code PIN</span>
         </div>
-        <label className="profile-field-label" htmlFor="profile-pin-dialog-input">Code PIN</label>
-        <input
-          ref={inputRef}
-          id="profile-pin-dialog-input"
-          className="profile-field-input"
-          type="password"
-          inputMode="numeric"
-          autoComplete="off"
-          pattern="[0-9]*"
-          maxLength={8}
-          value={pin}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${helpId} profile-pin-dialog-error` : helpId}
-          onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
-          placeholder="4 à 8 chiffres"
-        />
-        {error && <p id="profile-pin-dialog-error" className="profile-pin-dialog-error" role="alert"><ShieldAlert size={14} /> {error}</p>}
+        <label className="profile-pin-dialog-label" htmlFor="profile-pin-dialog-input">Code PIN</label>
+        <div className={`profile-pin-dialog-field${error ? " is-invalid" : ""}`}>
+          <span className="profile-pin-dialog-field-icon" aria-hidden="true"><LockKeyhole size={15} /></span>
+          <input
+            ref={inputRef}
+            id="profile-pin-dialog-input"
+            className="profile-pin-dialog-input"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            enterKeyHint="done"
+            pattern="[0-9]*"
+            maxLength={8}
+            value={pin}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? `${helpId} profile-pin-dialog-error` : helpId}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
+            placeholder="4 à 8 chiffres"
+          />
+          <span className="profile-pin-dialog-count" aria-hidden="true">{pin.length}/8</span>
+        </div>
+        {error && <p id="profile-pin-dialog-error" className="profile-pin-dialog-error" role="alert"><ShieldAlert size={14} /> <span>{error}</span></p>}
         <div className="profile-pin-dialog-actions">
           <button type="button" className="profile-secondary-action" onClick={onCancel}>Annuler</button>
-          <button type="submit" className="profile-confirm-delete" disabled={busy}>{busy ? "Vérification…" : "Continuer"}</button>
+          <button type="submit" className="profile-gold-action" disabled={busy}>{busy ? "Vérification…" : "Continuer"}</button>
         </div>
       </motion.form>
     </motion.div>
