@@ -2784,3 +2784,12 @@ body{background-image:none}
  .profile-select-card,.profile-add-card,.profile-select-avatar-halo,.profile-select-enter,.profile-manager-card,.profile-manager-actions button,.profile-avatar-gallery>button,.profile-avatar-categories button,.profile-child-toggle,.profile-pin-input,.profile-pin-dialog-field,.profile-gold-action,.profile-create-action,.profile-secondary-action,.profile-confirm-delete{transition:none!important}
  .profile-select-card:hover,.profile-select-card:focus-visible,.profile-add-card:hover,.profile-add-card:focus-visible,.profile-avatar-gallery>button:hover,.profile-avatar-gallery>button.selected,.profile-gold-action:hover,.profile-create-action:hover{transform:none!important}
 }
+
+/* Vidsrc source selector — restrained Magic UI-inspired treatment */
+.vidsrc-source-switch{display:inline-flex;align-items:center;gap:4px;padding:4px;border:1px solid rgba(216,191,148,.18);border-radius:999px;background:rgba(7,8,10,.72)}
+.vidsrc-source-switch button{min-height:32px;padding:0 12px;border:1px solid transparent;border-radius:999px;background:transparent;color:#99989a;font:600 10px Manrope,sans-serif;transition:background .2s,border-color .2s,color .2s}
+.vidsrc-source-switch button:hover{color:#eee7da}
+.vidsrc-source-switch button.active{border-color:rgba(216,191,148,.28);background:linear-gradient(135deg,rgba(216,191,148,.17),rgba(216,191,148,.07));color:#e8d5b3;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.vidsrc-source-switch button:focus-visible{outline:2px solid rgba(216,191,148,.62);outline-offset:2px}
+@media(max-width:600px){.vidsrc-source-switch{width:100%;justify-content:center}.vidsrc-source-switch button{flex:1}}
+@media(prefers-reduced-motion:reduce){.vidsrc-source-switch button{transition:none}}
