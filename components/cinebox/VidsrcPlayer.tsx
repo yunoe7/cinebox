@@ -44,7 +44,7 @@ export default function VidsrcPlayer({ kind, id, season, episode, resumeAt = 0, 
   return <div className={styles.shell}>
     <div className={styles.topline}><span><i/> VIDSRC</span></div>
     {!frameLoaded && <div className={styles.loading}><LoaderCircle size={22} className={styles.spinner}/><span>Chargement du lecteur…</span></div>}
-    <iframe ref={frameRef} className={styles.frame} src={src} title={title} sandbox="allow-scripts allow-same-origin allow-presentation" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" onLoad={() => setFrameLoaded(true)}/>
+    <iframe ref={frameRef} className={styles.frame} src={src} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" onLoad={() => setFrameLoaded(true)}/>
     {frameLoaded && <span className={styles.ready}><Play size={11} fill="currentColor"/> Lecteur prêt</span>}
   </div>;
 }
