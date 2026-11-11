@@ -41,6 +41,7 @@ export function ProfileCenter({ store, initialMode = "gate", onClose, onCommit, 
   const [notice, setNotice] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const gateManageRef = useRef<HTMLButtonElement>(null);
   const reducedMotion = useReducedMotion();
   const filteredAvatars = useMemo(() => profileAvatars.filter((avatar) =>
     (avatarCategory === "Tout" || avatar.category === avatarCategory) &&
@@ -49,11 +50,15 @@ export function ProfileCenter({ store, initialMode = "gate", onClose, onCommit, 
   const title = mode === "gate" ? "Qui regarde ?" : "Gérer les profils";
   const closeCenter = () => { setDraft(null); setDeleteTarget(null); setPinPrompt(null); if (initialMode === "gate") setMode("gate"); else onClose?.(); };
 
+  // The manager is a real modal whenever it is displayed, including when it is
+  // opened from the gate screen (`initialMode === "gate"`). The gate itself is a
+  // full-page screen, not a dialog, so it keeps the plain <main> wrapper.
   const outerDialog = useModalDialog<HTMLDivElement>({
-    active: initialMode !== "gate",
+    active: mode !== "gate",
     onClose: closeCenter,
-    closeOnEscape: initialMode !== "gate",
-    lockScroll: initialMode !== "gate",
+    closeOnEscape: mode !== "gate",
+    lockScroll: mode !== "gate",
+    fallbackFocusRef: gateManageRef,
   });
 
   const startEdit = (profile?: Profile) => {
@@ -135,7 +140,7 @@ export function ProfileCenter({ store, initialMode = "gate", onClose, onCommit, 
         </BlurFade>)}
         {!isChildSession && store.profiles.length < 8 && <button type="button" className="profile-add-card" onClick={() => setMode("manage")}><span><Plus size={22}/></span><strong>Ajouter un profil</strong></button>}
       </div>
-      <div className="profile-center-footer"><button type="button" onClick={() => setMode("manage")} disabled={isChildSession}><Settings size={14}/> Gérer les profils</button><span>Bibliothèque et médias partagés sur cet appareil</span></div>
+      <div className="profile-center-footer"><button ref={gateManageRef} type="button" onClick={() => setMode("manage")} disabled={isChildSession}><Settings size={14}/> Gérer les profils</button><span>Bibliothèque et médias partagés sur cet appareil</span></div>
     </BlurFade> : <div className="profile-manager-inner">
       <div className="profile-manager-heading"><div><span className="eyebrow">IDENTITÉS CINÉBOX</span><h1>Gérer les profils</h1><p>Chaque profil garde ses favoris et sa lecture à part.</p></div><button className="profile-manager-back" type="button" onClick={closeCenter}><ChevronLeft size={16}/>{initialMode === "gate" ? "Choisir un profil" : "Retour"}</button></div>
       {isChildSession && <div className="profile-child-lock-note" role="note"><ShieldAlert size={17}/> La gestion est limitée dans un profil enfant.</div>}

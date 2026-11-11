@@ -459,9 +459,46 @@ test("les dialogues imbriqués conservent le verrouillage du fond et le piège d
   await page.keyboard.press("Escape");
   await expect(editor).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ajouter un profil" })).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(trigger).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+});
+
+test("le gestionnaire ouvert depuis « Qui regarde ? » active le comportement modal et restaure le focus", async ({ page }) => {
+  await seed(page);
+  await leaveProfile(page);
+  await expect(page.getByRole("heading", { name: "Qui regarde ?" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Gérer les profils" }).click();
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  for (let index = 0; index < 8; index++) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Qui regarde ?" })).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  // The original trigger is unmounted while the manager is open: the fallback
+  // must focus the re-rendered gate control instead of leaving focus on body.
+  await expect(page.getByRole("button", { name: "Gérer les profils" })).toBeFocused();
+});
+
+test("fermer le gestionnaire ouvert depuis le menu profil restaure le focus sur le déclencheur", async ({ page }) => {
+  await seed(page);
+  const trigger = page.locator("header").getByRole("button", { name: /^Profil actif : / });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: /^Profil/ }).click();
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });

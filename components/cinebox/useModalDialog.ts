@@ -10,6 +10,12 @@ import { useEffect, useRef, type RefObject } from "react";
  * of the dialog. A module-level stack keeps nested dialogs working: only the
  * topmost dialog traps Tab and handles Escape, and the page stays locked until
  * the last dialog closes.
+ *
+ * Focus return prefers the element that was focused when the dialog opened.
+ * Menus unmount their items before opening a dialog, so that element is often
+ * gone: `fallbackFocusRef` then points at the stable trigger (or another
+ * meaningful navigation control) that must receive the focus instead of
+ * falling back to `body`.
  */
 
 const FOCUSABLE_SELECTOR = [
@@ -60,6 +66,7 @@ export type ModalDialogOptions = {
   role?: ModalDialogRole;
   initialFocusRef?: RefObject<HTMLElement | null>;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  fallbackFocusRef?: RefObject<HTMLElement | null>;
   lockScroll?: boolean;
 };
 
@@ -129,8 +136,15 @@ export function useModalDialog<T extends HTMLElement = HTMLElement>(options: Mod
       const index = dialogStack.indexOf(entry);
       if (index >= 0) dialogStack.splice(index, 1);
       if (shouldLock) unlockScroll();
-      const returnTarget = optionsRef.current.returnFocusRef?.current ?? previouslyFocused;
-      if (returnTarget && returnTarget.isConnected) returnTarget.focus({ preventScroll: true });
+      const current = optionsRef.current;
+      const returnTarget = current.returnFocusRef?.current ?? previouslyFocused;
+      const isBody = returnTarget === document.body || returnTarget === document.documentElement;
+      if (returnTarget && returnTarget.isConnected && !isBody) {
+        returnTarget.focus({ preventScroll: true });
+        return;
+      }
+      const fallback = current.fallbackFocusRef?.current;
+      if (fallback?.isConnected) fallback.focus({ preventScroll: true });
     };
   }, [active]);
 

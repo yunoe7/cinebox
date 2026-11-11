@@ -344,5 +344,16 @@ test("la confirmation de suppression ne se ferme pas au clic sur le fond et gard
 
   await page.keyboard.press("Escape");
   await expect(alert).toHaveCount(0);
+  // The menu item that opened the dialog is gone; focus must return to the
+  // stable card-menu trigger, not to body.
+  const cardTrigger = page.getByRole("button", { name: `Actions pour ${film.name}` });
+  await expect(cardTrigger).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+
+  await cardTrigger.click();
+  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  await expect(alert).toBeVisible();
+  await alert.getByRole("button", { name: "Annuler" }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(cardTrigger).toBeFocused();
 });
