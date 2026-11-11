@@ -39,7 +39,7 @@ export default function VidsrcPlayer({ kind, id, season, episode, resumeAt = 0, 
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
-  }, [kind, id, onProgress, onEnded]);
+  }, [kind, id, season, episode, onProgress, onEnded]);
 
   return <div className={styles.shell}>
     <div className={styles.topline}><span><i/> VIDSRC</span></div>
