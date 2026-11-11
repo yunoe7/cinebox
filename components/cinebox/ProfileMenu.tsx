@@ -30,7 +30,9 @@ export function ProfileMenu({ profile, onManage, onSwitch, onUnavailable }: {
     return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
-  const activate = (action: () => void) => { setOpen(false); action(); };
+  // Menu items are unmounted as soon as the menu closes. Restore focus to the
+  // stable trigger first so a dialog opened by the action can return it there.
+  const activate = (action: () => void) => { trigger.current?.focus({ preventScroll: true }); setOpen(false); action(); };
   const handleMenuKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const enabled = items.current.filter((item) => item && !item.disabled);
     const index = enabled.indexOf(document.activeElement as HTMLButtonElement);

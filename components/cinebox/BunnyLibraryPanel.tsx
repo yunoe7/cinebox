@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { Check, ChevronRight, LoaderCircle, Play, RefreshCw, Search, Star, Video, X } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+import { assessTmdbSeason, buildSeasonConfirmationMessage, buildSeasonPublishFragment, describeSeasonAssessment, planSeasonPublication, referenceEpisodeCountForSeason } from "../../lib/cinebox/tmdb-season.mjs";
 import { AdminSessionPanel } from "./AdminSessionPanel";
+import { useModalDialog } from "./useModalDialog";
 
 type BunnyVideo = { id: string; title: string; durationSeconds: number | null; thumbnailUrl: string | null; status?: number | null };
 type BunnyList = { libraryId: string; total: number; videos: BunnyVideo[] };
@@ -45,6 +47,12 @@ export function BunnyLibraryPanel() {
   const [saving,setSaving]=useState(false);
   const [message,setMessage]=useState("");
   const [preview,setPreview]=useState<BunnyVideo|null>(null);
+  const previewCloseRef=useRef<HTMLButtonElement>(null);
+  const { ref: previewDialogRef, dialogProps: previewDialogProps } = useModalDialog<HTMLDivElement>({
+    active: Boolean(preview && data),
+    onClose: () => setPreview(null),
+    initialFocusRef: previewCloseRef,
+  });
 
   const refresh=useCallback(async()=>{
     if(authState!=="authenticated"){setData(null);setError("Connecte-toi comme administrateur pour charger la bibliothèque Bunny.");setLoading(false);return;}
@@ -110,24 +118,45 @@ export function BunnyLibraryPanel() {
   };
 
   const loadSeason=async(tmdbId:number,number:number)=>{
-    setLoadingSeason(true);
+    // A stale season must never be publishable while another one is loading or
+    // after a failed request: clear it before the fetch and on every error.
+    setLoadingSeason(true);setSeason(null);setMessage("");
     try{
       const response=await fetch(`/api/tmdb/tv/${tmdbId}/season/${number}`);
       const payload=await response.json() as TmdbSeason&{error?:string};
       if(!response.ok)throw new Error(payload.error||"Impossible de charger les épisodes.");
       setSeason(payload);
       if(!payload.episodes?.some(e=>e.episode_number===episodeNumber))setEpisodeNumber(payload.episodes?.[0]?.episode_number??1);
-    }catch(e){setMessage(e instanceof Error?e.message:"Chargement des épisodes impossible.");}
+    }catch(e){setSeason(null);setMessage(e instanceof Error?e.message:"Chargement des épisodes impossible.");}
     finally{setLoadingSeason(false);}
   };
 
   const publish=async()=>{
     if(!selectedVideo||!detail||authState!=="authenticated")return;
-    if(mediaType==="tv"&&(!season||!season.episodes.some(e=>e.episode_number===episodeNumber))){setMessage("Choisis un épisode valide.");return;}
+    let seasonFragment:ReturnType<typeof buildSeasonPublishFragment>|null=null;
+    if(mediaType==="tv"){
+      if(!season||!season.episodes.some(e=>e.episode_number===episodeNumber)){setMessage("Choisis un épisode valide.");return;}
+      const assessment=assessTmdbSeason({
+        season,
+        requestedSeasonNumber:seasonNumber,
+        referenceEpisodeCount:referenceEpisodeCountForSeason(detail,seasonNumber),
+      });
+      const firstPlan=planSeasonPublication({assessment,confirmed:false});
+      if(firstPlan.action==="blocked"){setMessage(assessment.message);return;}
+      let confirmed=false;
+      if(firstPlan.action==="confirm"){
+        // `replaceSeason` deletes D1 rows. It is only offered after a verified
+        // complete season and an explicit confirmation. A cancelled dialog
+        // stops the publication entirely.
+        confirmed=window.confirm(buildSeasonConfirmationMessage({seasonNumber,episodeCount:assessment.episodeCount}));
+        if(!confirmed){setMessage("Publication annulée : aucune donnée n’a été modifiée.");return;}
+      }
+      const plan=planSeasonPublication({assessment,confirmed});
+      if(plan.action==="blocked"){setMessage(plan.message);return;}
+      seasonFragment=buildSeasonPublishFragment({season,seasonNumber,episodeNumber,replaceSeason:plan.replaceSeason});
+    }
     setSaving(true);setMessage("");
     try{
-      const selectedSeason=season;
-      const selectedEpisode=selectedSeason?.episodes.find(e=>e.episode_number===episodeNumber);
       const payload={
         tmdbId:detail.id,kind:mediaType==="tv"?"series":"movie",
         title:detail.title||detail.name||"Sans titre",
@@ -144,16 +173,15 @@ export function BunnyLibraryPanel() {
           bunnyVideoId:mediaType==="movie"?selectedVideo.id:undefined
         },
         bunnyVideoId:selectedVideo.id,
-        ...(mediaType==="tv"&&selectedEpisode&&selectedSeason?{
-          targetEpisode:{seasonNumber,episodeNumber},
-          seasons:[{number:seasonNumber,name:selectedSeason.name,overview:selectedSeason.overview,airDate:selectedSeason.air_date,episodes:selectedSeason.episodes.map(e=>({
-            number:e.episode_number,title:e.name,overview:e.overview,airDate:e.air_date,runtime:e.runtime??undefined,tmdbId:e.id,thumbnailPath:e.still_path||null
-          }))}]
-        }:{})
+        ...(seasonFragment??{})
       };
-      const result=await adminJson("/api/catalog/publish",{method:"POST",body:JSON.stringify(payload)}) as {error?:string;published?:boolean};
+      const result=await adminJson("/api/catalog/publish",{method:"POST",body:JSON.stringify(payload)}) as {error?:string;published?:boolean;mode?:string};
       if(!result.published)throw new Error(result.error||"Publication impossible.");
-      setMessage(mediaType==="tv"?"Épisode associé et fiche série publiée dans CinéBox.":"Film publié avec sa vidéo Bunny.");
+      setMessage(mediaType==="tv"
+        ?(result.mode==="replaceSeason"
+          ?"Saison remplacée dans le catalogue partagé. Les fichiers Bunny restent intacts."
+          :"Saison publiée en mode non destructif : les épisodes absents ont été conservés.")
+        :"Film publié avec sa vidéo Bunny.");
       await refresh();
     }catch(e){
       if(isAdminAuthError(e)&&e.status===401)setAuthState("anonymous");
@@ -161,6 +189,11 @@ export function BunnyLibraryPanel() {
     }
     finally{setSaving(false);}
   };
+
+  const seasonAssessment=mediaType==="tv"&&detail&&season
+    ?assessTmdbSeason({season,requestedSeasonNumber:seasonNumber,referenceEpisodeCount:referenceEpisodeCountForSeason(detail,seasonNumber)})
+    :null;
+  const seasonNotice=describeSeasonAssessment(seasonAssessment);
 
   return <section className="bunny-panel" aria-label="Bibliothèque Bunny Stream">
     <header className="bunny-panel-header">
@@ -214,14 +247,15 @@ export function BunnyLibraryPanel() {
           {detail&&<div className="bunny-detail-body">
             <div className="bunny-detail-overview">{detail.poster_path&&<img src={image(detail.poster_path)} alt=""/>}<div><strong>{detail.title||detail.name}</strong><p>{detail.overview||"Synopsis indisponible."}</p><small><Star size={11} aria-hidden="true"/> {detail.vote_average?.toFixed(1)||"—"} · {detail.vote_count??0} votes · {(detail.release_date||detail.first_air_date||"").slice(0,4)}</small><p className="bunny-genres">{(detail.genres||[]).map(g=>g.name).join(" · ")}</p></div></div>
             {mediaType==="tv"&&<div className="bunny-season-grid"><div><label className="bunny-label">Saison</label><select value={seasonNumber} onChange={e=>{const n=Number(e.target.value);setSeasonNumber(n);void loadSeason(detail.id,n);}} style={inputStyle}>{(detail.seasons||[]).map(s=><option key={s.season_number} value={s.season_number}>{s.name||"Saison "+s.season_number}</option>)}</select></div><div><label className="bunny-label">Épisode</label><select value={episodeNumber} onChange={e=>setEpisodeNumber(Number(e.target.value))} style={inputStyle} disabled={loadingSeason||!season}>{(season?.episodes||[]).map(ep=><option key={ep.episode_number} value={ep.episode_number}>E{String(ep.episode_number).padStart(2,"0")} · {ep.name}</option>)}</select></div></div>}
+            {mediaType==="tv"&&season&&<div role={seasonAssessment?.blocking?"alert":"status"} className={`bunny-season-notice is-${seasonNotice.tone}`}><strong>{seasonNotice.title}</strong><span>{seasonNotice.text}</span></div>}
             <div className="bunny-cast"><strong>Casting et avis TMDB</strong><p>{(detail.credits?.cast||[]).slice(0,6).map(c=>c.name).join(" · ")||"Casting non disponible"}</p><p>{reviews.length} avis TMDB récupérés · {(detail.credits?.crew||[]).find(c=>c.job==="Director")?.name||"Réalisation non renseignée"}</p></div>
-            <button type="button" className="bunny-publish" disabled={saving||authState!=="authenticated"||(mediaType==="tv"&&!season)} onClick={()=>void publish()}>{saving?<LoaderCircle size={15} className="admin-spin"/>:<Check size={15}/>} Publier la fiche et associer la vidéo</button>
+            <button type="button" className="bunny-publish" disabled={saving||authState!=="authenticated"||(mediaType==="tv"&&(!season||seasonAssessment?.blocking===true))} onClick={()=>void publish()}>{saving?<LoaderCircle size={15} className="admin-spin"/>:<Check size={15}/>} {mediaType==="tv"&&seasonAssessment?.complete?"Remplacer la saison et associer la vidéo":"Publier la fiche et associer la vidéo"}</button>
           </div>}
           {message&&<p role="status" className="bunny-message">{message}</p>}
         </>}
       </div>
     </div>}
 
-    {preview&&data&&<div role="dialog" aria-modal="true" className="bunny-preview" onClick={e=>{if(e.target===e.currentTarget)setPreview(null);}}><div className="bunny-preview-dialog"><div className="bunny-preview-head"><strong>{preview.title}</strong><button type="button" className="bunny-ghost-btn" onClick={()=>setPreview(null)} aria-label="Fermer l’aperçu"><X size={15}/></button></div><div className="bunny-preview-frame"><iframe title={preview.title} src={`https://iframe.mediadelivery.net/embed/${data.libraryId}/${preview.id}`} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen/></div></div></div>}
+    {preview&&data&&<div className="bunny-preview" onClick={e=>{if(e.target===e.currentTarget)setPreview(null);}}><div ref={previewDialogRef} {...previewDialogProps} className="bunny-preview-dialog" aria-label={`Aperçu de ${preview.title}`}><div className="bunny-preview-head"><strong>{preview.title}</strong><button ref={previewCloseRef} type="button" className="bunny-ghost-btn" onClick={()=>setPreview(null)} aria-label="Fermer l’aperçu"><X size={15}/></button></div><div className="bunny-preview-frame"><iframe title={preview.title} src={`https://iframe.mediadelivery.net/embed/${data.libraryId}/${preview.id}`} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen/></div></div></div>}
   </section>;
 }

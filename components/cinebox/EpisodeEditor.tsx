@@ -6,6 +6,7 @@ import { Image as ImageIcon, Upload } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
 import { createBlobUrlLease, retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import type { BlobUrlLease } from "../../lib/cinebox/blob-url-manager.mjs";
+import { useModalDialog } from "./useModalDialog";
 
 export type EpisodeEditTarget = { season: number; episode: number; title: string };
 
@@ -18,6 +19,11 @@ type EpisodeEditorProps = {
 
 export default function EpisodeEditor({ selected, editingEpisode, onClose, onSave }: EpisodeEditorProps) {
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const { ref: dialogRef, dialogProps } = useModalDialog<HTMLFormElement>({
+    active: Boolean(selected && editingEpisode),
+    onClose,
+    initialFocusRef: titleInputRef,
+  });
   const [thumbnailPreview, setThumbnailPreview] = useState<BlobUrlLease | null>(null);
   const thumbnailPreviewUrl = thumbnailPreview?.url || "";
   const [thumbnailError, setThumbnailError] = useState("");
@@ -28,29 +34,11 @@ export default function EpisodeEditor({ selected, editingEpisode, onClose, onSav
     const lease = retainBlobUrl(currentThumbnail);
     return () => lease.release();
   }, [currentThumbnail]);
-  useEffect(() => {
-    if (!selected || !editingEpisode) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    titleInputRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { onClose(); return; }
-      if (event.key !== "Tab") return;
-      const dialog = titleInputRef.current?.closest('[role="dialog"]');
-      const items = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
-      if (!items?.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => { window.removeEventListener("keydown", handleKeyDown); previous?.focus(); };
-  }, [selected, editingEpisode, onClose]);
   if (!selected || !editingEpisode) return null;
 
   return (
     <motion.div className="modal-backdrop episode-edit-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <motion.form className="episode-edit-modal" role="dialog" aria-modal="true" aria-labelledby="episode-editor-heading" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }}
+      <motion.form ref={dialogRef} {...dialogProps} className="episode-edit-modal" aria-labelledby="episode-editor-heading" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }}
         onSubmit={async (event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);

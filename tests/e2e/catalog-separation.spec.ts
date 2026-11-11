@@ -299,3 +299,96 @@ test("les barres de recherche ne débordent pas sur mobile", async ({ page }) =>
   expect(box?.width ?? 0).toBeGreaterThanOrEqual(96);
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
 });
+
+test("une panne du catalogue partagé reste explicite et le bouton Réessayer recharge les fiches", async ({ page }) => {
+  await seedLocalLibrary(page);
+  let failing = true;
+  const requests: string[] = [];
+  await page.route(/\/api\/catalog\?/, async (route) => {
+    requests.push(route.request().url());
+    if (failing) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "D1 indisponible" }) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ titles: [SHARED_MOVIE], stats: { titles: 1, films: 1, series: 0, videos: 0, episodes: 0 } }),
+    });
+  });
+  await page.goto("/");
+
+  // The local library must stay usable while the shared catalogue fails.
+  await expect(page.getByRole("button", { name: "Ouvrir Le Voyage Bleu" })).toBeVisible();
+  const banner = page.locator(".shared-catalog-status.is-error");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("Catalogue partagé indisponible");
+  await expect(banner).toContainText("Votre bibliothèque locale reste accessible");
+  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toHaveCount(0);
+
+  failing = false;
+  await banner.getByRole("button", { name: "Réessayer" }).click();
+  await expect(page.locator(".shared-catalog-status")).toHaveCount(0);
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
+  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+});
+
+test("un catalogue partagé vide n’est pas présenté comme une panne", async ({ page }) => {
+  await seedLocalLibrary(page);
+  await mockSharedCatalog(page, []);
+  await page.goto("/");
+
+  await expect(page.locator(".shared-catalog-status")).toHaveCount(0);
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
+  await expect(page.getByRole("button", { name: "Ouvrir Le Voyage Bleu" })).toBeVisible();
+  await expect(page.getByText("Votre cinémathèque commence ici")).toHaveCount(0);
+});
+
+test("un échec du catalogue partagé ne laisse jamais de fiches adultes à un profil enfant", async ({ page }) => {
+  await seedLocalLibrary(page);
+  await page.addInitScript(({ data }) => {
+    if (window.localStorage.getItem("cinebox-profiles") !== null) return;
+    const adultId = "p-cinebox-adult";
+    const childId = "p-cinebox-child";
+    window.localStorage.setItem("cinebox-profiles", JSON.stringify({
+      version: 1,
+      profiles: [
+        { id: adultId, name: "Adulte", avatarId: "golden-reel", isChild: false, isPrimary: true, pin: null, createdAt: 1 },
+        { id: childId, name: "Enfant", avatarId: "golden-reel", isChild: true, isPrimary: false, pin: null, createdAt: 2 },
+      ],
+      activeProfileId: adultId,
+      data: { [adultId]: structuredClone(data), [childId]: structuredClone(data) },
+    }));
+  }, { data: emptyProfileData });
+
+  let failing = false;
+  await page.route(/\/api\/catalog\?/, async (route) => {
+    if (failing) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "D1 indisponible" }) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ titles: [SHARED_MOVIE], stats: { titles: 1, films: 1, series: 0, videos: 0, episodes: 0 } }),
+    });
+  });
+  await page.goto("/");
+  // Two profiles exist, so the app intentionally starts on the gate.
+  await chooseProfile(page, "Adulte");
+
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
+  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
+
+  // The next shared-catalogue request fails while switching to a child profile.
+  failing = true;
+  await page.locator("header").getByRole("button", { name: /^Profil actif : / }).click();
+  await page.getByRole("menuitem", { name: /Quitter ce profil/ }).click();
+  await page.getByRole("button", { name: "Choisir le profil Enfant" }).click();
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
+
+  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toHaveCount(0);
+  await expect(page.locator(".shared-catalog-status.is-error")).toBeVisible();
+  await expect(page.getByText(/Mode enfant : seuls les contenus/)).toBeVisible();
+});

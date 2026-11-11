@@ -215,7 +215,7 @@ test("un PIN est demandé, vérifié et stocké uniquement sous forme hachée", 
   const input = page.getByLabel("Code PIN");
   await input.fill("1357");
   await page.getByRole("button", { name: "Continuer" }).click();
-  await expect(page.locator(".profile-pin-panel").getByRole("alert")).toContainText("Code PIN incorrect");
+  await expect(page.locator(".profile-pin-dialog").getByRole("alert")).toContainText("Code PIN incorrect");
   await input.fill("2468");
   await page.getByRole("button", { name: "Continuer" }).click();
   await expect(page.locator("header").getByRole("button", { name: /^Profil actif : Verrouillé/ })).toBeVisible();
@@ -358,4 +358,147 @@ test("un stockage de profils corrompu ne remplace pas les anciennes clés", asyn
   await expect(page.getByRole("heading", { name: "Profils protégés" })).toBeVisible();
   expect(await page.evaluate(() => ({ titles: localStorage.getItem("cinebox-titles"), favorites: localStorage.getItem("cinebox-favorites") }))).toEqual(before);
   expect(await page.evaluate((key) => localStorage.getItem(key), PROFILE_KEY)).toBe("{broken");
+});
+
+test("les actions de gestion d’un profil protégé exigent le PIN et le verrouillage survit au rechargement", async ({ page }) => {
+  await seed(page);
+  await createProfile(page, "Protégé", { pin: "2468" });
+  const profileId = (await profiles(page)).profiles.find((profile: { name: string }) => profile.name === "Protégé").id as string;
+
+  await openProfileManagerFromGate(page);
+  const card = page.locator(".profile-manager-card").filter({ hasText: "Protégé" });
+  await card.getByRole("button", { name: "Modifier" }).click();
+  const pinDialog = page.locator(".profile-pin-dialog");
+  await expect(pinDialog).toBeVisible();
+  await expect(pinDialog.getByRole("heading", { name: "Profil protégé" })).toBeVisible();
+  await pinDialog.getByRole("button", { name: "Annuler" }).click();
+  await expect(pinDialog).toHaveCount(0);
+  await expect(page.locator(".profile-editor-panel")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Supprimer le profil Protégé" }).click();
+  await expect(pinDialog).toBeVisible();
+  await pinDialog.getByRole("button", { name: "Annuler" }).click();
+  await expect(page.getByRole("button", { name: "Supprimer le profil Protégé" })).toBeVisible();
+
+  await card.getByRole("button", { name: "Modifier" }).click();
+  await pinDialog.getByLabel("Code PIN").fill("0000");
+  await pinDialog.getByRole("button", { name: "Continuer" }).click();
+  await expect(pinDialog.getByRole("alert")).toContainText("Code PIN incorrect");
+  await expect(pinDialog.getByRole("alert")).toContainText("4 tentatives restantes");
+
+  const guardAfterFailure = await page.evaluate(() => {
+    const raw = localStorage.getItem("cinebox-profile-pin-guard");
+    return { raw, parsed: raw ? JSON.parse(raw) : null };
+  });
+  expect(guardAfterFailure.parsed.profiles[profileId].attempts).toBe(1);
+  expect(guardAfterFailure.raw).not.toContain("0000");
+  expect(guardAfterFailure.raw).not.toContain("2468");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Qui regarde ?" })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cinebox-profile-pin-guard") || "null").profiles)).toMatchObject({
+    [profileId]: { attempts: 1 },
+  });
+
+  await openProfileManagerFromGate(page);
+  await page.locator(".profile-manager-card").filter({ hasText: "Protégé" }).getByRole("button", { name: "Modifier" }).click();
+  // The guard already recorded one failure before the reload: the next three
+  // wrong PINs consume the remaining attempts, then the fifth locks the profile.
+  for (const remaining of [3, 2, 1]) {
+    await pinDialog.getByLabel("Code PIN").fill("0000");
+    await pinDialog.getByRole("button", { name: "Continuer" }).click();
+    await expect(pinDialog.getByRole("alert")).toContainText(`${remaining} tentative${remaining === 1 ? "" : "s"} restante${remaining === 1 ? "" : "s"}`);
+  }
+  await pinDialog.getByLabel("Code PIN").fill("0000");
+  await pinDialog.getByRole("button", { name: "Continuer" }).click();
+  await expect(pinDialog.getByRole("alert")).toContainText("Trop de tentatives");
+  const locked = await page.evaluate(() => JSON.parse(localStorage.getItem("cinebox-profile-pin-guard") || "null"));
+  expect(locked.profiles[profileId].attempts).toBe(5);
+  expect(locked.profiles[profileId].lockedUntil).toBeGreaterThan(Date.now());
+
+  await page.reload();
+  await openProfileManagerFromGate(page);
+  await page.locator(".profile-manager-card").filter({ hasText: "Protégé" }).getByRole("button", { name: "Modifier" }).click();
+  await expect(page.locator(".profile-pin-dialog").getByRole("alert")).toContainText("Trop de tentatives");
+  await page.locator(".profile-pin-dialog").getByLabel("Code PIN").fill("2468");
+  await page.locator(".profile-pin-dialog").getByRole("button", { name: "Continuer" }).click();
+  await expect(page.locator(".profile-pin-dialog")).toBeVisible();
+  await expect(page.locator(".profile-pin-dialog").getByRole("alert")).toContainText("Trop de tentatives");
+  await expect(page.locator(".profile-editor-panel")).toHaveCount(0);
+
+  // Simulate the end of the lockout window, then the correct PIN must work.
+  await page.evaluate(() => {
+    const key = "cinebox-profile-pin-guard";
+    const guard = JSON.parse(localStorage.getItem(key) || "null");
+    for (const id of Object.keys(guard.profiles)) guard.profiles[id].lockedUntil = Date.now() - 1000;
+    localStorage.setItem(key, JSON.stringify(guard));
+  });
+  await page.reload();
+  await openProfileManagerFromGate(page);
+  await page.locator(".profile-manager-card").filter({ hasText: "Protégé" }).getByRole("button", { name: "Modifier" }).click();
+  await page.locator(".profile-pin-dialog").getByLabel("Code PIN").fill("2468");
+  await page.locator(".profile-pin-dialog").getByRole("button", { name: "Continuer" }).click();
+  await expect(page.locator(".profile-editor-panel").getByRole("heading", { name: "Modifier le profil" })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("cinebox-profile-pin-guard"))).toBeNull();
+});
+
+test("les dialogues imbriqués conservent le verrouillage du fond et le piège de focus", async ({ page }) => {
+  await seed(page);
+  const trigger = page.locator("header").getByRole("button", { name: /^Profil actif : / });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: /^Profil/ }).click();
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  await page.getByRole("button", { name: "Ajouter un profil" }).click();
+  const editor = page.locator(".profile-editor-panel");
+  await expect(editor.getByRole("heading", { name: "Nouveau profil" })).toBeVisible();
+  await expect(page.getByLabel("Nom", { exact: true })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  await page.keyboard.press("Escape");
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ajouter un profil" })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+});
+
+test("le gestionnaire ouvert depuis « Qui regarde ? » active le comportement modal et restaure le focus", async ({ page }) => {
+  await seed(page);
+  await leaveProfile(page);
+  await expect(page.getByRole("heading", { name: "Qui regarde ?" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Gérer les profils" }).click();
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  for (let index = 0; index < 8; index++) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Qui regarde ?" })).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  // The original trigger is unmounted while the manager is open: the fallback
+  // must focus the re-rendered gate control instead of leaving focus on body.
+  await expect(page.getByRole("button", { name: "Gérer les profils" })).toBeFocused();
+});
+
+test("fermer le gestionnaire ouvert depuis le menu profil restaure le focus sur le déclencheur", async ({ page }) => {
+  await seed(page);
+  const trigger = page.locator("header").getByRole("button", { name: /^Profil actif : / });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: /^Profil/ }).click();
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Gérer les profils" })).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });

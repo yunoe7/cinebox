@@ -272,3 +272,88 @@ test("les affiches et les informations restent en colonnes distinctes sur deskto
   expect(mobileGeometry.documentOverflow).toBe(false);
   await expect(mobileDetails.locator(".detail-overview-copy")).toContainText(cast[cast.length - 1]);
 });
+
+test("la fiche détail piège le focus, verrouille le défilement et restaure le focus à la fermeture", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const film: FixtureTitle = {
+    id: 74301,
+    name: "Dialogue accessible",
+    kind: "Film",
+    year: 2025,
+    genre: "Drame",
+    description: "Un film synthétique pour valider le dialogue.",
+    poster: "",
+    backdrop: "",
+    progress: 0,
+    duration: "1 h 30",
+  };
+  await seed(page, [film]);
+
+  const opener = page.getByRole("button", { name: `Ouvrir ${film.name}` });
+  await opener.focus();
+  await opener.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Fermer les détails" })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  for (let index = 0; index < 10; index++) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))).toBe(true);
+  }
+  for (let index = 0; index < 10; index++) {
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')))).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+});
+
+test("la confirmation de suppression ne se ferme pas au clic sur le fond et garde le focus dans le dialogue", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const film: FixtureTitle = {
+    id: 74302,
+    name: "Suppression protégée",
+    kind: "Film",
+    year: 2025,
+    genre: "Drame",
+    description: "Un film synthétique pour valider la confirmation.",
+    poster: "",
+    backdrop: "",
+    progress: 0,
+    duration: "1 h 30",
+  };
+  await seed(page, [film]);
+
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
+  await page.locator(".admin-section-nav").getByRole("button", { name: "Films" }).click();
+  await page.getByRole("button", { name: `Actions pour ${film.name}` }).click();
+  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+
+  const alert = page.getByRole("alertdialog");
+  await expect(alert).toBeVisible();
+  await expect(alert.getByRole("button", { name: "Annuler" })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  await page.locator(".modal-backdrop.app-confirm-backdrop").click({ position: { x: 4, y: 4 } });
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole("button", { name: `Ouvrir ${film.name}` })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(alert).toHaveCount(0);
+  // The menu item that opened the dialog is gone; focus must return to the
+  // stable card-menu trigger, not to body.
+  const cardTrigger = page.getByRole("button", { name: `Actions pour ${film.name}` });
+  await expect(cardTrigger).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+
+  await cardTrigger.click();
+  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  await expect(alert).toBeVisible();
+  await alert.getByRole("button", { name: "Annuler" }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(cardTrigger).toBeFocused();
+});
