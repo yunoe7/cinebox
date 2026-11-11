@@ -27,12 +27,14 @@ import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
-import { SharedCatalog } from "../components/cinebox/SharedCatalog";
 import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
 import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
-import { canShowSharedCatalog, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
+import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
+import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
+import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
+import { fetchSharedCatalogTitles } from "../lib/cinebox/shared-catalog.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
@@ -291,7 +293,7 @@ function writeFailureMessage(label: string, reason: "quota" | "access" | "serial
 
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
-  const [sharedFeaturedTitle, setSharedFeaturedTitle] = useState<Title | null>(null);
+  const [sharedCatalogTitles, setSharedCatalogTitles] = useState<Title[]>([]);
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
@@ -347,6 +349,7 @@ export default function HomePage() {
   const titlesRef = useRef<Title[]>([]);
   const favoritesRef = useRef<number[]>([]);
   const catalogTitlesRef = useRef<Title[]>([]);
+  const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const profileStoreRef = useRef<ProfileStore | null>(null);
   const activeProfileIdRef = useRef<string | null>(null);
   const canWriteTitlesRef = useRef(false);
@@ -354,7 +357,16 @@ export default function HomePage() {
   const activeProfile = useMemo(() => profileStore?.profiles.find((profile) => profile.id === activeProfileId) || null, [profileStore, activeProfileId]);
   const activeProfileData = activeProfile && profileStore ? profileStore.data[activeProfile.id] : null;
   const isChildProfile = Boolean(activeProfile?.isChild);
-  const browseTitles = useMemo(() => filterTitlesForProfile(titles, isChildProfile), [titles, isChildProfile]);
+  const localBrowseTitles = useMemo(() => filterTitlesForProfile(titles, isChildProfile), [titles, isChildProfile]);
+  const browseTitles = useMemo(() => {
+    const merged = mergeCatalogTitles(titles, sharedCatalogTitles);
+    const filtered = filterTitlesForProfile(merged, isChildProfile);
+    return activeProfileData ? overlayProfileData(filtered, activeProfileData) : filtered;
+  }, [titles, sharedCatalogTitles, isChildProfile, activeProfileData]);
+  const visibleFavorites = useMemo(() => {
+    const ids = visibleFavoriteIds(browseTitles, favorites);
+    return { ids, idSet: new Set(ids), count: ids.length };
+  }, [browseTitles, favorites]);
 
   useEffect(() => { syncBlobUrlOwner(`${blobOwnerPrefix}:library`, getTitlesBlobUrls(titles)); }, [blobOwnerPrefix, titles]);
   useEffect(() => { syncBlobUrlOwner(`${blobOwnerPrefix}:selected`, getTitleBlobUrls(selected)); }, [blobOwnerPrefix, selected]);
@@ -490,7 +502,8 @@ export default function HomePage() {
   const savePlaybackForActive = (titleId: number, episodeSelection: { season: number; episode: number } | null, second: number, progress: number) => saveActiveProfileData((data) => {
     const id = String(titleId);
     const previous = data.playback[id] || { currentTime: 0, progress: 0, episodes: {} };
-    const title = catalogTitlesRef.current.find((item) => item.id === titleId);
+    const title = catalogTitlesRef.current.find((item) => item.id === titleId)
+      || sharedCatalogTitlesRef.current.find((item) => item.id === titleId);
     if (!episodeSelection) return { ...data, playback: { ...data.playback, [id]: { ...previous, assetKey: title?.videoAssetKey || `${titleId}:video`, currentTime: second, progress } } };
     const episodeKey = `${episodeSelection.season}:${episodeSelection.episode}`;
     const episode = title?.seasons?.find((season) => season.number === episodeSelection.season)?.episodes.find((item) => item.number === episodeSelection.episode);
@@ -710,6 +723,28 @@ export default function HomePage() {
     return () => controller.abort();
   }, [activePage]);
 
+  // The shared catalogue is part of the public browsing experience: it is
+  // merged with the personal library for Films, Séries, Vidéos, search,
+  // favourites and the home page. A child profile asks the server for a
+  // pre-filtered list and filters again locally (defence in depth).
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    fetchSharedCatalogTitles({
+      maxAge: isChildProfile ? CHILD_PROFILE_MAX_AGE : null,
+      signal: controller.signal,
+    }).then((items) => {
+      if (cancelled) return;
+      sharedCatalogTitlesRef.current = items;
+      setSharedCatalogTitles(items);
+    }).catch(() => {
+      if (cancelled) return;
+      sharedCatalogTitlesRef.current = [];
+      setSharedCatalogTitles([]);
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [isChildProfile]);
+
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
   const filmYears = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.year))).sort((a, b) => b - a), [filmTitles]);
@@ -717,13 +752,13 @@ export default function HomePage() {
   const seriesGenres = useMemo(() => Array.from(new Set(seriesTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [seriesTitles]);
   const seriesYears = useMemo(() => Array.from(new Set(seriesTitles.map((item) => item.year))).sort((a, b) => b - a), [seriesTitles]);
   const videoTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Vidéo"), [browseTitles]);
-  const episodeCount = useMemo(() => browseTitles.filter((item) => item.kind === "Série").reduce((count, item) => count + (item.seasons || []).reduce((seasonCount, season) => seasonCount + season.episodes.length, 0), 0), [browseTitles]);
-  const adminRecentTitles = useMemo(() => [...browseTitles].sort((a, b) => b.id - a.id).slice(0, 5), [browseTitles]);
-  const adminGenres = useMemo(() => Array.from(new Set(browseTitles.map((item) => item.genre.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [browseTitles]);
-  const adminGenreCounts = useMemo(() => new Map(adminGenres.map((genre) => [genre, browseTitles.filter((item) => item.genre.trim() === genre).length])), [adminGenres, browseTitles]);
-  const adminCollections = useMemo(() => Array.from(new Set(browseTitles.map((item) => item.collection?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, "fr")), [browseTitles]);
-  const adminVideoFileCount = useMemo(() => browseTitles.reduce((count, title) => count + Number(Boolean(title.videoUrl)) + (title.seasons || []).reduce((episodeCount, season) => episodeCount + season.episodes.filter((episode) => Boolean(episode.videoUrl)).length, 0), 0), [browseTitles]);
-  const adminMedia = useMemo(() => browseTitles.flatMap((title) => [
+  const episodeCount = useMemo(() => localBrowseTitles.filter((item) => item.kind === "Série").reduce((count, item) => count + (item.seasons || []).reduce((seasonCount, season) => seasonCount + season.episodes.length, 0), 0), [localBrowseTitles]);
+  const adminRecentTitles = useMemo(() => [...localBrowseTitles].sort((a, b) => b.id - a.id).slice(0, 5), [localBrowseTitles]);
+  const adminGenres = useMemo(() => Array.from(new Set(localBrowseTitles.map((item) => item.genre.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [localBrowseTitles]);
+  const adminGenreCounts = useMemo(() => new Map(adminGenres.map((genre) => [genre, localBrowseTitles.filter((item) => item.genre.trim() === genre).length])), [adminGenres, localBrowseTitles]);
+  const adminCollections = useMemo(() => Array.from(new Set(localBrowseTitles.map((item) => item.collection?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, "fr")), [localBrowseTitles]);
+  const adminVideoFileCount = useMemo(() => localBrowseTitles.reduce((count, title) => count + Number(Boolean(title.videoUrl)) + (title.seasons || []).reduce((episodeCount, season) => episodeCount + season.episodes.filter((episode) => Boolean(episode.videoUrl)).length, 0), 0), [localBrowseTitles]);
+  const adminMedia = useMemo(() => localBrowseTitles.flatMap((title) => [
     ...(title.poster ? [{ id: `poster-${title.id}`, title, label: title.kind === "Vidéo" ? "Miniature vidéo" : "Affiche", url: title.poster, assetKey: title.posterAssetKey || `${title.id}:poster`, episode: null as null | { season: number; number: number; title: string } }] : []),
     ...(title.kind === "Série" ? (title.seasons || []).flatMap((season) => season.episodes.flatMap((episode) => episode.thumbnailUrl ? [{
       id: `episode-${title.id}-${season.number}-${episode.number}`,
@@ -733,7 +768,7 @@ export default function HomePage() {
       assetKey: episode.thumbnailAssetKey || `${title.id}:episode:${season.number}:${episode.number}:thumbnail`,
       episode: { season: season.number, number: episode.number, title: episode.title },
     }] : [])) : []),
-  ]), [browseTitles]);
+  ]), [localBrowseTitles]);
 
   useEffect(() => {
     if (activePage !== "Administration" || adminSection !== "media") return;
@@ -750,15 +785,11 @@ export default function HomePage() {
     });
     return () => { cancelled = true; };
   }, [activePage, adminSection, adminMedia]);
-  const favoriteTypeCounts = useMemo(() => ({
-    Film: browseTitles.filter((item) => item.kind === "Film" && favorites.includes(item.id)).length,
-    Série: browseTitles.filter((item) => item.kind === "Série" && favorites.includes(item.id)).length,
-    Vidéo: browseTitles.filter((item) => item.kind === "Vidéo" && favorites.includes(item.id)).length,
-  }), [browseTitles, favorites]);
+  const favoriteTypeCounts = useMemo(() => computeFavoriteTypeCounts(browseTitles, favorites), [browseTitles, favorites]);
   const videoCategories = useMemo(() => Array.from(new Set(videoTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [videoTitles]);
   const availableVideoDurationBands = useMemo(() => videoDurationBands.filter((band) => videoTitles.some((item) => getDurationBand(item.duration) === band.value)), [videoTitles]);
   const adminKind: Kind | null = adminSection === "films" ? "Film" : adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : null;
-  const adminLocalTitles = useMemo(() => adminKind ? browseTitles.filter((item) => item.kind === adminKind) : [], [browseTitles, adminKind]);
+  const adminLocalTitles = useMemo(() => adminKind ? localBrowseTitles.filter((item) => item.kind === adminKind) : [], [localBrowseTitles, adminKind]);
   const adminLocalGenres = useMemo(() => Array.from(new Set(adminLocalTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [adminLocalTitles]);
   const adminLocalYears = useMemo(() => Array.from(new Set(adminLocalTitles.map((item) => item.year))).sort((a, b) => b - a), [adminLocalTitles]);
   const adminLocalDurationBands = useMemo(() => videoDurationBands.filter((band) => adminLocalTitles.some((item) => getDurationBand(item.duration) === band.value)), [adminLocalTitles]);
@@ -767,7 +798,7 @@ export default function HomePage() {
   const adminFiltersActive = adminGenreFilter !== "all" || adminYearFilter !== "all" || adminViewingFilter !== "all" || adminDurationFilter !== "all";
   const visibleTitles = useMemo(() => browseTitles.filter((item) => {
     const pageMatch = activePage === "Accueil" || activePage === "Administration" ||
-      (activePage === "Ma liste" ? favorites.includes(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
+      (activePage === "Ma liste" ? visibleFavorites.idSet.has(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
     const filmPage = activePage === "Films";
     const seriesPage = activePage === "Séries";
     const videoPage = activePage === "Vidéos";
@@ -785,8 +816,7 @@ export default function HomePage() {
       : seriesPage ? seriesViewingFilter === "all" || viewingStatus === seriesViewingFilter
       : adminPage ? adminViewingFilter === "all" || adminViewingStatus === adminViewingFilter
       : true;
-    const searchable = [item.name, item.genre, item.kind, item.description, String(item.year), ...(item.seasons || []).flatMap(season => season.episodes.map(episode => episode.title))].join(" ").toLocaleLowerCase("fr");
-    const searchMatch = searchable.includes(query.trim().toLocaleLowerCase("fr"));
+    const searchMatch = matchesTitleQuery(item, query);
     return pageMatch && filterMatch && genreMatch && yearMatch && durationMatch && viewingMatch && searchMatch;
   }).sort((a, b) => activePage === "Films"
     ? filmSortBy === "title" ? a.name.localeCompare(b.name, "fr")
@@ -820,12 +850,12 @@ export default function HomePage() {
             : adminSortBy === "duration-desc" ? (parseDurationMinutes(b.duration) ?? -1) - (parseDurationMinutes(a.duration) ?? -1) || a.name.localeCompare(b.name, "fr")
             : adminSortBy === "episodes-desc" ? getSeriesManagementStats(b).total - getSeriesManagementStats(a).total || a.name.localeCompare(b.name, "fr")
             : b.id - a.id
-        : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy, adminKind, adminGenreFilter, adminYearFilter, adminViewingFilter, adminDurationFilter]);
+        : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, visibleFavorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy, adminSection, adminSortBy, adminKind, adminGenreFilter, adminYearFilter, adminViewingFilter, adminDurationFilter]);
 
   const featuredTitles = useMemo(() => {
     const local = [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5);
-    return selectFeaturedTitles({ localFeatured: local, sharedFeaturedTitle, localLibrarySize: titles.length, isChildProfile });
-  }, [browseTitles, titles.length, sharedFeaturedTitle, isChildProfile]);
+    return selectFeaturedTitles({ localFeatured: local, sharedFeaturedTitle: null, localLibrarySize: browseTitles.length, isChildProfile });
+  }, [browseTitles, isChildProfile]);
   const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
   useEffect(() => {
     if (featuredTitles.length < 2 || prefersReducedMotion) return;
@@ -1019,6 +1049,10 @@ export default function HomePage() {
       id: newId, name, kind,
       tmdbId: smartImport?.tmdbId ?? editingTitle?.tmdbId,
       sharedId: resolveSharedId({ tmdbId: smartImport?.tmdbId ?? editingTitle?.tmdbId, kind, localId: newId, existingSharedId: editingTitle?.sharedId }),
+      source: "local",
+      ageRating: editingTitle?.ageRating,
+      minAge: editingTitle?.minAge,
+      isAdult: editingTitle?.isAdult,
       year: Number(form.get("year")) || new Date().getFullYear(),
       genre: String(form.get("genre") || "À découvrir"),
       collection: String(form.get("collection") || "").trim() || undefined,
@@ -1062,6 +1096,9 @@ export default function HomePage() {
         newTitle.totalSeasons = smartImport.totalSeasons;
         newTitle.totalEpisodes = smartImport.totalEpisodes;
         newTitle.genres = smartImport.genres;
+        newTitle.ageRating = smartImport.ageRating;
+        newTitle.minAge = smartImport.minAge;
+        newTitle.isAdult = smartImport.minAge === 18;
         newTitle.backdrop = smartImport.backdrop || newTitle.backdrop;
         newTitle.backdropAssetKey = stagedKeys["smart:backdrop"] || editingTitle?.backdropAssetKey;
         if (smartAssetMap.has("smart:backdrop")) newTitle.backdrop = createStagedObjectUrl(smartAssetMap.get("smart:backdrop")!);
@@ -1152,6 +1189,7 @@ export default function HomePage() {
               director: newTitle.director, rating: newTitle.rating, voteCount: newTitle.voteCount,
               status: newTitle.status, totalSeasons: newTitle.totalSeasons, totalEpisodes: newTitle.totalEpisodes,
               collection: newTitle.collection, duration: newTitle.duration,
+              ageRating: newTitle.ageRating, minAge: newTitle.minAge, adult: newTitle.isAdult === true,
             },
             seasons: (newTitle.seasons || []).map(season => ({
               number: season.number, name: season.name, overview: season.overview,
@@ -1223,7 +1261,7 @@ export default function HomePage() {
             <a className="brand topbar-brand" href="#" aria-label="CinéBox, accueil" onClick={(event) => { event.preventDefault(); setActivePage("Accueil"); setFilter("Tout"); }}><CineboxLogo variant="sidebar" /></a>
             <MagicCard className="primary-nav-surface">
               <nav className="side-nav primary-nav" aria-label="Rubriques CinéBox">
-                {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{favorites.length}</small>}</button>)}
+                {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{visibleFavorites.count}</small>}</button>)}
               </nav>
             </MagicCard>
             <div className="top-actions">
@@ -1238,9 +1276,8 @@ export default function HomePage() {
       <section className="main-area">
 
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
-          {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : la gestion et le catalogue partagé sont masqués. Les titres partagés ne possèdent pas de classification d’âge fiable ; le filtrage de la bibliothèque locale reste indicatif.</div>}
-          {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${favorites.length} favori${favorites.length === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
-          {activePage !== "Administration" && activePage !== "Ma liste" && canShowSharedCatalog(isChildProfile) && <SharedCatalog onOpen={openTitle} onFeatured={setSharedFeaturedTitle}/>}
+          {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : seuls les contenus dont la classification d’âge est connue et adaptée sont affichés. La gestion et les contenus non classés sont masqués.</div>}
+          {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${visibleFavorites.count} favori${visibleFavorites.count === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
           {activePage === "Accueil" && (activeFeatured ? <section className={`hero-cinema ${activeFeatured.backdrop ? "has-backdrop" : activeFeatured.poster ? "has-poster" : "is-empty"}`} aria-label="Sélection à la une">
             <AnimatedGridPattern className="hero-cinema-grid" numSquares={8} maxOpacity={0.06} duration={6} />
             <div className={`hero-cinema-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
@@ -1464,7 +1501,7 @@ export default function HomePage() {
           {(activePage !== "Administration" || adminSection === "films" || adminSection === "series" || adminSection === "videos") && <section className={`section-block catalogue ${activePage === "Films" ? "films-catalogue" : activePage === "Séries" ? "series-catalogue" : activePage === "Vidéos" ? "videos-catalogue" : activePage === "Ma liste" ? "ma-list-catalogue" : activePage === "Administration" ? "admin-catalogue" : ""}`} id="catalogue">
             {activePage === "Administration" && <div className="admin-local-source-banner"><span className="admin-source-icon"><HardDrive size={16}/></span><div><strong>Bibliothèque locale · cet appareil</strong><small>Recherche, filtres et tri s’appliquent uniquement aux contenus stockés dans ce navigateur.</small></div><span className="admin-source-badge is-local">LOCAL</span></div>}
             <div className="section-head"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE CINÉMATHÈQUE" : activePage === "Séries" ? "VOTRE ESPACE SÉRIES" : activePage === "Vidéos" ? "VOTRE COLLECTION VIDÉO" : activePage === "Ma liste" ? "VOTRE SÉLECTION PERSONNELLE" : activePage === "Administration" ? `GESTION DES ${adminSection === "films" ? "FILMS" : adminSection === "series" ? "SÉRIES" : "VIDÉOS"}` : "À PORTÉE DE MAIN"}</div><h2>{activePage === "Films" ? "Tous vos films" : activePage === "Séries" ? "Toutes vos séries" : activePage === "Vidéos" ? "Toutes vos vidéos" : activePage === "Administration" ? `Gérer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"}` : activePage === "Ma liste" ? "Vos favoris" : "Votre collection"} <em>{activePage === "Films" || activePage === "Séries" || activePage === "Vidéos" ? "à explorer" : activePage === "Administration" ? "bibliothèque locale" : activePage === "Ma liste" ? "à retrouver" : "à explorer"}</em></h2></div>
-              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {favorites.length} favori{favorites.length === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {adminLocalTitles.length} dans la bibliothèque locale</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
+              {activePage === "Films" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {filmTitles.length} film{filmTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Séries" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {seriesTitles.length} série{seriesTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Vidéos" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {videoTitles.length} vidéo{videoTitles.length === 1 ? "" : "s"}</span></div> : activePage === "Ma liste" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} affiché{visibleTitles.length === 1 ? "" : "s"} <span>sur {visibleFavorites.count} favori{visibleFavorites.count === 1 ? "" : "s"}</span></div> : activePage === "Administration" ? <div className="films-result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} résultat{visibleTitles.length === 1 ? "" : "s"} <span>sur {adminLocalTitles.length} dans la bibliothèque locale</span></div> : <div className="catalogue-tools"><span className="result-count" aria-live="polite" aria-atomic="true">{visibleTitles.length} TITRE{visibleTitles.length > 1 ? "S" : ""}</span><div className="filters" role="group" aria-label="Filtrer par type">{["Tout", "Film", "Série", "Vidéo"].map((f) => <button key={f} type="button" className={filter === f ? "selected" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f === "Tout" ? "Tout" : f + "s"}</button>)}</div><select className="sort-select genre-select" aria-label="Filtrer par genre" value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}><option value="Tous les genres">Tous les genres</option>{Array.from(new Set(browseTitles.map(item => item.genre).filter(Boolean))).sort((a,b) => a.localeCompare(b,"fr")).map(genre => <option key={genre} value={genre}>{genre}</option>)}</select><select className="sort-select" aria-label="Trier la collection" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="recent">Plus récents</option><option value="oldest">Plus anciens</option><option value="title">Ordre alphabétique</option><option value="popular">Les plus vus</option></select></div>}
             </div>
             {activePage === "Administration" && adminKind && <div className="films-filters admin-local-filters" aria-label={`Filtres des ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} locaux`}>
               <label><span>{adminKind === "Vidéo" ? "Catégorie" : "Genre"}</span><select aria-label={`Filtrer les ${adminSection === "films" ? "films" : adminSection === "series" ? "séries" : "vidéos"} administrés par ${adminKind === "Vidéo" ? "catégorie" : "genre"}`} value={adminGenreFilter} onChange={(event) => setAdminGenreFilter(event.target.value)}><option value="all">Tous les genres</option>{adminLocalGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}</select></label>
@@ -1476,7 +1513,7 @@ export default function HomePage() {
             {activePage === "Administration" && <div className="admin-content-toolbar"><span>{visibleTitles.length} contenu{visibleTitles.length === 1 ? "" : "s"} local{visibleTitles.length === 1 ? "" : "aux"}</span><label><span>Trier</span><select className="sort-select" aria-label="Trier les contenus administrés" value={adminSortBy} onChange={(event) => setAdminSortBy(event.target.value)}><option value="recent">Ajouts récents</option><option value="title">Titre A à Z</option><option value="year-desc">Année décroissante</option><option value="year-asc">Année croissante</option><option value="progress">Progression</option>{adminKind === "Série" && <option value="episodes-desc">Nombre d’épisodes</option>}{adminKind === "Vidéo" && <><option value="duration-asc">Durée croissante</option><option value="duration-desc">Durée décroissante</option></>}</select></label><button type="button" className="admin-toolbar-add" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button></div>}
             {activePage === "Ma liste" && <div className="list-library-controls">
               <div className="filters list-type-filters" role="group" aria-label="Filtrer mes favoris par type">
-                <button type="button" className={filter === "Tout" ? "selected" : ""} aria-pressed={filter === "Tout"} onClick={() => setFilter("Tout")}>Tout <small>{favorites.length}</small></button>
+                <button type="button" className={filter === "Tout" ? "selected" : ""} aria-pressed={filter === "Tout"} onClick={() => setFilter("Tout")}>Tout <small>{visibleFavorites.count}</small></button>
                 <button type="button" className={filter === "Film" ? "selected" : ""} aria-label={`Films, ${favoriteTypeCounts.Film} favoris`} aria-pressed={filter === "Film"} onClick={() => setFilter("Film")}>Films <small>{favoriteTypeCounts.Film}</small></button>
                 <button type="button" className={filter === "Série" ? "selected" : ""} aria-label={`Séries, ${favoriteTypeCounts.Série} favoris`} aria-pressed={filter === "Série"} onClick={() => setFilter("Série")}>Séries <small>{favoriteTypeCounts.Série}</small></button>
                 <button type="button" className={filter === "Vidéo" ? "selected" : ""} aria-label={`Vidéos, ${favoriteTypeCounts.Vidéo} favoris`} aria-pressed={filter === "Vidéo"} onClick={() => setFilter("Vidéo")}>Vidéos <small>{favoriteTypeCounts.Vidéo}</small></button>
@@ -1521,7 +1558,8 @@ export default function HomePage() {
               {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length === 0 && <div className="empty-state videos-empty"><strong>Votre vidéothèque commence ici</strong><span>Ajoutez une vidéo à votre collection pour la retrouver sur cet écran.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Vidéo"); setShowAdd(true); }}><Plus size={14}/> Ajouter une vidéo</button></div>}
               {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length > 0 && <div className="empty-state videos-empty"><strong>Aucune vidéo ne correspond à votre recherche</strong><span>Modifiez votre recherche ou vos filtres pour retrouver vos vidéos.</span><button type="button" onClick={() => { setQuery(""); setVideoCategoryFilter("all"); setVideoDurationFilter("all"); setVideoSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
               {!visibleTitles.length && activePage === "Ma liste" && favorites.length === 0 && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Heart size={21}/></span><strong>Votre liste commence avec vos coups de cœur</strong><span>Ajoutez des films, séries ou vidéos à vos favoris pour les retrouver ici.</span></div>}
-              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Search size={20}/></span><strong>Aucun favori ne correspond à votre recherche</strong><span>Essayez un autre titre ou affichez tous vos favoris.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); }}>Effacer la recherche et les filtres</button></div>}
+              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && visibleFavorites.count === 0 && isChildProfile && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><ShieldCheck size={21}/></span><strong>Aucun favori visible pour ce profil</strong><span>Certains favoris enregistrés ne sont pas classés ou dépassent la limite d’âge du mode enfant. Ils restent enregistrés et réapparaîtront sur un profil adulte.</span></div>}
+              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && !(visibleFavorites.count === 0 && isChildProfile) && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Search size={20}/></span><strong>Aucun favori ne correspond à votre recherche</strong><span>Essayez un autre titre ou affichez tous vos favoris.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); }}>Effacer la recherche et les filtres</button></div>}
               {!visibleTitles.length && activePage === "Administration" && <div className="admin-empty-panel"><Film size={23}/><strong>{query ? "Aucun contenu ne correspond" : `Aucun ${adminSection === "series" ? "série" : adminSection === "videos" ? "vidéo" : "film"} dans cette catégorie`}</strong><span>{query ? "Modifiez votre recherche pour retrouver les contenus." : "Ajoutez un contenu pour le gérer depuis cette section."}</span>{query ? <button type="button" onClick={() => setQuery("")}>Effacer la recherche</button> : <button type="button" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter un contenu</button>}</div>}
               {!visibleTitles.length && activePage !== "Films" && activePage !== "Séries" && activePage !== "Vidéos" && activePage !== "Administration" && <div className="empty-state"><strong>Aucun titre trouvé</strong><span>Modifiez votre recherche ou réinitialisez les filtres pour retrouver votre collection.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); setGenreFilter("Tous les genres"); }}>Réinitialiser la recherche et les filtres</button></div>}
             </div>
@@ -1715,7 +1753,7 @@ export default function HomePage() {
         />
       </AnimatePresence>
       {profileCenterOpen && profileStore && activeProfile && <ProfileCenter store={profileStore} initialMode="manage" isChildSession={isChildProfile} onClose={() => setProfileCenterOpen(false)} onCommit={persistProfileStore} onActivate={activateProfile}/>}
-      <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && favorites.length > 0 && <i>{favorites.length}</i>}</button>)}</nav>
+      <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
     </main>
   );
 }

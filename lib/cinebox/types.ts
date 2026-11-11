@@ -10,5 +10,11 @@ export type Title = {
   cast?: string[]; director?: string; rating?: number; voteCount?: number; tmdbId?: number;
   status?: string; totalSeasons?: number; totalEpisodes?: number; genres?: string[];
   sharedId?: string;
+  /** Explicit, verifiable age classification. Missing means "not classified". */
+  ageRating?: string;
+  minAge?: number;
+  isAdult?: boolean;
+  /** Where the title comes from: the personal library or the shared D1 catalogue. */
+  source?: "local" | "shared";
 };
 

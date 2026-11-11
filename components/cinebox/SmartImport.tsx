@@ -7,12 +7,27 @@ import { BlurFade } from "../magicui/blur-fade";
 import { ShimmerButton } from "../magicui/shimmer-button";
 import type { Episode, Kind, Season, Title } from "../../lib/cinebox/types";
 import { displayTmdbRating, normalizeTmdbRating } from "../../lib/cinebox/tmdb-rating.mjs";
+import { parseAgeRating } from "../../lib/cinebox/age-rating.mjs";
 
 type SearchResult = { id: number; media_type?: "movie" | "tv" | "person"; title?: string; name?: string; original_title?: string; original_name?: string; release_date?: string; first_air_date?: string; poster_path?: string | null; backdrop_path?: string | null; overview?: string; original_language?: string; vote_average?: number; vote_count?: number };
 type EpisodeDetail = { id: number; episode_number: number; name?: string; overview?: string; air_date?: string; runtime?: number | null; still_path?: string | null };
 type SeasonDetail = { id: number; season_number: number; name?: string; overview?: string; air_date?: string; poster_path?: string | null; episodes?: EpisodeDetail[] };
-type Detail = SearchResult & { genres?: Array<{ id: number; name: string }>; runtime?: number | null; number_of_seasons?: number; number_of_episodes?: number; status?: string; seasons?: Array<{ season_number: number; name?: string; episode_count?: number; air_date?: string }>; credits?: { cast?: Array<{ name: string; order: number }>; crew?: Array<{ name: string; job: string }> }; production_countries?: Array<{ name: string }>; seasonsLoaded?: SeasonDetail[] };
-export type SmartImportData = { tmdbId: number; kind: "Film" | "Série"; name: string; originalName: string; description: string; releaseDate: string; originalLanguage: string; productionCountries: string[]; cast: string[]; director: string; rating: number; voteCount: number; runtime?: number; status?: string; totalSeasons?: number; totalEpisodes?: number; genres: string[]; seasons?: Season[]; backdrop?: string; posterPath?: string | null; backdropPath?: string | null };
+type Detail = SearchResult & { genres?: Array<{ id: number; name: string }>; runtime?: number | null; number_of_seasons?: number; number_of_episodes?: number; status?: string; seasons?: Array<{ season_number: number; name?: string; episode_count?: number; air_date?: string }>; credits?: { cast?: Array<{ name: string; order: number }>; crew?: Array<{ name: string; job: string }> }; production_countries?: Array<{ name: string }>; seasonsLoaded?: SeasonDetail[]; release_dates?: { results?: Array<{ iso_3166_1?: string; release_dates?: Array<{ certification?: string }> }> }; content_ratings?: { results?: Array<{ iso_3166_1?: string; rating?: string }> } };
+export type SmartImportData = { tmdbId: number; kind: "Film" | "Série"; name: string; originalName: string; description: string; releaseDate: string; originalLanguage: string; productionCountries: string[]; cast: string[]; director: string; rating: number; voteCount: number; runtime?: number; status?: string; totalSeasons?: number; totalEpisodes?: number; genres: string[]; seasons?: Season[]; backdrop?: string; posterPath?: string | null; backdropPath?: string | null; ageRating?: string; minAge?: number };
+
+/** Pick the French certification first, then the US one. */
+function tmdbCertification(detail: Detail): string {
+  const country = (value?: string) => value === "FR" ? 0 : value === "US" ? 1 : 2;
+  const movieRatings = (detail.release_dates?.results || [])
+    .map((entry) => ({ country: entry.iso_3166_1, rating: entry.release_dates?.map((release) => release.certification || "").find(Boolean) || "" }))
+    .filter((entry) => entry.rating)
+    .sort((a, b) => country(a.country) - country(b.country));
+  if (movieRatings.length) return movieRatings[0].rating;
+  const tvRatings = (detail.content_ratings?.results || [])
+    .filter((entry) => entry.rating)
+    .sort((a, b) => country(a.iso_3166_1) - country(b.iso_3166_1));
+  return tvRatings[0]?.rating || "";
+}
 export type SmartImportedAsset = { slot: string; file: File };
 
 type Props = { addKind: Kind; existingTitles: Title[]; onApply: (data: SmartImportData, poster: File | null, assets: SmartImportedAsset[]) => void; onDuplicate: (title: Title) => void };
@@ -133,6 +148,8 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
         })),
       }));
       const releaseDate = selected.release_date || selected.first_air_date || "";
+      const ageRating = tmdbCertification(selected);
+      const minAge = parseAgeRating(ageRating);
       const imported: SmartImportData = {
         tmdbId: selected.id,
         kind: selected.media_type === "tv" ? "Série" : "Film",
@@ -155,6 +172,8 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
         backdrop: selected.backdrop_path ? posterUrl(selected.backdrop_path) : "",
         posterPath: selected.poster_path,
         backdropPath: selected.backdrop_path,
+        ageRating: ageRating || undefined,
+        minAge: minAge ?? undefined,
       };
       const assetRequests: Array<{ slot: string; path?: string | null; filename: string }> = [];
       if (selected.backdrop_path) assetRequests.push({ slot: "smart:backdrop", path: selected.backdrop_path, filename: `tmdb-${selected.id}-backdrop` });
@@ -185,7 +204,7 @@ export function SmartImport({ addKind, existingTitles, onApply, onDuplicate }: P
       onApply(imported, poster, importedAssets);
     } catch {
       // A poster is optional; preserve the metadata import if its image cannot be downloaded.
-      onApply({ tmdbId: selected.id, kind: selected.media_type === "tv" ? "Série" : "Film", name: selected.title || selected.name || selected.original_title || selected.original_name || "", originalName: selected.original_title || selected.original_name || selected.title || selected.name || "", description: selected.overview || "", releaseDate: selected.release_date || selected.first_air_date || "", originalLanguage: selected.original_language || "", productionCountries: selected.production_countries?.map(country => country.name) || [], cast: selected.credits?.cast?.slice(0, 8).map(person => person.name) || [], director: selected.credits?.crew?.find(person => person.job === "Director")?.name || "", rating: normalizeTmdbRating(selected.vote_average) ?? 0, voteCount: selected.vote_count || 0, runtime: selected.runtime || undefined, status: selected.status, totalSeasons: selected.number_of_seasons, totalEpisodes: selected.number_of_episodes, genres: selected.genres?.map(genre => genre.name) || [], seasons: selected.media_type === "tv" ? allSelected.map(season => ({ number: season.season_number, name: season.name || "", overview: season.overview || "", airDate: season.air_date || "", tmdbId: season.id, episodes: (season.episodes || []).map(episode => ({ number: episode.episode_number, title: episode.name || `Épisode ${episode.episode_number}`, overview: episode.overview || "", airDate: episode.air_date || "", runtime: episode.runtime || undefined, thumbnailUrl: posterUrl(episode.still_path) || undefined, tmdbId: episode.id })) })) : undefined, backdrop: selected.backdrop_path ? posterUrl(selected.backdrop_path) : "" }, null, []);
+      onApply({ tmdbId: selected.id, kind: selected.media_type === "tv" ? "Série" : "Film", name: selected.title || selected.name || selected.original_title || selected.original_name || "", originalName: selected.original_title || selected.original_name || selected.title || selected.name || "", description: selected.overview || "", releaseDate: selected.release_date || selected.first_air_date || "", originalLanguage: selected.original_language || "", productionCountries: selected.production_countries?.map(country => country.name) || [], cast: selected.credits?.cast?.slice(0, 8).map(person => person.name) || [], director: selected.credits?.crew?.find(person => person.job === "Director")?.name || "", rating: normalizeTmdbRating(selected.vote_average) ?? 0, voteCount: selected.vote_count || 0, runtime: selected.runtime || undefined, status: selected.status, totalSeasons: selected.number_of_seasons, totalEpisodes: selected.number_of_episodes, genres: selected.genres?.map(genre => genre.name) || [], seasons: selected.media_type === "tv" ? allSelected.map(season => ({ number: season.season_number, name: season.name || "", overview: season.overview || "", airDate: season.air_date || "", tmdbId: season.id, episodes: (season.episodes || []).map(episode => ({ number: episode.episode_number, title: episode.name || `Épisode ${episode.episode_number}`, overview: episode.overview || "", airDate: episode.air_date || "", runtime: episode.runtime || undefined, thumbnailUrl: posterUrl(episode.still_path) || undefined, tmdbId: episode.id })) })) : undefined, backdrop: selected.backdrop_path ? posterUrl(selected.backdrop_path) : "", ageRating: tmdbCertification(selected) || undefined, minAge: parseAgeRating(tmdbCertification(selected)) ?? undefined }, null, []);
     } finally { setApplying(false); }
   };
 
