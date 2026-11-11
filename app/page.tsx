@@ -34,7 +34,7 @@ import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfil
 import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
-import { fetchSharedCatalogTitles } from "../lib/cinebox/shared-catalog.mjs";
+import { loadSharedCatalog } from "../lib/cinebox/shared-catalog.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
@@ -42,7 +42,7 @@ import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
   Tv, X, ChevronRight, MoreHorizontal, Trash2, ShieldCheck,
   LayoutDashboard, Image as ImageIcon, Tags, Database, Clock3, Pencil,
-  Check, HardDrive, Library, Star, RotateCcw
+  Check, HardDrive, Library, Star, RotateCcw, LoaderCircle, RefreshCw, ShieldAlert
 } from "lucide-react";
 
 const { stageAssets } = mediaLifecycle;
@@ -291,9 +291,19 @@ function writeFailureMessage(label: string, reason: "quota" | "access" | "serial
   return `Une erreur a empêché la préparation de ${label}. Les données précédentes sont conservées.`;
 }
 
+function sharedCatalogErrorMessage(reason?: string) {
+  if (reason === "network") return "La connexion au catalogue partagé a échoué.";
+  if (reason === "http") return "Le serveur du catalogue partagé a répondu avec une erreur.";
+  if (reason === "invalid-response") return "La réponse du catalogue partagé est illisible.";
+  if (reason === "unavailable") return "Le catalogue partagé n’est pas disponible dans cet environnement.";
+  return "Le catalogue partagé n’a pas pu être chargé.";
+}
+
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
   const [sharedCatalogTitles, setSharedCatalogTitles] = useState<Title[]>([]);
+  const [sharedCatalogStatus, setSharedCatalogStatus] = useState<{ status: "loading" | "success" | "error"; reason?: string }>({ status: "loading" });
+  const [sharedCatalogRetryKey, setSharedCatalogRetryKey] = useState(0);
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
@@ -730,20 +740,41 @@ export default function HomePage() {
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
-    fetchSharedCatalogTitles({
-      maxAge: isChildProfile ? CHILD_PROFILE_MAX_AGE : null,
-      signal: controller.signal,
-    }).then((items) => {
-      if (cancelled) return;
-      sharedCatalogTitlesRef.current = items;
-      setSharedCatalogTitles(items);
-    }).catch(() => {
-      if (cancelled) return;
+    // Fail closed: a child profile must never keep adult shared titles while
+    // the age-filtered request is in flight or after it fails.
+    if (isChildProfile) {
       sharedCatalogTitlesRef.current = [];
       setSharedCatalogTitles([]);
+    }
+    setSharedCatalogStatus({ status: "loading" });
+    loadSharedCatalog({
+      maxAge: isChildProfile ? CHILD_PROFILE_MAX_AGE : null,
+      signal: controller.signal,
+    }).then((result) => {
+      if (cancelled || result.status === "aborted") return;
+      if (result.status === "success") {
+        sharedCatalogTitlesRef.current = result.titles;
+        setSharedCatalogTitles(result.titles);
+        setSharedCatalogStatus({ status: "success" });
+        return;
+      }
+      // Keep the previous adult catalogue visible on failure, but never reuse
+      // it for a child profile. The failure stays explicit with a retry.
+      if (isChildProfile) {
+        sharedCatalogTitlesRef.current = [];
+        setSharedCatalogTitles([]);
+      }
+      setSharedCatalogStatus({ status: "error", reason: result.reason });
+    }).catch(() => {
+      if (cancelled) return;
+      if (isChildProfile) {
+        sharedCatalogTitlesRef.current = [];
+        setSharedCatalogTitles([]);
+      }
+      setSharedCatalogStatus({ status: "error", reason: "invalid-response" });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [isChildProfile]);
+  }, [isChildProfile, sharedCatalogRetryKey]);
 
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
@@ -1277,6 +1308,22 @@ export default function HomePage() {
 
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
           {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : seuls les contenus dont la classification d’âge est connue et adaptée sont affichés. La gestion et les contenus non classés sont masqués.</div>}
+          {activePage !== "Administration" && sharedCatalogStatus.status !== "success" && (
+            <div
+              className={`shared-catalog-status ${sharedCatalogStatus.status === "error" ? "is-error" : "is-loading"}`}
+              role={sharedCatalogStatus.status === "error" ? "alert" : "status"}
+              aria-live={sharedCatalogStatus.status === "error" ? "assertive" : "polite"}
+            >
+              {sharedCatalogStatus.status === "error" ? <ShieldAlert size={15} aria-hidden="true"/> : <LoaderCircle size={15} className="admin-spin" aria-hidden="true"/>}
+              <div>
+                <strong>{sharedCatalogStatus.status === "error" ? "Catalogue partagé indisponible" : "Chargement du catalogue partagé…"}</strong>
+                {sharedCatalogStatus.status === "error" && <small>{sharedCatalogErrorMessage(sharedCatalogStatus.reason)} Votre bibliothèque locale reste accessible.</small>}
+              </div>
+              {sharedCatalogStatus.status === "error" && (
+                <button type="button" onClick={() => setSharedCatalogRetryKey((key) => key + 1)}><RefreshCw size={13} aria-hidden="true"/> Réessayer</button>
+              )}
+            </div>
+          )}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${visibleFavorites.count} favori${visibleFavorites.count === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
           {activePage === "Accueil" && (activeFeatured ? <section className={`hero-cinema ${activeFeatured.backdrop ? "has-backdrop" : activeFeatured.poster ? "has-poster" : "is-empty"}`} aria-label="Sélection à la une">
             <AnimatedGridPattern className="hero-cinema-grid" numSquares={8} maxOpacity={0.06} duration={6} />

@@ -10,6 +10,7 @@ import { isBunnyEmbedUrl } from "../../lib/cinebox/bunny-playback.mjs";
 import { retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import { MagicCard } from "../magicui/magic-card";
 import { BlurFade } from "../magicui/blur-fade";
+import { useModalDialog } from "./useModalDialog";
 
 type SelectedEpisode = { season: number; episode: number };
 type DetailModalProps = {
@@ -24,13 +25,16 @@ type DetailModalProps = {
 
 export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites, onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView }: DetailModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const [activeTab, setActiveTab] = useState<"details" | "episodes">("details");
   const [activeSeasonNumber, setActiveSeasonNumber] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const reduceMotion = useReducedMotion();
+  const { ref: dialogRef, dialogProps } = useModalDialog<HTMLDivElement>({
+    active: Boolean(selected),
+    onClose,
+    initialFocusRef: closeButtonRef,
+  });
 
   useEffect(() => {
     if (!selected) return;
@@ -51,13 +55,6 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     if (!selected) return;
     setActiveTab("details"); setPlaying(false); setExpanded(false);
     setActiveSeasonNumber(selectedEpisode?.season ?? selected.seasons?.[0]?.number ?? null);
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); previous?.focus(); };
   }, [selected?.id]);
 
   useEffect(() => {
@@ -103,7 +100,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
 
   return <AnimatePresence>
     <motion.div className="modal-backdrop detail-page-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div className="detail-modal detail-page-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" initial={reduceMotion ? false : { y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { y: 10, opacity: 0 }}>
+      <motion.div ref={dialogRef} {...dialogProps} className="detail-modal detail-page-modal" aria-labelledby="detail-modal-title" initial={reduceMotion ? false : { y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { y: 10, opacity: 0 }}>
         <button ref={closeButtonRef} className="close-btn detail-page-close" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
         {playing && playbackUrl ? <section className="episode-watch-page">
           <div className="episode-watch-top">

@@ -14,11 +14,13 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShieldAlert,
   Trash2,
   Tv,
   Video,
 } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+import { resolveRuntime } from "../../lib/cinebox/catalog-metadata.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
 type Episode = {
@@ -91,9 +93,9 @@ function formatDuration(seconds: number | null): string {
 }
 
 function runtimeLabel(item: Item): string {
-  const runtime = metaNumber(item.metadata, "runtime");
+  const runtime = resolveRuntime(item.metadata);
   if (runtime && runtime > 0) return `${Math.round(runtime)} min`;
-  const seconds = metaNumber(item.metadata, "durationSeconds") ?? metaNumber(item.metadata, "duration");
+  const seconds = metaNumber(item.metadata, "durationSeconds");
   if (seconds && seconds > 0) return formatDuration(seconds);
   return "Durée inconnue";
 }
@@ -137,8 +139,9 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
-  const [error, setError] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
   const [busy, setBusy] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -161,23 +164,24 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
     setPassword("");
     setItems([]);
     setLoadedOnce(false);
-    setMessage("");
-    setError(false);
+    setLoadError("");
+    setActionMessage("");
+    setActionError(false);
   };
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (loggingIn || password.length === 0) return;
     setLoggingIn(true);
-    setError(false);
-    setMessage("");
+    setActionError(false);
+    setActionMessage("");
     try {
       await loginAdmin(password);
       setPassword("");
       setAuthState("authenticated");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Connexion administrateur impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Connexion administrateur impossible.");
     } finally {
       setLoggingIn(false);
     }
@@ -200,23 +204,28 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
     if (authState !== "authenticated") {
       setItems([]);
       setLoadedOnce(false);
-      setError(false);
-      setMessage("");
-      return;
+      setLoadError("");
+      setActionError(false);
+      setActionMessage("");
+      return false;
     }
     setLoading(true);
-    setError(false);
-    setMessage("");
+    setLoadError("");
+    setActionError(false);
+    setActionMessage("");
     try {
       const payload = await request("/api/catalog/manage", { cache: "no-store" });
       const next = payload && typeof payload === "object" && Array.isArray((payload as { titles?: unknown }).titles)
         ? (payload as { titles: Item[] }).titles
-        : [];
+        : null;
+      // A malformed payload is a load failure, never a silent empty catalogue.
+      if (!next) throw new Error("Le catalogue partagé a renvoyé une réponse inattendue.");
       setItems(next);
       setLoadedOnce(true);
+      return true;
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Chargement du catalogue partagé impossible.");
+      setLoadError(reason instanceof Error ? reason.message : "Chargement du catalogue partagé impossible.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -244,7 +253,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
         if (sortMode === "year-desc") return yearOf(b) - yearOf(a) || a.title.localeCompare(b.title, "fr");
         if (sortMode === "year-asc") return yearOf(a) - yearOf(b) || a.title.localeCompare(b.title, "fr");
         if (sortMode === "episodes") return episodeCount(b) - episodeCount(a) || a.title.localeCompare(b.title, "fr");
-        if (sortMode === "duration") return (metaNumber(b.metadata, "runtime") || 0) - (metaNumber(a.metadata, "runtime") || 0) || a.title.localeCompare(b.title, "fr");
+        if (sortMode === "duration") return (resolveRuntime(b.metadata) || 0) - (resolveRuntime(a.metadata) || 0) || a.title.localeCompare(b.title, "fr");
         return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime() || a.title.localeCompare(b.title, "fr");
       });
   }, [kindItems, query, statusFilter, sortMode]);
@@ -257,14 +266,14 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const detachVideo = async (videoId: string, item: Item) => {
     if (!window.confirm("Dissocier cette vidéo de la fiche ? Le fichier restera dans Bunny.")) return;
     setBusy(videoId);
-    setError(false);
+    setActionError(false);
+    setActionMessage("");
     try {
       await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, detachVideoId: videoId }) });
-      setMessage("Vidéo dissociée. Le fichier reste disponible dans Bunny.");
-      await refresh();
+      if (await refresh()) setActionMessage("Vidéo dissociée. Le fichier reste disponible dans Bunny.");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Dissociation impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Dissociation impossible.");
     } finally {
       setBusy("");
     }
@@ -272,15 +281,15 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
 
   const save = async (item: Item) => {
     setBusy(item.id);
-    setError(false);
+    setActionError(false);
+    setActionMessage("");
     try {
       await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, title: draftTitle, overview: draftOverview }) });
       setEditing(null);
-      setMessage("Fiche mise à jour dans le catalogue partagé.");
-      await refresh();
+      if (await refresh()) setActionMessage("Fiche mise à jour dans le catalogue partagé.");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Modification impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Modification impossible.");
     } finally {
       setBusy("");
     }
@@ -288,14 +297,14 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
 
   const republish = async (item: Item) => {
     setBusy(item.id);
-    setError(false);
+    setActionError(false);
+    setActionMessage("");
     try {
       await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, published: true }) });
-      setMessage("Fiche republiée dans le catalogue partagé.");
-      await refresh();
+      if (await refresh()) setActionMessage("Fiche republiée dans le catalogue partagé.");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Publication impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Publication impossible.");
     } finally {
       setBusy("");
     }
@@ -304,14 +313,14 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const unpublish = async (item: Item) => {
     if (!window.confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée, sans supprimer la vidéo Bunny.`)) return;
     setBusy(item.id);
-    setError(false);
+    setActionError(false);
+    setActionMessage("");
     try {
       await request("/api/catalog/manage", { method: "DELETE", body: JSON.stringify({ id: item.id }) });
-      setMessage("Fiche retirée du catalogue partagé. La vidéo reste dans Bunny.");
-      await refresh();
+      if (await refresh()) setActionMessage("Fiche retirée du catalogue partagé. La vidéo reste dans Bunny.");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Retrait impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Retrait impossible.");
     } finally {
       setBusy("");
     }
@@ -320,14 +329,14 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const deleteVideo = async (videoId: string, item: Item) => {
     if (!window.confirm("Supprimer définitivement cette vidéo de la bibliothèque Bunny ? Cette action est irréversible.")) return;
     setBusy(videoId);
-    setError(false);
+    setActionError(false);
+    setActionMessage("");
     try {
       await request("/api/bunny/delete", { method: "POST", body: JSON.stringify({ videoId }) });
-      setMessage("Vidéo supprimée de Bunny et association retirée.");
-      await refresh();
+      if (await refresh()) setActionMessage("Vidéo supprimée de Bunny et association retirée.");
     } catch (reason) {
-      setError(true);
-      setMessage(reason instanceof Error ? reason.message : "Suppression impossible.");
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Suppression impossible.");
     } finally {
       setBusy("");
     }
@@ -403,17 +412,30 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
         </div>
       )}
 
-      {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
+      {actionMessage && <p role={actionError ? "alert" : "status"} className={`admin-shared-message ${actionError ? "is-error" : "is-success"}`}>{actionMessage}</p>}
+
+      {loadError && kindItems.length > 0 && (
+        <div className="admin-shared-load-error" role="alert">
+          <ShieldAlert size={15} aria-hidden="true" />
+          <div>
+            <strong>Catalogue partagé indisponible</strong>
+            <span>{loadError} Les fiches affichées peuvent être obsolètes.</span>
+          </div>
+          <button type="button" onClick={() => void refresh()} disabled={loading}>
+            {loading ? <LoaderCircle size={13} className="admin-spin" /> : <RefreshCw size={13} />} Réessayer
+          </button>
+        </div>
+      )}
 
       {authState === "authenticated" && (loading && !loadedOnce ? (
         <div className="admin-shared-skeletons" aria-label="Chargement du catalogue partagé">
           {[0, 1, 2].map((entry) => <div className="admin-shared-skeleton" key={entry}><i /><span><b /><b /><b /></span></div>)}
         </div>
-      ) : error && !kindItems.length ? (
+      ) : loadError && !kindItems.length ? (
         <div className="admin-shared-state is-error" role="alert">
           <Database size={22} aria-hidden="true" />
           <strong>Catalogue partagé indisponible</strong>
-          <span>{message || "La requête D1 n'a pas abouti. Vérifie la session administrateur et réessaie."}</span>
+          <span>{loadError || "La requête D1 n'a pas abouti. Vérifie la session administrateur et réessaie."}</span>
           <button type="button" onClick={() => void refresh()}>Réessayer</button>
         </div>
       ) : !kindItems.length ? (

@@ -9,6 +9,7 @@ import { SmartImport, type SmartImportData, type SmartImportedAsset } from "./Sm
 import { createBlobUrlLease, retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import type { BlobUrlLease } from "../../lib/cinebox/blob-url-manager.mjs";
 import { BlurFade } from "../magicui/blur-fade";
+import { useModalDialog } from "./useModalDialog";
 
 type Props = {
   addKind: Kind;
@@ -26,6 +27,7 @@ type Props = {
 
 export default function TitleEditor({ addKind, setAddKind, editingTitle, existingTitles, setEditingTitle, adminMode = false, fileRef, posterRef, submitting = false, onClose, onSubmit }: Props) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { ref: dialogRef, dialogProps } = useModalDialog<HTMLDivElement>({ onClose, initialFocusRef: closeButtonRef });
   const [posterPreview, setPosterPreview] = useState<BlobUrlLease | null>(null);
   const [smartPayload, setSmartPayload] = useState<SmartImportData | null>(null);
   const [smartAssets, setSmartAssets] = useState<SmartImportedAsset[]>([]);
@@ -68,26 +70,9 @@ export default function TitleEditor({ addKind, setAddKind, editingTitle, existin
     const lease = retainBlobUrl(editingTitle.poster);
     return () => lease.release();
   }, [editingTitle?.poster]);
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { onClose(); return; }
-      if (event.key !== "Tab") return;
-      const dialog = closeButtonRef.current?.closest('[role="dialog"]');
-      const items = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
-      if (!items?.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => { window.removeEventListener("keydown", handleKeyDown); previous?.focus(); };
-  }, [onClose]);
   return (
     <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div className="modal add-modal" role="dialog" aria-modal="true" aria-labelledby="title-editor-heading" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}>
+      <motion.div ref={dialogRef} {...dialogProps} className="modal add-modal" aria-labelledby="title-editor-heading" initial={{ y: 18, scale: .99 }} animate={{ y: 0, scale: 1 }} exit={{ y: 10, opacity: 0 }}>
         <button className="close-btn" type="button" aria-label="Fermer le formulaire" onClick={onClose} ref={closeButtonRef}><X/></button>
         <div className="eyebrow">{editingTitle ? "MODIFIER LA BIBLIOTHÈQUE" : "BIBLIOTHÈQUE PERSONNELLE"}</div>
         <h2 id="title-editor-heading">{editingTitle ? "Modifier le " : "Ajouter un "}<em>titre</em></h2>
