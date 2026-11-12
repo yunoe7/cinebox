@@ -35,7 +35,6 @@ import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-se
 import { loadSharedCatalog } from "../lib/cinebox/shared-catalog.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
-import { buildLegacyExport, collectLegacyAssetReferences, legacyAssetFilename, legacyExportFilename } from "../lib/cinebox/legacy-export.mjs";
 
 import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
@@ -312,7 +311,6 @@ export default function HomePage() {
   const [videoDurationFilter, setVideoDurationFilter] = useState("all");
   const [videoSortBy, setVideoSortBy] = useState("recent");
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]["id"]>("overview");
-  const [exportingLegacy, setExportingLegacy] = useState(false);
   const [selected, setSelected] = useState<Title | null>(null);
   const [selectedEpisodeUrl, setSelectedEpisodeUrl] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<{ season: number; episode: number } | null>(null);
@@ -849,48 +847,6 @@ export default function HomePage() {
     await commitFavorites(next);
   };
 
-  const exportLegacyLibrary = async () => {
-    if (exportingLegacy) return;
-    setExportingLegacy(true);
-    try {
-      const localTitles = catalogTitlesRef.current;
-      const references = collectLegacyAssetReferences(localTitles);
-      const assets: Array<Record<string, unknown>> = [];
-      const downloads: Array<{ blob: Blob; filename: string }> = [];
-      for (const reference of references) {
-        try {
-          const result = await readAsset(reference.key);
-          if (result.status === "found") {
-            const asset = { ...reference, status: "found", type: result.blob.type || "", size: result.blob.size };
-            assets.push(asset);
-            downloads.push({ blob: result.blob, filename: legacyAssetFilename(asset, downloads.length) });
-          } else {
-            assets.push({ ...reference, status: "missing" });
-          }
-        } catch {
-          assets.push({ ...reference, status: "unreadable" });
-        }
-      }
-      const exportedAt = new Date().toISOString();
-      const document = buildLegacyExport({ titles: localTitles, assets, exportedAt });
-      downloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: "application/json" }), legacyExportFilename(exportedAt));
-      for (const download of downloads) {
-        downloadBlob(download.blob, download.filename);
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-      }
-      const found = assets.filter((asset) => asset.status === "found").length;
-      setNotice({
-        title: "Export local terminé",
-        message: `${localTitles.length} fiche${localTitles.length === 1 ? "" : "s"} et ${found} média${found === 1 ? "" : "s"} exporté${found === 1 ? "" : "s"}. Aucune donnée locale, aucun média et aucune fiche D1 n’a été supprimé.`,
-      });
-      window.setTimeout(() => setNotice(null), 5200);
-    } catch {
-      setNotice({ title: "Export impossible", message: "L’export local n’a pas pu être préparé. Aucune donnée n’a été supprimée ; vérifiez l’accès au stockage du navigateur." });
-      window.setTimeout(() => setNotice(null), 5200);
-    } finally {
-      setExportingLegacy(false);
-    }
-  };
 
   const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1350,7 +1306,6 @@ export default function HomePage() {
                   <section className="admin-panel admin-export-panel" aria-labelledby="admin-export-title">
                     <div className="admin-panel-heading"><div><span className="eyebrow">SAUVEGARDE</span><h3 id="admin-export-title"><Database size={16}/> Exporter la bibliothèque locale</h3></div></div>
                     <p className="admin-setting-note">Télécharge un manifeste JSON des {titles.length} fiche{titles.length === 1 ? "" : "s"} locales et copie chaque affiche, fond, vidéo et miniature conservé dans IndexedDB. Aucune donnée n’est supprimée ni modifiée, et rien n’est envoyé sur le réseau.</p>
-                    <button type="button" className="admin-export-action" onClick={() => void exportLegacyLibrary()} disabled={exportingLegacy}>{exportingLegacy ? <LoaderCircle size={14} className="admin-spin"/> : <HardDrive size={14}/>} {exportingLegacy ? "Préparation de l’export…" : "Exporter la bibliothèque locale"}</button>
                   </section>
                   <section className="admin-panel admin-quick-actions" aria-labelledby="admin-quick-title">
                     <div className="admin-panel-heading"><div><span className="eyebrow">AJOUT RAPIDE</span><h3 id="admin-quick-title">Nouveau contenu local</h3></div></div>
