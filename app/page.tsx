@@ -457,7 +457,7 @@ export default function HomePage() {
         for (const id of removedIds) { delete playback[id]; delete viewCounts[id]; }
         return { ...data, favorites: nextFavorites, playback, viewCounts, history: data.history.filter((entry) => !removedIds.has(String(entry.titleId))) };
       }).then((saved) => {
-        if (!saved) setNotice({ title: "Titre supprimé", message: "Le titre a été retiré. Le favori de ce profil reste conservé jusqu’à ce que son stockage soit disponible." });
+        if (!saved) setNotice({ title: "Titre supprimé", message: "Le titre a été retiré. Les favoris du compte restent conservés jusqu’à ce que la synchronisation soit rétablie." });
       });
     }
     return true;
