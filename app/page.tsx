@@ -873,16 +873,6 @@ export default function HomePage() {
       return;
     }
     const kind = form.get("kind") as Kind;
-    if (activePage === "Administration" && posterFile) {
-      const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
-      const extension = posterFile.name.split(".").pop()?.toLocaleLowerCase("fr");
-      const supportedExtensions = ["jpg", "jpeg", "png", "webp"];
-      if ((!supportedTypes.includes(posterFile.type) && !(posterFile.type === "" && supportedExtensions.includes(extension || ""))) || posterFile.size > MAX_ADMIN_IMAGE_BYTES) {
-        setNotice({ title: "Image non acceptée", message: posterFile.size > MAX_ADMIN_IMAGE_BYTES ? "L’image dépasse la limite de 20 Mo. Choisissez une version plus légère." : "Utilisez une image JPG, PNG ou WebP." });
-        window.setTimeout(() => setNotice(null), 4200);
-        return;
-      }
-    }
     const seasonCount = Math.max(1, Math.min(20, Number(form.get("seasonCount")) || 1));
     const episodeCount = Math.max(0, Math.min(100, Number(form.get("episodeCount")) || 0));
     const episodeNames = String(form.get("episodeTitles") || "").split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean);
