@@ -71,11 +71,15 @@ test("catalogue returns only published titles and maps metadata safely", async (
       backdropPath: null,
       genres: ["Drame"],
       metadata: { rating: 8 },
+      vipExclusive: false,
+      vipEarlyAccess: false,
+      access: "public",
       seasons: [],
       updatedAt: "2026-11-07 12:00:00",
     }],
     stats: { titles: 0, films: 0, series: 0, videos: 0, episodes: 0 },
     pagination: { limit: 10, offset: 5, count: 1 },
+    viewer: { authenticated: false, vip: false },
   });
 });
 
