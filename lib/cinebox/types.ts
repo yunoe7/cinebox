@@ -34,6 +34,9 @@ export type Title = {
   cast?: string[]; director?: string; rating?: number; voteCount?: number; tmdbId?: number;
   status?: string; totalSeasons?: number; totalEpisodes?: number; genres?: string[];
   sharedId?: string;
+  vipExclusive?: boolean;
+  vipEarlyAccess?: boolean;
+  publicAt?: string;
   /** Explicit, verifiable age classification. Missing means "not classified". */
   ageRating?: string;
   minAge?: number;
