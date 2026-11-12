@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -28,7 +29,7 @@ import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
-import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
+import { addProfileView, createInitialProfileStore, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
@@ -339,6 +340,9 @@ export default function HomePage() {
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const profileStoreRef = useRef<ProfileStore | null>(null);
   const activeProfileIdRef = useRef<string | null>(null);
+  const accountLibraryRevisionRef = useRef(0);
+  const accountLibraryWriteRef = useRef(Promise.resolve());
+  const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
   const activeProfile = useMemo(() => profileStore?.profiles.find((profile) => profile.id === activeProfileId) || null, [profileStore, activeProfileId]);
@@ -379,21 +383,25 @@ export default function HomePage() {
   };
 
   const persistProfileStore = async (next: ProfileStore, refresh = true): Promise<boolean> => {
-    const result = writeProfileStore(window.localStorage, next);
-    if (!result.ok) {
-      setNotice(result.reason === "quota"
-        ? { title: "Sauvegarde impossible", message: "Le stockage local est plein : les données du profil n’ont pas été sauvegardées. Les données précédentes sont conservées." }
-        : { title: "Profils non sauvegardés", message: "Les données précédentes des profils sont conservées. Vérifiez l’accès au stockage puis réessayez." });
+    const profileId = activeProfileIdRef.current || next.activeProfileId;
+    const data = next.data[profileId];
+    if (!data || !accountLibraryReadyRef.current) return false;
+    const library = createAccountLibrary(data, catalogTitlesRef.current);
+    let saved = false;
+    const operation = accountLibraryWriteRef.current.then(async () => {
+      const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
+      if (result.status !== "saved") throw new Error(result.status === "conflict" ? "La bibliothèque a été modifiée dans un autre onglet. Rechargez la page avant de continuer." : "Session expirée.");
+      accountLibraryRevisionRef.current = result.revision;
+      saved = true;
+    });
+    accountLibraryWriteRef.current = operation.catch(() => {});
+    try { await operation; }
+    catch (error) {
+      setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
       return false;
     }
     profileStoreRef.current = next;
     setProfileStore(next);
-    if (activeProfileIdRef.current && !next.data[activeProfileIdRef.current]) {
-      activeProfileIdRef.current = null;
-      setActiveProfileId(null);
-      setSelected(null);
-      setActivePage("Accueil");
-    }
     if (refresh && activeProfileIdRef.current && next.data[activeProfileIdRef.current]) {
       const profileData = next.data[activeProfileIdRef.current];
       const displayed = overlayProfileData(catalogTitlesRef.current, profileData);
@@ -402,7 +410,7 @@ export default function HomePage() {
       setTitles(displayed);
       setFavorites(profileData.favorites);
     }
-    return true;
+    return saved;
   };
 
   const saveActiveProfileData = async (updater: Parameters<typeof updateProfileData>[2]): Promise<boolean> => {
@@ -454,26 +462,26 @@ export default function HomePage() {
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
-    if (!canWriteTitlesRef.current) {
-      setNotice({ title: "Bibliothèque protégée", message: "Les données de la bibliothèque n’ont pas pu être lues correctement. Aucune modification ne sera enregistrée." });
+    if (!canWriteTitlesRef.current || !accountLibraryReadyRef.current) {
+      setNotice({ title: "Bibliothèque indisponible", message: "Connectez-vous à votre compte Discord avant de modifier la bibliothèque." });
       return false;
     }
-    const preserved = preserveLegacyPlaybackFields(next);
-    if (!preserved) {
-      setNotice({ title: "Bibliothèque protégée", message: "Les métadonnées historiques n’ont pas pu être relues. Aucune modification n’a été enregistrée." });
-      return false;
-    }
-    const result = writeLocalJson(() => window.localStorage, "cinebox-titles", serializeTitles(preserved));
-    if (!result.ok) {
-      if (result.error.name === "LocalStorageRecoveryError") blockForPendingRecovery();
-      else reportWriteFailure("la bibliothèque", result.reason);
-      return false;
-    }
-    catalogTitlesRef.current = next;
+    const safeTitles = next.map((title) => ({ ...title, videoUrl: undefined, videoAssetKey: undefined, posterAssetKey: undefined, backdropAssetKey: undefined }));
+    catalogTitlesRef.current = safeTitles;
     const profileData = profileStoreRef.current?.data[activeProfileIdRef.current || ""];
-    const displayed = profileData ? overlayProfileData(next, profileData) : next;
+    const displayed = profileData ? overlayProfileData(safeTitles, profileData) : safeTitles;
     titlesRef.current = displayed;
     setTitles(displayed);
+    if (profileData) {
+      const library = createAccountLibrary(profileData, safeTitles);
+      const operation = accountLibraryWriteRef.current.then(async () => {
+        const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
+        if (result.status !== "saved") throw new Error(result.status === "conflict" ? "Conflit de synchronisation : rechargez la page." : "Session expirée.");
+        accountLibraryRevisionRef.current = result.revision;
+      });
+      accountLibraryWriteRef.current = operation.catch(() => {});
+      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n’a pas été enregistrée sur votre compte." }));
+    }
     return true;
   };
 
@@ -576,125 +584,63 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    let restorationBatch: ReturnType<typeof createProvisionalBlobUrlBatch> | null = null;
     async function restoreLibrary() {
-      const startupRead = await withMediaReferencesLock(() => ({
-        saved: readLocalJson(() => window.localStorage, "cinebox-titles", isTitleList),
-        savedFavs: readLocalJson(() => window.localStorage, "cinebox-favorites", isFavoriteList),
-      }));
-      const startupLockUnavailable = startupRead.status !== "locked";
-      const saved = startupLockUnavailable
-        ? { status: "error" as const, reason: "access" as const, error: new Error("Le verrou des références médias est indisponible.") }
-        : startupRead.value.saved;
-      const savedFavs = startupLockUnavailable
-        ? { status: "error" as const, reason: "access" as const, error: new Error("Le verrou des références médias est indisponible.") }
-        : startupRead.value.savedFavs;
-      const profiles = loadOrMigrateProfiles(window.localStorage, saved, savedFavs);
-      if (profiles.status !== "ready") {
-        if (!cancelled) {
-          setProfileStorageError(profiles.error instanceof Error ? profiles.error.message : "Les profils n’ont pas pu être lus. Les données existantes sont conservées.");
-          setReady(true);
-        }
-        return;
-      }
-      profileStoreRef.current = profiles.store;
-      setProfileStore(profiles.store);
-      const records = initialValueFor(saved, [] as Title[]);
-      let restored = records;
-      const restoreBatch = createProvisionalBlobUrlBatch();
-      restorationBatch = restoreBatch;
-      const recoveryBlocked = saved.status === "error" && saved.error.name === "LocalStorageRecoveryError";
-      let restorationFailed = recoveryBlocked || startupLockUnavailable;
-      if (saved.status === "valid") {
-        try {
-          restored = await Promise.all(records.map(async (item) => {
-            const legacyPosterKey = `${item.id}:poster`;
-            const legacyVideoKey = `${item.id}:video`;
-            const posterBlob = await loadAssetWithLegacyFallback(item.posterAssetKey || legacyPosterKey, legacyPosterKey);
-            const videoBlob = item.kind === "Série" ? undefined : await loadAssetWithLegacyFallback(item.videoAssetKey || legacyVideoKey, legacyVideoKey);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => {
-              const seasonPoster = season.posterAssetKey ? await readAsset(season.posterAssetKey) : { status: "missing" as const };
-              return ({
-              ...season,
-              posterUrl: seasonPoster.status === "found" ? restoreBatch.create(seasonPoster.blob) : season.posterUrl,
-              episodes: await Promise.all(season.episodes.map(async (episode) => {
-                const baseKey = `${item.id}:episode:${season.number}:${episode.number}`;
-                const videoBlob = await loadAssetWithLegacyFallback(episode.videoAssetKey || baseKey, baseKey);
-                const thumbnailBlob = await loadAssetWithLegacyFallback(episode.thumbnailAssetKey || `${baseKey}:thumbnail`, `${baseKey}:thumbnail`);
-                return {
-                  ...episode,
-                  videoUrl: videoBlob ? restoreBatch.create(videoBlob) : undefined,
-                  thumbnailUrl: thumbnailBlob ? restoreBatch.create(thumbnailBlob) : episode.thumbnailUrl
-                };
-              }))
-            }); }));
-            const backdropBlob = item.backdropAssetKey ? await readAsset(item.backdropAssetKey) : { status: "missing" as const };
-            return {
-              ...item,
-              seasons,
-              poster: posterBlob ? restoreBatch.create(posterBlob) : item.poster.startsWith("blob:") || item.poster.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.poster,
-              backdrop: backdropBlob.status === "found" ? restoreBatch.create(backdropBlob.blob) : item.backdrop?.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.backdrop || "",
-              videoUrl: videoBlob ? restoreBatch.create(videoBlob) : undefined
-            };
-          }));
-        } catch {
-          restoreBatch.release();
-          restorationFailed = true;
+      try {
+        const sessionResponse = await fetch("/api/account/session", { cache: "no-store" });
+        const session = sessionResponse.ok ? await sessionResponse.json() : null;
+        if (!session?.authenticated) {
           if (!cancelled) {
-            setNotice({ title: "Bibliothèque protégée", message: "La bibliothèque n’a pas pu être restaurée complètement. Aucune donnée ne sera remplacée." });
+            canWriteTitlesRef.current = false;
+            canWriteFavoritesRef.current = false;
+            setNotice({ title: "Connexion requise", message: "Connectez-vous avec Discord pour accéder à votre bibliothèque personnelle." });
+            setReady(true);
           }
+          return;
         }
-      }
-      if (cancelled) { restoreBatch.release(); return; }
-      restoreBatch.transferTo(`${blobOwnerPrefix}:library`);
-
-      let cleanupIssue = "";
-      if ((saved.status === "valid" || saved.status === "missing") && !restorationFailed && !recoveryBlocked) {
-        const cleanup = await processMediaCleanupJobs({ readReferencedKeys: readPersistedReferencedKeys, deleteAssets: deleteAssetKeys });
-        if (cleanup.status === "deferred") cleanupIssue = "Le nettoyage des anciens médias est différé : le verrou partagé n’est pas disponible.";
-        else if (cleanup.status === "incomplete") cleanupIssue = "Certains travaux de nettoyage restent en attente. Ils seront réessayés au prochain démarrage.";
-      }
-      if (cancelled) return;
-
-      canWriteTitlesRef.current = saved.status !== "error" && !restorationFailed;
-      canWriteFavoritesRef.current = true;
-      catalogTitlesRef.current = restored;
-      const autoProfile = profiles.store.profiles.length === 1 && !profiles.store.profiles[0].pin ? profiles.store.profiles[0] : null;
-      if (autoProfile) {
-        const data = profiles.store.data[autoProfile.id];
-        const displayed = overlayProfileData(restored, data);
-        activeProfileIdRef.current = autoProfile.id;
-        setActiveProfileId(autoProfile.id);
+        const remote = await fetchAccountLibrary();
+        if (remote.status !== "ready") throw new Error("Votre session a expiré. Reconnectez-vous.");
+        if (cancelled) return;
+        accountLibraryRevisionRef.current = remote.revision;
+        const library = remote.library;
+        const initial = createInitialProfileStore([], { status: "valid", value: [] });
+        const profileId = initial.activeProfileId;
+        const data = initial.data[profileId];
+        if (library) {
+          catalogTitlesRef.current = library.titles as Title[];
+          data.favorites = library.favorites;
+          data.playback = library.playback as typeof data.playback;
+          data.history = library.history;
+          data.viewCounts = library.viewCounts;
+          data.preferences = library.preferences;
+        } else {
+          catalogTitlesRef.current = [];
+        }
+        profileStoreRef.current = initial;
+        setProfileStore(initial);
+        activeProfileIdRef.current = profileId;
+        setActiveProfileId(profileId);
+        const displayed = overlayProfileData(catalogTitlesRef.current, data);
         titlesRef.current = displayed;
         favoritesRef.current = data.favorites;
         setTitles(displayed);
         setFavorites(data.favorites);
-      } else {
-        activeProfileIdRef.current = null;
-        setActiveProfileId(null);
-        titlesRef.current = restored;
-        favoritesRef.current = [];
-        setTitles(restored);
-        setFavorites([]);
+        accountLibraryReadyRef.current = true;
+        canWriteTitlesRef.current = true;
+        canWriteFavoritesRef.current = true;
+        setReady(true);
+      } catch {
+        if (!cancelled) {
+          accountLibraryReadyRef.current = false;
+          canWriteTitlesRef.current = false;
+          canWriteFavoritesRef.current = false;
+          setNotice({ title: "Bibliothèque indisponible", message: "Impossible de charger les données du compte. Aucune donnée locale n’a été utilisée ni écrasée." });
+          setReady(true);
+        }
       }
-
-      const issues: string[] = [];
-      if (recoveryBlocked) {
-        issues.push("Une récupération du catalogue et des favoris reste en attente. Le journal est conservé et aucune modification ne sera enregistrée.");
-      } else if (startupLockUnavailable) {
-        issues.push("Le verrou partagé est indisponible. La bibliothèque reste protégée jusqu’à ce que le stockage puisse être lu sans concurrence.");
-      } else if (saved.status === "error") issues.push(readFailureMessage("la bibliothèque", saved.reason));
-      if (savedFavs.status === "error") issues.push(readFailureMessage("les favoris", savedFavs.reason));
-      if (cleanupIssue) issues.push(cleanupIssue);
-      if (issues.length) setNotice({
-        title: recoveryBlocked ? "Récupération en attente" : "Stockage local à vérifier",
-        message: issues.join(" "),
-      });
-      setReady(true);
     }
-    restoreLibrary();
-    return () => { cancelled = true; restorationBatch?.release(); };
-  }, [blobOwnerPrefix]);
+    void restoreLibrary();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (activePage !== "Administration") return;
