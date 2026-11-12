@@ -21,7 +21,7 @@ export function DiscordAccessGate({ connectionError = false }: { connectionError
             Rejoindre le Discord
           </a>
         </div>
-        <p className={styles.footnote}>Accès réservé aux membres · Connexion sécurisée via Discord</p>
+        <p className={styles.footnote}>Connexion Discord obligatoire · Adhésion au serveur facultative</p>
       </section>
       <span className={styles.signature}>CINÉBOX</span>
     </main>
