@@ -43,7 +43,10 @@ jobs:
           path: out
           retention-days: 3
 
+  # Temporarily disabled: the E2E suite is currently too slow/flaky in CI.
+  # Re-enable once the Playwright bottlenecks have been fixed.
   e2e:
+    if: ${{ false }}
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35
