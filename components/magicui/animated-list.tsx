@@ -4,19 +4,14 @@ import React, { useEffect, useMemo, useState, type ComponentPropsWithoutRef } fr
 import { AnimatePresence, motion, useReducedMotion, type MotionProps } from "framer-motion";
 
 export function AnimatedListItem({ children, reducedMotion = false }: { children: React.ReactNode; reducedMotion?: boolean }) {
-  const animations: MotionProps = reducedMotion
-    ? {
-        initial: false,
-        animate: { scale: 1, opacity: 1 },
-        exit: { scale: 1, opacity: 1 },
-        transition: { duration: 0 },
-      }
-    : {
-        initial: { scale: 0.96, opacity: 0 },
-        animate: { scale: 1, opacity: 1 },
-        exit: { scale: 0.96, opacity: 0 },
-        transition: { type: "spring", stiffness: 350, damping: 40 },
-      };
+  const animations: MotionProps = {
+    initial: { scale: 0.96, opacity: 0 },
+    animate: { scale: 1, opacity: 1 },
+    exit: { scale: 0.96, opacity: 0 },
+    transition: reducedMotion
+      ? { duration: 0 }
+      : { type: "spring", stiffness: 350, damping: 40 },
+  };
   return <motion.div {...animations} layout={!reducedMotion} className="magic-animated-list-item">{children}</motion.div>;
 }
 

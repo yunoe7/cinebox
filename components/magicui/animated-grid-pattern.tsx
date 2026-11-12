@@ -97,7 +97,7 @@ export function AnimatedGridPattern({
       <svg x={x} y={y} className="magic-animated-grid-squares">
         {squares.map(({ pos: [sx, sy], id: sid, iteration }, index) => (
           <motion.rect
-            initial={reducedMotion ? false : { opacity: 0 }}
+            initial={{ opacity: 0 }}
             animate={{ opacity: maxOpacity }}
             transition={reducedMotion ? { duration: 0 } : { duration, repeat: 1, delay: index * 0.12, repeatType: "reverse", repeatDelay }}
             onAnimationComplete={reducedMotion ? undefined : () => updateSquarePosition(sid)}

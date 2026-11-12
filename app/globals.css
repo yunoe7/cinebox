@@ -1752,7 +1752,7 @@ body{background-image:none}
 .shared-catalog-status button{flex:none;display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #4b4232;border-radius:6px;background:#201d18;color:#e5d2ac;font-size:9px}
 .shared-catalog-status button:hover{border-color:#8c734d;color:#f3e3c5}
 .profile-storage-block{width:min(100%,490px);padding:clamp(24px,5vw,42px);border:1px solid rgba(220,195,146,.19);border-radius:15px;background:linear-gradient(145deg,#171719,#0d0e10);box-shadow:0 25px 85px #0009;color:#eee;text-align:center}.profile-storage-block>.profile-center-brand{justify-content:center}.profile-storage-block>svg{display:block;margin:38px auto 12px;color:#d7bd8e}.profile-storage-block h1{margin:0 0 12px;font:600 26px Manrope,sans-serif}.profile-storage-block p{margin:9px 0;color:#a4a4a8;font-size:11px;line-height:1.7}
-.profile-gate-toast{position:fixed;z-index:80;right:18px;bottom:18px;width:min(390px,calc(100vw - 36px));display:grid;gap:6px;padding:14px 16px;border:1px solid rgba(210,185,139,.24);border-radius:9px;background:rgba(22,22,22,.97);box-shadow:0 14px 45px #0009;color:#dedbd4}.profile-gate-toast strong{font:650 11px Manrope,sans-serif;color:#e2ca9e}.profile-gate-toast span{font-size:10px;line-height:1.55;color:#aaa9a5}
+.profile-gate-toast{position:fixed;z-index:80;right:18px;bottom:18px;width:min(390px,calc(100vw - 36px));display:grid;gap:6px;padding:14px 16px;border:1px solid rgba(210,185,139,.24);border-radius:9px;background:rgba(22,22,22,.97);box-shadow:0 14px 45px #0009;color:#dedbd4;pointer-events:none}.profile-gate-toast strong{font:650 11px Manrope,sans-serif;color:#e2ca9e}.profile-gate-toast span{font-size:10px;line-height:1.55;color:#aaa9a5}
 @media(max-width:760px){
  .profile-gate-screen{padding:16px 11px}.profile-center-gate{padding:20px 14px;border-radius:15px}.profile-center-heading{margin:35px 0 27px}.profile-center-heading h1{font-size:34px}.profile-select-grid{gap:10px}.profile-select-card-wrap,.profile-add-card{width:calc((100% - 30px)/3);min-width:88px;max-width:140px;min-height:137px}.profile-select-card{min-height:137px;padding:11px 5px}.profile-select-card .cinebox-profile-avatar{width:55px;height:55px;font-size:26px}.profile-add-card>span{width:46px;height:46px}.profile-add-card>strong{font-size:9px}.profile-pin-panel{grid-template-columns:auto 1fr auto;gap:9px;padding:10px}.profile-pin-panel input{grid-column:2/3}.profile-pin-panel .profile-gold-action{grid-column:3;grid-row:1/3}.profile-pin-panel>p{grid-column:2/-1}.profile-center-footer{align-items:flex-start;flex-direction:column;margin-top:28px}.profile-center-backdrop{padding:0;align-items:end}.profile-center-modal{max-height:94dvh;border-radius:16px 16px 0 0;border-bottom:0}.profile-center-manager{padding:21px 15px calc(25px + env(safe-area-inset-bottom))}.profile-manager-heading{align-items:flex-start;flex-direction:column;margin:23px 0 16px}.profile-manager-heading h1{font-size:28px}.profile-manager-back{align-self:flex-start}.profile-manager-card{gap:10px;padding:10px}.profile-manager-card>.cinebox-profile-avatar{width:48px!important;height:48px!important}.profile-manager-actions{gap:4px}.profile-manager-actions button{padding:0 6px;font-size:8px}.profile-manager-actions button:nth-child(2){font-size:0}.profile-manager-actions button:nth-child(2) svg{width:14px;height:14px}.profile-editor-panel{padding:18px 14px;border-radius:14px 14px 0 0}.profile-form-backdrop{padding:0;align-items:end}.profile-editor-panel,.profile-delete-panel{max-height:94dvh}.profile-pin-dialog{max-height:94dvh;padding:18px 14px;border-radius:14px 14px 0 0}.profile-avatar-gallery{grid-template-columns:repeat(4,minmax(0,1fr));max-height:190px}.profile-avatar-heading{align-items:flex-start;flex-direction:column}.profile-avatar-search{align-self:stretch}.profile-avatar-search input{width:100%!important}.profile-editor-actions{position:sticky;bottom:-18px;padding:12px 0 0;background:linear-gradient(0deg,#121315 78%,transparent)}.profile-menu-popover{position:fixed;top:70px;right:9px;width:min(280px,calc(100vw - 18px));bottom:auto}.topbar .profile-menu-trigger{min-width:0;padding:4px}.topbar .profile-menu-trigger-copy{display:none}.topbar .profile-menu-trigger>svg{display:none}.topbar .profile-menu-trigger .cinebox-profile-avatar{width:33px;height:33px}.profile-menu-foot{font-size:8px}
 }
@@ -3013,3 +3013,18 @@ body{background-image:none}
   .sidebar .brand.topbar-brand { width: 36px !important; }
   .mobile-bottom-nav button span { font-size: 7px !important; }
 }
+
+/* premium polish appended */
+.streaming-card > .streaming-artwork-empty { width:100%; aspect-ratio:2/3; border-radius:11px; background:linear-gradient(160deg,#1b1c20,#0b0c0e); box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); }
+.eyebrow { font-size: 10px !important; }
+.poster-meta, .video-card-meta, .continue-info small, .streaming-card-info small, .series-card-details { font-size: 10px !important; }
+.primary-nav .nav-item { font-size: 10px !important; }
+.mobile-bottom-nav button span { font-size: 9px !important; }
+.filters button { font-size: 10px !important; }
+.result-count, .films-result-count { font-size: 10px !important; }
+.hero-cinema-tag { font-size: 10px !important; }
+footer, .app-footer { font-size: 9.5px !important; }
+.admin-section-nav button { font-size: 10px !important; }
+.admin-panel-heading > button { min-height: 32px; padding: 6px 10px; }
+.top-actions .search input { height: 100%; }
+.admin-create-actions button, .admin-episode-actions button { min-height: 32px; }
