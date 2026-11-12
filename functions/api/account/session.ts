@@ -29,11 +29,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
           return quotientModulo;
         })()
       : 0;
-    const avatarUrl = identity?.provider_user_id
-      ? identity.provider_avatar
-        ? `https://cdn.discordapp.com/avatars/${identity.provider_user_id}/${identity.provider_avatar}.${identity.provider_avatar.startsWith("a_") ? "gif" : "png"}?size=256`
-        : `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex}.png`
-      : null;
+    const avatarUrl = identity?.provider_user_id ? "/api/account/avatar" : null;
 
     return json({
       authenticated: true,
