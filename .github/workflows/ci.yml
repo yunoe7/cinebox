@@ -1,5 +1,10 @@
 name: CinéBox checks
 
+# Keep every commit's checks alive; newer PR pushes must not cancel in-flight validation.
+concurrency:
+  group: cinebox-${{ github.run_id }}
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main]
@@ -39,6 +44,7 @@ jobs:
           retention-days: 3
 
   e2e:
+    timeout-minutes: 35
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
