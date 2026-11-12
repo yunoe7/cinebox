@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Download, type Page } from "@playwright/test";
+import { expect, test, type Download, type Page } from "./fixtures";
 
 const ASSET_DB = "cinebox-assets";
 const ASSET_STORE = "files";
