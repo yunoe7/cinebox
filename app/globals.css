@@ -2704,3 +2704,5 @@ footer { font-size: 9.5px !important; }
 .account-logged button{min-height:46px;border:0;border-radius:10px;background:#d7c49d;color:#17130d;font-weight:700}
 .account-logged a{color:#c9b48a;text-align:center;font-size:13px}
 @media(max-width:480px){.account-page{padding:14px}.account-card{border-radius:18px}.account-back{margin-bottom:28px}}
+
+.account-nav-link{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:0 14px;border:1px solid rgba(201,180,138,.45);border-radius:999px;color:#d8c49a;text-decoration:none;font-size:13px;white-space:nowrap}
