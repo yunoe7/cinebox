@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, Check, ChevronDown, CircleUserRound, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, CircleUserRound, LogIn, LogOut, ShieldCheck, Crown } from "lucide-react";
 import styles from "./ProfileMenu.module.css";
 
-type Account = { displayName: string; discord: { username: string | null; globalName: string | null; avatarUrl: string | null } | null };
+type Account = { displayName: string; vip?: { active: boolean; expiresAt: string | null }; discord: { username: string | null; globalName: string | null; avatarUrl: string | null } | null };
 
 export function ProfileMenu() {
   const [open, setOpen] = useState(false);
@@ -58,7 +58,7 @@ export function ProfileMenu() {
         {account?.discord?.avatarUrl && !avatarFailed ? <img src={account.discord.avatarUrl} alt="" onError={() => setAvatarFailed(true)} /> : <span>{account ? initials : <CircleUserRound size={19} />}</span>}
         {account && <i aria-label="Compte connecté"><Check size={9}/></i>}
       </span>
-      <span className={styles.triggerCopy}><strong>{account ? name : "Connexion"}</strong><small>{account ? "Discord connecté" : "Espace personnel"}</small></span>
+      <span className={styles.triggerCopy}><strong>{account ? name : "Connexion"}</strong><small>{account ? account.vip?.active ? "Membre VIP" : "Discord connecté" : "Espace personnel"}</small></span>
       <ChevronDown size={14} aria-hidden="true" className={open ? styles.chevronOpen : styles.chevron}/>
     </button>
 
@@ -83,6 +83,7 @@ export function ProfileMenu() {
               <small>{account?.discord?.username ? `@${account.discord.username}` : account ? "Compte CinéBox connecté" : checkedSession ? "Connectez-vous avec Discord" : "Vérification de la session…"}</small>
             </span>
           </div>
+          {account?.vip?.active && <div className={styles.vipBadge}><Crown size={13}/> MEMBRE VIP <span>Jusqu’au {new Date(account.vip.expiresAt || "").toLocaleDateString("fr-FR")}</span></div>}
           {account ? (
             <a className={styles.accountLink} href="https://discord.com/channels/@me" target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
               Gérer mon compte Discord <ArrowUpRight size={14}/>

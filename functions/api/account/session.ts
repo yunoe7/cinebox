@@ -5,14 +5,18 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
     const user = await getAccount(request, env);
     if (!user) return json({ authenticated: false, user: null });
 
-    const identity = await env.DB.prepare(
-      "SELECT provider_user_id, provider_username, provider_global_name, provider_avatar FROM auth_identities WHERE user_id=? AND provider='discord' LIMIT 1",
-    ).bind(user.id).first<{
-      provider_user_id: string;
-      provider_username: string | null;
-      provider_global_name: string | null;
-      provider_avatar: string | null;
-    }>();
+    const [identity, vip] = await Promise.all([
+      env.DB.prepare(
+        "SELECT provider_user_id, provider_username, provider_global_name, provider_avatar FROM auth_identities WHERE user_id=? AND provider='discord' LIMIT 1",
+      ).bind(user.id).first<{
+        provider_user_id: string;
+        provider_username: string | null;
+        provider_global_name: string | null;
+        provider_avatar: string | null;
+      }>(),
+      env.DB.prepare("SELECT expires_at FROM vip_memberships WHERE user_id=? AND expires_at>? LIMIT 1")
+        .bind(user.id, new Date().toISOString()).first<{ expires_at: string }>(),
+    ]);
 
     const avatarUrl = identity?.provider_user_id
       ? identity.provider_avatar
@@ -26,7 +30,9 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
         id: user.id,
         displayName: user.display_name,
         role: user.role,
+        vip: vip ? { active: true, expiresAt: vip.expires_at } : { active: false, expiresAt: null },
         discord: identity ? {
+          userId: identity.provider_user_id,
           username: identity.provider_username,
           globalName: identity.provider_global_name,
           avatarUrl,
