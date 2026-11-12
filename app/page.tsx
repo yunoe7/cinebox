@@ -599,7 +599,7 @@ export default function HomePage() {
         if (cancelled) return;
         accountLibraryRevisionRef.current = remote.revision;
         const library = remote.library;
-        const initial = createInitialProfileStore([], { status: "valid", value: [] });
+        const initial = createInitialProfileStore({ status: "valid", value: [] }, { status: "valid", value: [] });
         const profileId = initial.activeProfileId;
         const data = initial.data[profileId];
         if (library) {
