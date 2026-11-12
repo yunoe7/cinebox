@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 const movieSearch = { results: [
   { id: 71001, media_type: "movie", title: "Étoiles", original_title: "Stars", release_date: "2020-04-01", original_language: "en", overview: "Correspondance A", poster_path: "/poster-a.jpg", vote_average: 8.479, vote_count: 100 },
