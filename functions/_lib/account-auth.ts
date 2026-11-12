@@ -1,6 +1,10 @@
 import { readCookie } from "../../lib/cinebox/admin-auth.mjs";
 
-export interface AccountD1Statement { bind(...values: unknown[]): AccountD1Statement; first<T = Record<string, unknown>>(): Promise<T | null>; run(): Promise<unknown>; }\nexport interface AccountD1Database { prepare(query: string): AccountD1Statement; batch(statements: AccountD1Statement[]): Promise<unknown>; }\nexport interface AccountEnv {\n  DB: AccountD1Database;\n  DISCORD_CLIENT_ID?: string;
+export interface AccountD1Statement { bind(...values: unknown[]): AccountD1Statement; first<T = Record<string, unknown>>(): Promise<T | null>; run(): Promise<unknown>; }
+export interface AccountD1Database { prepare(query: string): AccountD1Statement; batch(statements: AccountD1Statement[]): Promise<unknown>; }
+export interface AccountEnv {
+  DB: AccountD1Database;
+  DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;
 }
@@ -13,10 +17,12 @@ export const json = (body: unknown, status=200, headers: Record<string,string>={
 export function secure(request: Request) { return new URL(request.url).protocol === "https:"; }
 export function cookie(request: Request,name=ACCOUNT_COOKIE) { const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name; return readCookie(request.headers.get("cookie"),actual); }
 export function cookieHeader(request: Request, name: string, value: string, maxAge: number, sameSite="Lax") {
-  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;\n  return [`${actual}=${value}`,"Path=/","HttpOnly",`SameSite=${sameSite}`,`Max-Age=${maxAge}`,...(secure(request)?["Secure"]:[])].join("; ");
+  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;
+  return [`${actual}=${value}`,"Path=/","HttpOnly",`SameSite=${sameSite}`,`Max-Age=${maxAge}`,...(secure(request)?["Secure"]:[])].join("; ");
 }
 export function clearCookie(request: Request,name: string,sameSite="Lax") {
-  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;\n  return [`${actual}=`,"Path=/","HttpOnly",`SameSite=${sameSite}`,"Max-Age=0","Expires=Thu, 01 Jan 1970 00:00:00 GMT",...(secure(request)?["Secure"]:[])].join("; ");
+  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;
+  return [`${actual}=`,"Path=/","HttpOnly",`SameSite=${sameSite}`,"Max-Age=0","Expires=Thu, 01 Jan 1970 00:00:00 GMT",...(secure(request)?["Secure"]:[])].join("; ");
 }
 export function validOrigin(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return false;
