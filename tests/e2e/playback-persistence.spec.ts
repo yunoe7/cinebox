@@ -1,4 +1,4 @@
-import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, expect, test, type BrowserContext, type Page } from "./fixtures";
 import { rm } from "node:fs/promises";
 
 const DB_NAME = "cinebox-assets";
