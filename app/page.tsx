@@ -68,7 +68,7 @@ const adminSections = [
 const navItems = [
   { label: "Accueil", icon: Home }, { label: "Films", icon: Film },
   { label: "Séries", icon: Tv }, { label: "Vidéos", icon: Clapperboard },
-  { label: "Ma liste", icon: Heart }, { label: "Administration", icon: Settings }
+  { label: "Ma liste", icon: Heart }, { label: "VIP", icon: Star }, { label: "Administration", icon: Settings }
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -288,6 +288,7 @@ export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
   const [sharedCatalogTitles, setSharedCatalogTitles] = useState<Title[]>([]);
   const [sharedCatalogStatus, setSharedCatalogStatus] = useState<{ status: "loading" | "success" | "error"; reason?: string }>({ status: "loading" });
+  const [viewerVip, setViewerVip] = useState(false);
   const [sharedCatalogRetryKey, setSharedCatalogRetryKey] = useState(0);
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -585,6 +586,7 @@ export default function HomePage() {
       if (result.status === "success") {
         sharedCatalogTitlesRef.current = result.titles;
         setSharedCatalogTitles(result.titles);
+        setViewerVip(Boolean(result.viewer?.vip));
         setSharedCatalogStatus({ status: "success" });
         return;
       }
@@ -608,7 +610,7 @@ export default function HomePage() {
   const availableVideoDurationBands = useMemo(() => videoDurationBands.filter((band) => videoTitles.some((item) => getDurationBand(item.duration) === band.value)), [videoTitles]);
   const visibleTitles = useMemo(() => browseTitles.filter((item) => {
     const pageMatch = activePage === "Accueil" ||
-      (activePage === "Ma liste" ? visibleFavorites.idSet.has(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
+      (activePage === "VIP" ? Boolean(item.vipExclusive || item.vipEarlyAccess) : activePage === "Ma liste" ? visibleFavorites.idSet.has(item.id) : item.kind === activePage.slice(0, -1) || (activePage === "Séries" && item.kind === "Série"));
     const filmPage = activePage === "Films";
     const seriesPage = activePage === "Séries";
     const videoPage = activePage === "Vidéos";
@@ -998,6 +1000,7 @@ export default function HomePage() {
     activePage === "Séries" ? <>Séries</> :
     activePage === "Vidéos" ? <>Vidéos</> :
     activePage === "Ma liste" ? <>Ma <em>liste.</em></> :
+    activePage === "VIP" ? <>CinéBox <em>VIP.</em></> :
     activePage === "Administration" ? <>Gérez votre <em>bibliothèque.</em></> :
     <>Explorez les <em>{activePage.toLowerCase()}.</em></>;
 
@@ -1016,7 +1019,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className={`app-shell ${activePage === "Films" ? "films-screen" : activePage === "Séries" ? "series-screen" : activePage === "Vidéos" ? "videos-screen" : activePage === "Ma liste" ? "ma-list-screen" : activePage === "Administration" ? "admin-screen" : ""}`}>
+    <main className={`app-shell ${activePage === "VIP" ? "vip-screen" : ""} ${activePage === "Films" ? "films-screen" : activePage === "Séries" ? "series-screen" : activePage === "Vidéos" ? "videos-screen" : activePage === "Ma liste" ? "ma-list-screen" : activePage === "VIP" ? "vip-screen" : activePage === "Administration" ? "admin-screen" : ""}`}>
       <aside className="sidebar" aria-label="Navigation principale">
         <header className="topbar">
           <BlurFade className="topbar-inner" duration={0.42}>
@@ -1037,7 +1040,7 @@ export default function HomePage() {
 
       <section className="main-area">
 
-        <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
+        <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "VIP" ? "vip-page" : activePage === "Administration" ? "admin-page" : ""}`}>
           {activePage !== "Administration" && sharedCatalogStatus.status !== "success" && (
             <div
               className={`shared-catalog-status ${sharedCatalogStatus.status === "error" ? "is-error" : "is-loading"}`}
@@ -1054,7 +1057,8 @@ export default function HomePage() {
               )}
             </div>
           )}
-          {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${visibleFavorites.count} favori${visibleFavorites.count === 1 ? "" : "s"} dans votre liste` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
+          {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "VIP" ? "LE CERCLE PRIVILÉGIÉ" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${visibleFavorites.count} favori${visibleFavorites.count === 1 ? "" : "s"} dans votre liste` : activePage === "VIP" ? `${visibleTitles.length} contenu${visibleTitles.length === 1 ? "" : "s"} VIP disponible${visibleTitles.length === 1 ? "" : "s"}` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
+          {activePage === "VIP" && <section className="vip-intro" aria-labelledby="vip-intro-title"><div className="vip-intro-mark"><Star size={19} fill="currentColor"/></div><div><span className="eyebrow">CINÉBOX · ACCÈS PRIVILÉGIÉ</span><h2 id="vip-intro-title">{viewerVip ? "Bienvenue dans votre espace VIP." : "Le cinéma en avant-première."}</h2><p>{viewerVip ? "Retrouvez ici les exclusivités et les avant-premières réservées aux membres VIP." : "Découvrez les avantages VIP : des contenus exclusifs et jusqu’à 48 heures d’avance sur certaines sorties."}</p></div><span className={`vip-status-pill ${viewerVip ? "is-active" : ""}`}>{viewerVip ? "MEMBRE VIP" : "ESPACE VIP"}</span></section>}
           {activePage === "Accueil" && (activeFeatured ? <section className={`hero-cinema ${activeFeatured.backdrop ? "has-backdrop" : activeFeatured.poster ? "has-poster" : "is-empty"}`} aria-label="Sélection à la une">
             <AnimatedGridPattern className="hero-cinema-grid" numSquares={8} maxOpacity={0.06} duration={6} />
             <div className={`hero-cinema-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
@@ -1232,7 +1236,7 @@ export default function HomePage() {
             </div>}
             <div className={`poster-grid ${activePage === "Films" || activePage === "Séries" ? "films-poster-grid" : activePage === "Vidéos" ? "video-library-grid" : activePage === "Ma liste" ? "ma-list-poster-grid" : ""} ${(activePage === "Films" || activePage === "Séries") && visibleTitles.length > 4 && visibleTitles.length % 4 === 1 ? "films-poster-grid-balanced" : ""}`}>
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className={`poster-card ${activePage === "Vidéos" ? "video-library-card" : activePage === "Ma liste" ? "favorite-card" : ""}`} initial={{ opacity: 0, y: 16, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} whileHover={{ y: -6, scale: 1.018 }} whileTap={{ scale: .992 }} transition={{ layout: { duration: .28 }, opacity: { duration: .32, delay: Math.min(index * .035, .25) }, y: { type: "spring", stiffness: 280, damping: 22 }, scale: { type: "spring", stiffness: 300, damping: 24 } }}>
-                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
+                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{activePage === "VIP" && <span className="vip-card-chip"><Star size={11} fill="currentColor"/>{item.vipExclusive ? "EXCLUSIF VIP" : "AVANT-PREMIÈRE"}</span>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
                 <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
               </motion.article>)}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucun film dans le catalogue</strong><span>Les films publiés dans le catalogue partagé apparaîtront ici.</span></div>}
