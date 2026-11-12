@@ -68,3 +68,13 @@ export async function revokeAccount(request: Request, env: AccountEnv) {
 export function normalizeEmail(value: unknown) {
   return typeof value==="string" ? value.trim().toLowerCase() : "";
 }
+
+export async function enforceRateLimit(env: AccountEnv, request: Request, action: string, limit: number, windowSeconds: number) {
+  const ip=request.headers.get("cf-connecting-ip") || "unknown";
+  const key=await sha256(action+":"+ip);
+  const now=Date.now();
+  const windowStart=new Date(Math.floor(now/(windowSeconds*1000))*windowSeconds*1000).toISOString();
+  const expiresAt=new Date(now+windowSeconds*2000).toISOString();
+  const row=await env.DB.prepare("INSERT INTO account_rate_limits (rate_key,window_start,attempts,expires_at) VALUES (?,?,1,?) ON CONFLICT(rate_key,window_start) DO UPDATE SET attempts=attempts+1,expires_at=excluded.expires_at RETURNING attempts").bind(key,windowStart,expiresAt).first<{attempts:number}>();
+  return Boolean(row && row.attempts<=limit);
+}
