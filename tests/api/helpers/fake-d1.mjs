@@ -3,20 +3,17 @@
  * It implements only the statements used by manage.ts.
  */
 export function createFakeD1({ titles = [], episodes = [] } = {}) {
-  const state = {
-    titles: structuredClone(titles),
-    episodes: structuredClone(episodes),
-  };
+  const state = { titles: structuredClone(titles), episodes: structuredClone(episodes) };
   const calls = [];
 
   function query(sql, values) {
-    if (/SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at FROM catalog_titles/.test(sql)) {
-      return state.titles.map((title) => ({ ...title }));
+    if (/SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at,/.test(sql)) {
+      return state.titles.map((title) => ({ vip_exclusive: 0, vip_early_access: 0, public_at: null, ...title }));
     }
     if (/SELECT id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json FROM catalog_episodes/.test(sql)) {
       return state.episodes.map((episode) => ({ ...episode }));
     }
-    if (/SELECT id FROM catalog_titles WHERE id = \?/.test(sql)) {
+    if (/SELECT id FROM catalog_titles WHERE id\s*=\s*\?/.test(sql)) {
       return state.titles.filter((title) => title.id === values[0]).map((title) => ({ id: title.id }));
     }
     throw new Error(`Unexpected D1 query: ${sql}`);
@@ -45,30 +42,11 @@ export function createFakeD1({ titles = [], episodes = [] } = {}) {
     const call = { sql, values: [] };
     calls.push(call);
     const statement = {
-      get sql() {
-        return sql;
-      },
-      get values() {
-        return call.values;
-      },
-      bind(...values) {
-        call.values = values;
-        return statement;
-      },
-      async all() {
-        return { success: true, results: query(sql, call.values) };
-      },
-      async run() {
-        apply(sql, call.values);
-        return { success: true };
-      },
+      bind(...values) { call.values = values; return statement; },
+      async all() { return { success: true, results: query(sql, call.values) }; },
+      async run() { apply(sql, call.values); return { success: true }; },
     };
     return statement;
   }
-
-  return {
-    state,
-    calls,
-    prepare,
-  };
+  return { state, calls, prepare };
 }

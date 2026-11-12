@@ -45,6 +45,9 @@ type Item = {
   backdrop_path: string | null;
   genres?: string[];
   published: number;
+  vip_exclusive?: number;
+  vip_early_access?: number;
+  public_at?: string | null;
   updated_at?: string;
   metadata?: Metadata;
   episodes?: Episode[];
@@ -160,6 +163,9 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftOverview, setDraftOverview] = useState("");
+  const [draftVipExclusive, setDraftVipExclusive] = useState(false);
+  const [draftVipEarlyAccess, setDraftVipEarlyAccess] = useState(false);
+  const [draftPublicAt, setDraftPublicAt] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("updated");
@@ -302,7 +308,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
     setActionError(false);
     setActionMessage("");
     try {
-      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, title: draftTitle, overview: draftOverview }) });
+      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, title: draftTitle, overview: draftOverview, vip_exclusive: draftVipExclusive, vip_early_access: draftVipEarlyAccess, public_at: draftPublicAt ? new Date(draftPublicAt).toISOString() : null }) });
       setEditing(null);
       if (await refresh()) setActionMessage("Fiche mise à jour dans le catalogue partagé.");
     } catch (reason) {
@@ -536,7 +542,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                   )}
 
                   <div className="admin-shared-actions">
-                    <button type="button" className={isEditing ? "is-active" : ""} onClick={() => { setEditing(isEditing ? null : item.id); setDraftTitle(item.title); setDraftOverview(item.overview); }}>
+                    <button type="button" className={isEditing ? "is-active" : ""} onClick={() => { setEditing(isEditing ? null : item.id); setDraftTitle(item.title); setDraftOverview(item.overview); setDraftVipExclusive(Boolean(item.vip_exclusive)); setDraftVipEarlyAccess(Boolean(item.vip_early_access)); setDraftPublicAt(item.public_at ? new Date(item.public_at).toISOString().slice(0,16) : ""); }}>
                       <Edit3 size={13} /> {isEditing ? "Fermer" : "Modifier"}
                     </button>
                     {isPublished
@@ -549,6 +555,12 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                     <div className="admin-shared-editor">
                       <label><span>Titre</span><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} aria-label="Titre" maxLength={300} /></label>
                       <label><span>Synopsis</span><textarea value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} aria-label="Synopsis" rows={4} maxLength={12000} /></label>
+                      <fieldset className="admin-vip-access-fields"><legend>Accès VIP CinéBox</legend>
+                        <label><input type="checkbox" checked={draftVipExclusive} onChange={(event) => { setDraftVipExclusive(event.target.checked); if (event.target.checked) setDraftVipEarlyAccess(false); }} /> Réserver ce titre aux membres VIP</label>
+                        <label><input type="checkbox" checked={draftVipEarlyAccess} disabled={draftVipExclusive} onChange={(event) => { setDraftVipEarlyAccess(event.target.checked); if (event.target.checked) setDraftVipExclusive(false); }} /> Avant-première VIP (48 h)</label>
+                        <label><span>Date et heure d’ouverture au public</span><input type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} disabled={!draftVipEarlyAccess} /></label>
+                        <small>Les VIP peuvent voir le titre 48 h avant cette date. Les autres comptes le verront à la date indiquée.</small>
+                      </fieldset>
                       <div>
                         <button type="button" className="is-primary" disabled={busy === item.id || !draftTitle.trim()} onClick={() => void save(item)}>
                           {busy === item.id ? <LoaderCircle size={13} className="admin-spin" /> : <Save size={13} />} Enregistrer les modifications
