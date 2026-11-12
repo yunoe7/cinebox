@@ -119,3 +119,4 @@ export const test = base.extend<{ accountApi: void }>({
 });
 
 export { expect };
+export type { Page };
