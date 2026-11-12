@@ -14,7 +14,7 @@ La liaison d'identités est facultative et explicite. Une adresse e-mail Discord
 - API : Cloudflare Pages Functions sous `functions/api/auth/*`.
 - Persistance : D1 via le binding existant `DB`.
 - Identité : table `users` comme compte canonique ; `auth_identities` associe le compte à Discord.
-- Sessions membres : jeton opaque aléatoire dans le cookie `__Host-cinebox_session`, HttpOnly, Secure, SameSite=Lax, Path=/ ; seule son empreinte SHA-256 et sa date d’expiration sont stockées dans D1, ce qui permet la révocation serveur. Expiration initiale : 12 h. Il reste distinct de `__Host-cinebox_admin`.
+- Sessions membres : jeton opaque aléatoire dans le cookie `__Host-cinebox_session`, HttpOnly, Secure, SameSite=Lax, Path=/ ; seule son empreinte SHA-256 et sa date d’expiration sont stockées dans D1, ce qui permet la révocation serveur. Aucun secret de session supplémentaire n’est nécessaire. Expiration initiale : 12 h. Il reste distinct de `__Host-cinebox_admin`.
 - Secrets : variables Cloudflare Pages uniquement, jamais `NEXT_PUBLIC_*`, jamais dans Git.
 
 ## Parcours
