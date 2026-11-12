@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, chromium, type Page, type Locator, type Download, type BrowserContext } from "@playwright/test";
 
 /**
  * Browser-only account API simulator for UI E2E tests.
@@ -118,5 +118,5 @@ export const test = base.extend<{ accountApi: void }>({
   }, { auto: true }],
 });
 
-export { expect };
-export type { Page };
+export { expect, chromium };
+export type { Page, Locator, Download, BrowserContext };
