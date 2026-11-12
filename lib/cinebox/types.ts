@@ -1,6 +1,10 @@
 export type Kind = "Film" | "Série" | "Vidéo";
-/** Remote media providers supported by the future upload flow (LOT 8). */
-export type MediaProvider = "uqload";
+/**
+ * Remote media providers supported by the future upload flow (LOT 8).
+ * Vidsrc is handled separately from `tmdbId`, and local files stay in
+ * IndexedDB through `videoAssetKey` / `videoUrl`.
+ */
+export type MediaProvider = "uqload" | "vidmoly";
 /** Lifecycle of a media source before it becomes playable. */
 export type MediaEncodingStatus = "pending" | "processing" | "ready" | "failed";
 /**
@@ -36,6 +40,6 @@ export type Title = {
   isAdult?: boolean;
   /** Where the title comes from: the personal library or the shared D1 catalogue. */
   source?: "local" | "shared";
-  /** Remote media sources (Uqload) attached to a film or a video. */
+  /** Remote media sources (Uqload, VidMoly) attached to a film or a video. */
   sources?: MediaSource[];
 };

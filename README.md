@@ -120,9 +120,13 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 La migration initiale se trouve dans `migrations/0001_shared_catalog.sql`. Elle crée les tables `users`, `admin_allowlist`, `catalog_titles`, `catalog_episodes`, `media_assets`, `user_favorites`, `user_progress`, `watch_history` et les index associés.
 
-La migration `migrations/0002_catalog_sources.sql` est additive et prépare le fournisseur vidéo Uqload : elle crée `catalog_media_sources` (fournisseur, `file_code`, `video_id`, `playback_url`, qualité, statut d’encodage, date de téléversement) et associe une source à un film (`catalog_titles`) ou à un épisode (`catalog_episodes`). Aucun appel réseau Uqload n’est effectué par l’application à ce stade.
+La migration `migrations/0002_catalog_sources.sql` est additive et prépare les sources vidéo distantes : elle crée `catalog_media_sources` (fournisseur, `file_code`, `video_id`, `playback_url`, qualité, statut d’encodage, date de téléversement) et associe une source à un film (`catalog_titles`) ou à un épisode (`catalog_episodes`).
 
-> `media_assets` est préparée pour un futur suivi multi-fournisseurs. Le catalogue partagé actuel conserve les métadonnées TMDB dans `catalog_titles.metadata_json` ; les migrations déjà appliquées ne doivent pas être modifiées. Toute évolution doit passer par une nouvelle migration D1 validée.
+La migration `migrations/0003_catalog_sources_multi_provider.sql` remplace la contrainte mono-fournisseur `provider = 'uqload'` par `provider IN ('uqload', 'vidmoly')`. Elle reconstruit la table en conservant toutes les lignes existantes, puis recrée ses index. Aucun appel réseau Uqload ou VidMoly n’est effectué par l’application à ce stade.
+
+> `catalog_media_sources` accepte plusieurs lignes pour un même film ou épisode : la clé d’unicité est `(provider, file_code)`, pas le couple titre/épisode. Vidsrc reste lu séparément depuis `tmdbId` via `lib/cinebox/vidsrc.mjs`, et les fichiers locaux restent dans IndexedDB via `videoAssetKey` / `videoUrl` : ils n’ont pas vocation à être dupliqués dans `catalog_media_sources`.
+>
+> `media_assets` est conservée telle quelle. Elle décrit les futurs fichiers téléversés/transcodés (`cloudflare_stream`, `r2`) et leur cycle de vie, tandis que `catalog_media_sources` décrit les sources distantes intégrées par code fichier (`uqload`, `vidmoly`). Les deux tables ne sont pas encore alimentées par un flux d’upload ; aucune n’est supprimée ni fusionnée automatiquement. Le catalogue partagé actuel conserve les métadonnées TMDB dans `catalog_titles.metadata_json` ; les migrations déjà appliquées ne doivent pas être modifiées. Toute évolution doit passer par une nouvelle migration D1 validée.
 
 ```bash
 # Base locale Wrangler
