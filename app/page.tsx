@@ -1484,7 +1484,7 @@ export default function HomePage() {
                 </article>;
               })}</div> : <div className="admin-empty-panel"><ImageIcon size={23}/><strong>Aucune affiche ou miniature enregistrée</strong><span>Ajoutez un contenu avec une image pour la retrouver ici.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter un contenu</button></div>}
               <div className="admin-media-footnote"><HardDrive size={15}/> Les fichiers existants restent dans IndexedDB. Cette vue ne déplace ni ne supprime aucun média.</div>
-            </div>}
+            </div>
           </section>
           </BlurFade>}
 
