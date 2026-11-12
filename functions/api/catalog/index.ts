@@ -17,7 +17,6 @@ interface D1Database {
 
 interface CatalogEnv {
   DB: D1Database;
-  BUNNY_STREAM_LIBRARY_ID?: string;
 }
 
 interface CatalogEpisodeRow {
@@ -28,7 +27,6 @@ interface CatalogEpisodeRow {
   title: string;
   overview: string;
   duration_seconds: number | null;
-  stream_uid: string | null;
   thumbnail_path: string | null;
   metadata_json: string;
 }
@@ -125,7 +123,7 @@ export async function onRequestGet({
 
     const episodeResult = pageRows.length
       ? await env.DB.prepare(
-          `SELECT id, title_id, season_number, episode_number, title, overview, duration_seconds, stream_uid, thumbnail_path, metadata_json
+          `SELECT id, title_id, season_number, episode_number, title, overview, duration_seconds, thumbnail_path, metadata_json
            FROM catalog_episodes WHERE title_id IN (${pageRows.map(() => "?").join(",")})
            ORDER BY season_number, episode_number`,
         ).bind(...pageRows.map(entry => entry.row.id)).all<CatalogEpisodeRow>()
@@ -152,9 +150,6 @@ export async function onRequestGet({
           runtime: episode.duration_seconds,
           thumbnailPath: episode.thumbnail_path,
           tmdbId: episodeMetadata.tmdbId ?? null,
-          videoUrl: episode.stream_uid && env.BUNNY_STREAM_LIBRARY_ID
-            ? `https://iframe.mediadelivery.net/embed/${env.BUNNY_STREAM_LIBRARY_ID}/${episode.stream_uid}`
-            : null,
         });
         seasons.set(episode.season_number, season);
       }
@@ -167,7 +162,7 @@ export async function onRequestGet({
         posterPath: row.poster_path,
         backdropPath: row.backdrop_path,
         genres,
-        metadata: { ...metadata, ...(env.BUNNY_STREAM_LIBRARY_ID ? { bunnyLibraryId: env.BUNNY_STREAM_LIBRARY_ID } : {}) },
+        metadata,
         seasons: [...seasons.values()],
         updatedAt: row.updated_at,
       };

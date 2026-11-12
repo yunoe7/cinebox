@@ -41,8 +41,6 @@ type PublishBody = {
   backdropPath?: string | null;
   genres?: string[];
   metadata?: Record<string, unknown>;
-  bunnyVideoId?: string;
-  targetEpisode?: { seasonNumber: number; episodeNumber: number };
   /** Replace the full episode list of the single season present in `seasons`. */
   replaceSeason?: boolean;
   /** Replace the full episode list of the title. Requires a complete snapshot. */
@@ -243,11 +241,6 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     ? body.genres.filter((item): item is string => typeof item === "string").slice(0, 30).map(item => item.slice(0, 80))
     : [];
   const metadata = normalizeCatalogMetadata(isRecord(body.metadata) ? body.metadata : {});
-  const bunnyVideoId = typeof body.bunnyVideoId === "string" && /^[a-f0-9-]{20,64}$/i.test(body.bunnyVideoId) ? body.bunnyVideoId : null;
-  if (body.bunnyVideoId && !bunnyVideoId) return json({ error: "Identifiant Bunny invalide." }, 400);
-  const targetEpisode = body.targetEpisode && Number.isInteger(body.targetEpisode.seasonNumber) && Number.isInteger(body.targetEpisode.episodeNumber) && body.targetEpisode.seasonNumber >= 0 && body.targetEpisode.episodeNumber >= 1 ? body.targetEpisode : null;
-  if (targetEpisode && (!bunnyVideoId || body.kind !== "series")) return json({ error: "Association d’épisode invalide." }, 400);
-  if (body.kind === "series" && bunnyVideoId && !targetEpisode) return json({ error: "Choisis un épisode pour associer cette vidéo." }, 400);
 
   if (body.replaceSeason !== undefined && typeof body.replaceSeason !== "boolean") {
     return json({ error: "L’indicateur replaceSeason est invalide." }, 400);
@@ -285,12 +278,6 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     if (replaceTitle && parsed.totalEpisodes === 0) {
       return json({ error: "Un instantané complet de série doit contenir au moins un épisode." }, 400);
     }
-  }
-
-  if (targetEpisode && !parsed.episodes.some(episode =>
-    episode.seasonNumber === targetEpisode.seasonNumber && episode.episodeNumber === targetEpisode.episodeNumber
-  )) {
-    return json({ error: "L’épisode ciblé est absent de la publication." }, 400);
   }
 
   // Read the current kind before writing. A kind change is a destructive
@@ -342,7 +329,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
      published=1, updated_at=CURRENT_TIMESTAMP`,
   ).bind(id, body.kind, body.title.trim().slice(0, 300), cleanText(body.overview, 12000),
     cleanText(body.releaseDate, 20) || null, safePath(body.posterPath), safePath(body.backdropPath),
-    JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}), ...(bunnyVideoId && !targetEpisode ? { bunnyVideoId } : {}) })));
+    JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}) })));
 
   for (const episode of parsed.episodes) {
     push(env.DB.prepare(
@@ -356,11 +343,6 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
 
   if (replaceSeason || replaceTitle) {
     addDeleteStatements(push, env.DB, id, deletionSeason, obsoleteIds);
-  }
-
-  if (targetEpisode && bunnyVideoId) {
-    const episodeId = `${id}:s${targetEpisode.seasonNumber}:e${targetEpisode.episodeNumber}`;
-    push(env.DB.prepare("UPDATE catalog_episodes SET stream_uid = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND title_id = ?").bind(bunnyVideoId, episodeId, id));
   }
 
   try {

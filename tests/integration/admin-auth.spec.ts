@@ -4,7 +4,7 @@ import { TEST_ADMIN_PASSWORD, TEST_ORIGIN } from "./test-config.mjs";
 const LOGIN = "/api/auth/login";
 const LOGOUT = "/api/auth/logout";
 const SESSION = "/api/auth/session";
-const ADMIN_ROUTE = "/api/bunny/status";
+const ADMIN_ROUTE = "/api/catalog/manage";
 const CSRF = { "x-cinebox-request": "1" };
 
 function mutationHeaders(overrides: Record<string, string> = {}) {
@@ -108,13 +108,12 @@ test("la connexion pose un cookie __Host- durci et la session est consultable", 
   expect(sessionBody.configured).toBe(true);
   expect(sessionBody.expiresAt).toBeGreaterThan(Date.now());
 
-  // The real Functions runtime accepts the cookie. Bunny is intentionally not
-  // configured here, so reaching the 503 proves the auth guard was passed.
+  // The real Functions runtime accepts the cookie. D1 is intentionally not
+  // bound here, so reaching the 503 proves the auth guard was passed.
   const adminRoute = await request.get(ADMIN_ROUTE);
   expect(adminRoute.status()).toBe(503);
   expect(await adminRoute.json()).toEqual({
-    connected: false,
-    error: "La connexion Bunny Stream n'est pas configurée.",
+    error: "Base de données indisponible.",
   });
 });
 

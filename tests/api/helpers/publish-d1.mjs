@@ -127,15 +127,6 @@ export function createPublishD1({
       return { success: true, meta: { changes: before - state.episodes.length } };
     }
 
-    if (/^UPDATE catalog_episodes SET stream_uid = \?/i.test(sql)) {
-      const [streamUid, id, titleId] = values;
-      const episode = state.episodes.find((entry) => entry.id === id && entry.title_id === titleId);
-      if (!episode) return { success: true, meta: { changes: 0 } };
-      episode.stream_uid = streamUid;
-      episode.updated_at = "2024-01-01T00:00:00Z";
-      return { success: true, meta: { changes: 1 } };
-    }
-
     throw new Error(`Unexpected D1 statement: ${sql}`);
   }
 

@@ -15,7 +15,6 @@ import {
   Save,
   Search,
   ShieldAlert,
-  Trash2,
   Tv,
   Video,
 } from "lucide-react";
@@ -30,7 +29,6 @@ type Episode = {
   title: string;
   overview?: string;
   duration_seconds: number | null;
-  stream_uid: string | null;
   thumbnail_path?: string | null;
   metadata?: Record<string, unknown>;
 };
@@ -64,10 +62,6 @@ function text(value: unknown): string {
 
 function numeric(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function metaString(metadata: Metadata | undefined, key: string): string {
-  return text(metadata?.[key]);
 }
 
 function metaNumber(metadata: Metadata | undefined, key: string): number | null {
@@ -110,10 +104,6 @@ function episodeCount(item: Item): number {
   return (item.episodes || []).length;
 }
 
-function linkedEpisodeCount(item: Item): number {
-  return (item.episodes || []).filter((episode) => Boolean(episode.stream_uid)).length;
-}
-
 function seasonCount(item: Item): number {
   return new Set((item.episodes || []).map((episode) => episode.season_number)).size;
 }
@@ -125,9 +115,7 @@ function searchable(item: Item): string {
     item.release_date || "",
     kindLabels[item.kind],
     ...(item.genres || []),
-    metaString(item.metadata, "bunnyVideoId"),
-    metaString(item.metadata, "bunnyLibraryId"),
-    ...(item.episodes || []).flatMap((episode) => [episode.title, episode.stream_uid || ""]),
+    ...(item.episodes || []).map((episode) => episode.title),
   ].join(" ").toLocaleLowerCase("fr");
 }
 
@@ -263,22 +251,6 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const kindPlural = kindFilter === "movie" ? "films" : kindFilter === "series" ? "séries" : kindFilter === "video" ? "vidéos" : "fiches";
   const filtersActive = Boolean(query.trim()) || statusFilter !== "all" || sortMode !== "updated";
 
-  const detachVideo = async (videoId: string, item: Item) => {
-    if (!window.confirm("Dissocier cette vidéo de la fiche ? Le fichier restera dans Bunny.")) return;
-    setBusy(videoId);
-    setActionError(false);
-    setActionMessage("");
-    try {
-      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, detachVideoId: videoId }) });
-      if (await refresh()) setActionMessage("Vidéo dissociée. Le fichier reste disponible dans Bunny.");
-    } catch (reason) {
-      setActionError(true);
-      setActionMessage(reason instanceof Error ? reason.message : "Dissociation impossible.");
-    } finally {
-      setBusy("");
-    }
-  };
-
   const save = async (item: Item) => {
     setBusy(item.id);
     setActionError(false);
@@ -311,32 +283,16 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   };
 
   const unpublish = async (item: Item) => {
-    if (!window.confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée, sans supprimer la vidéo Bunny.`)) return;
+    if (!window.confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée.`)) return;
     setBusy(item.id);
     setActionError(false);
     setActionMessage("");
     try {
       await request("/api/catalog/manage", { method: "DELETE", body: JSON.stringify({ id: item.id }) });
-      if (await refresh()) setActionMessage("Fiche retirée du catalogue partagé. La vidéo reste dans Bunny.");
+      if (await refresh()) setActionMessage("Fiche retirée du catalogue partagé.");
     } catch (reason) {
       setActionError(true);
       setActionMessage(reason instanceof Error ? reason.message : "Retrait impossible.");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const deleteVideo = async (videoId: string, item: Item) => {
-    if (!window.confirm("Supprimer définitivement cette vidéo de la bibliothèque Bunny ? Cette action est irréversible.")) return;
-    setBusy(videoId);
-    setActionError(false);
-    setActionMessage("");
-    try {
-      await request("/api/bunny/delete", { method: "POST", body: JSON.stringify({ videoId }) });
-      if (await refresh()) setActionMessage("Vidéo supprimée de Bunny et association retirée.");
-    } catch (reason) {
-      setActionError(true);
-      setActionMessage(reason instanceof Error ? reason.message : "Suppression impossible.");
     } finally {
       setBusy("");
     }
@@ -456,11 +412,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
           {visibleItems.map((item) => {
             const KindIcon = kindIcons[item.kind];
             const episodes = item.episodes || [];
-            const linked = linkedEpisodeCount(item);
             const totalEpisodes = episodeCount(item);
-            const managementPercent = totalEpisodes ? Math.round((linked / totalEpisodes) * 100) : 0;
-            const bunnyVideoId = metaString(item.metadata, "bunnyVideoId");
-            const bunnyLibraryId = metaString(item.metadata, "bunnyLibraryId");
             const poster = item.kind === "video"
               ? tmdbImage(item.backdrop_path, "w300") || tmdbImage(item.poster_path, "w300")
               : tmdbImage(item.poster_path, "w185");
@@ -492,13 +444,6 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
 
                   {item.kind === "series" && (
                     <div className="admin-shared-series">
-                      <div className="admin-shared-meter">
-                        <span><Tv size={12} aria-hidden="true" /> Gestion des épisodes</span>
-                        <strong>{linked}/{totalEpisodes} vidéo{linked === 1 ? "" : "s"} associée{linked === 1 ? "" : "s"}</strong>
-                      </div>
-                      <div className="admin-progress-track" role="progressbar" aria-label={`Association Bunny de ${item.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={managementPercent}>
-                        <i style={{ width: `${managementPercent}%` }} />
-                      </div>
                       {episodes.length > 0 && (
                         <details className="admin-shared-episodes">
                           <summary>Saisons &amp; épisodes <ChevronDown size={13} aria-hidden="true" /></summary>
@@ -507,14 +452,7 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
                               <div className="admin-shared-episode" key={episode.id}>
                                 <span className="admin-episode-code">S{episode.season_number} E{episode.episode_number}</span>
                                 <span className="admin-episode-name">{episode.title}</span>
-                                <span className={`admin-episode-link ${episode.stream_uid ? "is-linked" : ""}`}>{episode.stream_uid ? "Bunny" : "Sans vidéo"}</span>
                                 <span className="admin-episode-duration">{formatDuration(episode.duration_seconds)}</span>
-                                {episode.stream_uid && (
-                                  <span className="admin-episode-actions">
-                                    <button type="button" disabled={busy === episode.stream_uid} onClick={() => void detachVideo(episode.stream_uid!, item)}>Dissocier</button>
-                                    <button type="button" className="is-danger" disabled={busy === episode.stream_uid} onClick={() => void deleteVideo(episode.stream_uid!, item)}><Trash2 size={11} /> Bunny</button>
-                                  </span>
-                                )}
                               </div>
                             ))}
                           </div>
@@ -526,25 +464,6 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
                   {item.kind === "video" && (
                     <div className="admin-shared-video-meta">
                       <span><Clock3 size={11} aria-hidden="true" /> {runtimeLabel(item)}</span>
-                      {bunnyVideoId && <span className="admin-bunny-id"><Video size={11} aria-hidden="true" /> Bunny · <code title={bunnyVideoId}>{bunnyVideoId}</code></span>}
-                      {bunnyLibraryId && <span>Bibliothèque <code title={bunnyLibraryId}>{bunnyLibraryId}</code></span>}
-                      {!bunnyVideoId && <span className="admin-muted">Aucune vidéo Bunny associée</span>}
-                    </div>
-                  )}
-
-                  {item.kind === "movie" && bunnyVideoId && (
-                    <div className="admin-shared-video-meta">
-                      <span className="admin-bunny-id"><Video size={11} aria-hidden="true" /> Bunny · <code title={bunnyVideoId}>{bunnyVideoId}</code></span>
-                      {bunnyLibraryId && <span>Bibliothèque <code title={bunnyLibraryId}>{bunnyLibraryId}</code></span>}
-                    </div>
-                  )}
-
-                  {bunnyVideoId && item.kind !== "series" && (
-                    <div className="admin-shared-association">
-                      <Video size={12} aria-hidden="true" />
-                      <span>Vidéo du titre associée</span>
-                      <button type="button" disabled={busy === bunnyVideoId} onClick={() => void detachVideo(bunnyVideoId, item)}>Dissocier</button>
-                      <button type="button" className="is-danger" disabled={busy === bunnyVideoId} onClick={() => void deleteVideo(bunnyVideoId, item)}><Trash2 size={11} /> Supprimer Bunny</button>
                     </div>
                   )}
 

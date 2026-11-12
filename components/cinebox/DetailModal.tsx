@@ -4,10 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Heart, Play, Settings, X, Bookmark, Info, Film, ChevronRight, ListVideo, Star, Clock } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
-import BunnyPlayer from "./BunnyPlayer";
 import VidsrcPlayer from "./VidsrcPlayer";
 import VideoPlayer from "./VideoPlayer";
-import { isBunnyEmbedUrl } from "../../lib/cinebox/bunny-playback.mjs";
 import { retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import { MagicCard } from "../magicui/magic-card";
 import { BlurFade } from "../magicui/blur-fade";
@@ -29,7 +27,6 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   const [activeTab, setActiveTab] = useState<"details" | "episodes">("details");
   const [activeSeasonNumber, setActiveSeasonNumber] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [playbackSource, setPlaybackSource] = useState<"bunny" | "vidsrc">("bunny");
   const [expanded, setExpanded] = useState(false);
   const reduceMotion = useReducedMotion();
   const { ref: dialogRef, dialogProps } = useModalDialog<HTMLDivElement>({
@@ -55,7 +52,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
 
   useEffect(() => {
     if (!selected) return;
-    setActiveTab("details"); setPlaying(false); setPlaybackSource(selected.videoUrl || selected.seasons?.some(season => season.episodes.some(episode => episode.videoUrl)) ? "bunny" : "vidsrc"); setExpanded(false);
+    setActiveTab("details"); setPlaying(false); setExpanded(false);
     setActiveSeasonNumber(selectedEpisode?.season ?? selected.seasons?.[0]?.number ?? null);
   }, [selected?.id]);
 
@@ -64,9 +61,14 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   }, [selectedEpisode?.season]);
 
   if (!selected) return null;
-  const episodes = selected.seasons?.flatMap(season => season.episodes.filter(ep => ep.videoUrl).map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl! }))) || [];
+  const episodes = selected.seasons?.flatMap(season => season.episodes
+    .filter(ep => ep.videoUrl || (selected.tmdbId && selected.kind === "Série"))
+    .map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl || "" }))) || [];
   const chosen = selectedEpisode ? episodes.find(ep => ep.season === selectedEpisode.season && ep.episode === selectedEpisode.episode) : undefined;
-  const playbackUrl = selectedEpisodeUrl || chosen?.url || selected.videoUrl || episodes[0]?.url || null;
+  const playbackUrl = selectedEpisode
+    ? selectedEpisodeUrl || chosen?.url || null
+    : selectedEpisodeUrl || selected.videoUrl || episodes[0]?.url || null;
+  const canUseVidsrc = Boolean(selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"));
   const playbackProgress = selectedEpisode
     ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.progress ?? 0
     : selected.progress ?? 0;
@@ -75,12 +77,12 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
       ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
       : selected.currentTime ?? 0)
     : 0;
-  const canPlay = Boolean(selected.videoUrl || episodes.length || (selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série")));
+  const canPlay = Boolean(selected.videoUrl || episodes.length || canUseVidsrc);
   const resumableEpisode = selected.seasons?.flatMap(season => season.episodes
-    .filter(episode => Boolean(episode.videoUrl) && (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
+    .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
     .map(episode => ({ season: season.number, episode })))
     .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
-  const titleCanResume = Boolean(selected.videoUrl && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
+  const titleCanResume = Boolean((selected.videoUrl || selected.tmdbId) && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
   const canResume = selected.kind === "Série" ? Boolean(resumableEpisode) : titleCanResume;
   const progressLabel = selected.kind === "Série" ? resumableEpisode?.episode.progress : selected.progress;
   const activeSeason = selected.seasons?.find(season => season.number === activeSeasonNumber) || selected.seasons?.[0];
@@ -91,13 +93,12 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   const showDuration = hasDuration && !durationIsSeasonCount;
   const hasRating = typeof selected.rating === "number" && Number.isFinite(selected.rating) && selected.rating > 0;
   const play = (resume = false) => {
-    if (!playbackUrl && !selected.tmdbId) return;
-    if (resume && resumableEpisode?.episode.videoUrl) {
-      onSelectEpisode(resumableEpisode.season, resumableEpisode.episode.number, resumableEpisode.episode.videoUrl);
+    if (!playbackUrl && !canUseVidsrc) return;
+    if (resume && resumableEpisode) {
+      onSelectEpisode(resumableEpisode.season, resumableEpisode.episode.number, resumableEpisode.episode.videoUrl || "");
     } else if (!selected.videoUrl && !selectedEpisode && episodes[0]) {
       onSelectEpisode(episodes[0].season, episodes[0].episode, episodes[0].url);
     }
-    setPlaybackSource((current) => current === "bunny" && (selected.videoUrl || episodes.length) ? "bunny" : "vidsrc");
     setPlaying(true); onView(selected.id);
   };
 
@@ -105,11 +106,10 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     <motion.div className="modal-backdrop detail-page-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div ref={dialogRef} {...dialogProps} className="detail-modal detail-page-modal" aria-labelledby="detail-modal-title" initial={reduceMotion ? false : { y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { y: 10, opacity: 0 }}>
         <button ref={closeButtonRef} className="close-btn detail-page-close" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
-        {playing && (playbackUrl || (playbackSource === "vidsrc" && selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"))) ? <section className="episode-watch-page">
+        {playing && (playbackUrl || canUseVidsrc) ? <section className="episode-watch-page">
           <div className="episode-watch-top">
             <div className="episode-watch-player">
-              {playbackSource === "vidsrc" && selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série") ? <VidsrcPlayer key={`vidsrc:${selected.tmdbId}:${selectedEpisode?.season ?? ""}:${selectedEpisode?.episode ?? ""}`} kind={selected.kind === "Film" ? "movie" : "tv"} id={selected.tmdbId} season={selectedEpisode?.season} episode={selectedEpisode?.episode} resumeAt={playbackResumeAt} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`} onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)}/> : isBunnyEmbedUrl(playbackUrl || "") ? <BunnyPlayer key={playbackUrl} src={playbackUrl!} resumeAt={playbackResumeAt} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`}
-                onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)}/> : playbackUrl ? <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt}
+              {!playbackUrl && canUseVidsrc ? <VidsrcPlayer key={`vidsrc:${selected.tmdbId}:${selectedEpisode?.season ?? ""}:${selectedEpisode?.episode ?? ""}`} kind={selected.kind === "Film" ? "movie" : "tv"} id={selected.tmdbId!} season={selectedEpisode?.season} episode={selectedEpisode?.episode} resumeAt={playbackResumeAt} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`} onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)}/> : playbackUrl ? <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt}
                 onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/> : null}
             </div>
             <aside className="episode-watch-sidebar">
@@ -122,10 +122,6 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
           </div>
           <div className="episode-watch-controls">
             <div><span className="eyebrow">{selected.name.toUpperCase()}</span><h2>{selectedEpisode ? `Saison ${selectedEpisode.season} · Épisode ${selectedEpisode.episode}` : selected.name}</h2></div>
-            {(selected.videoUrl || episodes.length > 0) && selected.tmdbId && <div role="group" aria-label="Choisir la source de lecture" className="vidsrc-source-switch">
-              <button type="button" aria-pressed={playbackSource === "bunny"} className={playbackSource === "bunny" ? "active" : ""} onClick={() => setPlaybackSource("bunny")}>Bunny Stream</button>
-              <button type="button" aria-pressed={playbackSource === "vidsrc"} className={playbackSource === "vidsrc" ? "active" : ""} onClick={() => setPlaybackSource("vidsrc")}>Vidsrc</button>
-            </div>}
 
             {episodes.length > 0 && <label className="episode-watch-picker"><ListVideo size={15}/><select aria-label="Choisir un épisode" value={selectedEpisode ? `${selectedEpisode.season}:${selectedEpisode.episode}` : `${episodes[0].season}:${episodes[0].episode}`} onChange={event => { const [season,episode] = event.target.value.split(":").map(Number); const target = episodes.find(ep => ep.season === season && ep.episode === episode); if (target) onSelectEpisode(target.season,target.episode,target.url); }}>{episodes.map(ep => <option key={`${ep.season}:${ep.episode}`} value={`${ep.season}:${ep.episode}`}>S{ep.season} · E{ep.episode}</option>)}</select></label>}
             {(() => { const index = episodes.findIndex(ep => ep.season === selectedEpisode?.season && ep.episode === selectedEpisode?.episode); const next = episodes[index + 1]; return next ? <button className="episode-next-button" type="button" onClick={() => onSelectEpisode(next.season,next.episode,next.url)}>Suivant <ChevronRight size={15}/></button> : null; })()}
@@ -175,10 +171,11 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
               <div className="detail-episode-grid">{activeSeason.episodes.map(episode => {
                 const active = selectedEpisode?.season === activeSeason.number && selectedEpisode?.episode === episode.number;
                 const progress = Math.max(0, Math.min(100, episode.progress || 0));
+                const playable = Boolean(episode.videoUrl || (selected.tmdbId && selected.kind === "Série"));
                 return <MagicCard className={`detail-episode-card ${active ? "active" : ""}`} key={episode.number}>
-                  <button type="button" className="detail-episode-main" disabled={!episode.videoUrl && !selected.tmdbId} onClick={() => { onSelectEpisode(activeSeason.number,episode.number,episode.videoUrl || ""); setPlaybackSource(episode.videoUrl ? "bunny" : "vidsrc"); setPlaying(true); }}>
+                  <button type="button" className="detail-episode-main" disabled={!playable} onClick={() => { onSelectEpisode(activeSeason.number,episode.number,episode.videoUrl || ""); setPlaying(true); }}>
                     <span className="detail-episode-thumb">{episode.thumbnailUrl ? <img src={episode.thumbnailUrl} alt=""/> : <span>{String(episode.number).padStart(2,"0")}</span>}<i><Play size={15} fill="currentColor"/></i></span>
-                    <span className="detail-episode-text"><strong>{episode.title}</strong><small>{episode.runtime && episode.runtime > 0 ? `${episode.runtime} min · ` : ""}{episode.videoUrl ? (progress >= 100 ? "Terminé" : progress ? `${Math.round(progress)} % regardé` : "Prêt à lire") : "Vidéo non associée"}</small>{episode.overview && <span>{episode.overview}</span>}{progress > 0 && <span className="detail-episode-progress" role="progressbar" aria-label={`Progression de ${episode.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }}/></span>}</span>
+                    <span className="detail-episode-text"><strong>{episode.title}</strong><small>{episode.runtime && episode.runtime > 0 ? `${episode.runtime} min · ` : ""}{progress >= 100 ? "Terminé" : progress ? `${Math.round(progress)} % regardé` : playable ? "Prêt à lire" : "Vidéo non associée"}</small>{episode.overview && <span>{episode.overview}</span>}{progress > 0 && <span className="detail-episode-progress" role="progressbar" aria-label={`Progression de ${episode.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }}/></span>}</span>
                   </button>
                   {activePage === "Administration" && <button className="detail-episode-edit" title="Modifier cet épisode" aria-label={`Modifier ${episode.title}`} onClick={() => onEditEpisode(activeSeason.number,episode.number,episode.title)}><Settings size={14}/></button>}
                 </MagicCard>;

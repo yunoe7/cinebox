@@ -312,6 +312,52 @@ test("la fiche détail piège le focus, verrouille le défilement et restaure le
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
 });
 
+test("une fiche TMDB sans vidéo locale est lue via Vidsrc sans requête Bunny", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  const film: FixtureTitle = {
+    id: 74206,
+    name: "Lecture distante",
+    kind: "Film",
+    year: 2024,
+    genre: "Drame",
+    description: "Un film TMDB sans fichier local.",
+    poster: "",
+    backdrop: "",
+    progress: 0,
+    duration: "1 h 48",
+    tmdbId: 550,
+  };
+  const series: FixtureTitle = {
+    id: 74207,
+    name: "Série distante",
+    kind: "Série",
+    year: 2024,
+    genre: "Drame",
+    description: "Une série TMDB sans fichier local.",
+    poster: "",
+    backdrop: "",
+    progress: 0,
+    duration: "1 saison",
+    tmdbId: 1399,
+    seasons: [{ number: 1, episodes: [{ number: 1, title: "Le pilote", overview: "Premier épisode.", currentTime: 0, progress: 0 }] }],
+  };
+  await seed(page, [film, series]);
+
+  const filmDetails = await openDetails(page, film.name);
+  await filmDetails.getByRole("button", { name: "Lecture" }).click();
+  await expect(page.locator("iframe[title]")).toHaveAttribute("src", /^https:\/\/vidsrc\.sh\/embed\/movie\/550/);
+  await page.getByRole("button", { name: "Fermer les détails" }).click();
+
+  const seriesDetails = await openDetails(page, series.name);
+  await seriesDetails.getByRole("button", { name: "Lire le premier épisode" }).click();
+  await expect(page.locator("iframe[title]")).toHaveAttribute("src", /^https:\/\/vidsrc\.sh\/embed\/tv\/1399\/1\/1/);
+
+  expect(requests.some((url) => /mediadelivery\.net|b-cdn\.net|bunnycdn\.com/i.test(url))).toBe(false);
+  await expect(page.getByText(/Bunny/i)).toHaveCount(0);
+});
+
 test("la confirmation de suppression ne se ferme pas au clic sur le fond et garde le focus dans le dialogue", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const film: FixtureTitle = {
