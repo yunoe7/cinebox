@@ -1129,10 +1129,10 @@ export default function HomePage() {
                 {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{visibleFavorites.count}</small>}</button>)}
               </nav>
             </MagicCard>
-            <div className="top-actions"><a className="account-nav-link" href="/connexion" aria-label="Connexion et compte">Compte</a>
+            <div className="top-actions">
               {activePage !== "Administration" && <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={activePage === "Séries" ? "Rechercher une série…" : activePage === "Vidéos" ? "Rechercher une vidéo…" : activePage === "Ma liste" ? "Rechercher dans ma liste…" : "Rechercher dans ma collection…"} aria-label={activePage === "Séries" ? "Rechercher une série" : activePage === "Vidéos" ? "Rechercher une vidéo" : activePage === "Ma liste" ? "Rechercher dans ma liste" : "Rechercher dans ma collection"}/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>}
 
-              {activeProfile && <ProfileMenu />}
+              <ProfileMenu />
             </div>
           </BlurFade>
         </header>
