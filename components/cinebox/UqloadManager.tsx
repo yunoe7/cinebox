@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { RefreshCw, Link2, LoaderCircle } from "lucide-react";
-import { adminJson, getAdminSession, isAdminAuthError } from "../../lib/cinebox/admin-session.mjs";
+import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
 type Target = { id: string; kind: "movie" | "series" | "video"; title: string; episodes?: Array<{ id: string; title: string; season_number: number; episode_number: number }> };
@@ -36,20 +36,25 @@ export function UqloadManager() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void getAdminSession().then(s => setAuth(s.authenticated ? "authenticated" : "anonymous")); }, []);
+  useEffect(() => { let cancelled = false; void getAdminSession().then(s => { if (!cancelled) setAuth(s.authenticated ? "authenticated" : "anonymous"); }); return () => { cancelled = true; }; }, []);
   useEffect(() => { if (auth === "authenticated") void refresh(); }, [auth, refresh]);
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!password || loggingIn) return;
-    setLoggingIn(true);
+    setLoggingIn(true); setMessage(""); setError(false);
     try {
-      const { loginAdmin } = await import("../../lib/cinebox/admin-session.mjs");
       await loginAdmin(password); setPassword(""); setAuth("authenticated");
     } catch (e) { setMessage(e instanceof Error ? e.message : "Connexion impossible."); setError(true); }
     finally { setLoggingIn(false); }
   };
 
-  const importUrl = async (event: React.FormEvent<HTMLFormElement>) => {
+  const logout = async () => {
+    await logoutAdmin();
+    setAuth("anonymous"); setPassword(""); setSources([]); setTargets([]); setRemoteFiles([]);
+    setUrl(""); setTitleId(""); setEpisodeId(""); setMessage(""); setError(false);
+  };
+
+  const importUrl = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!url.trim() || !titleId || busy) return;
     setBusy(true); setMessage(""); setError(false);
@@ -65,15 +70,15 @@ export function UqloadManager() {
     <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">HÉBERGEMENT VIDÉO · UQLOAD</div><h3>Sources vidéo Uqload</h3><p>Importe une URL hébergée sur Uqload puis associe-la à un film ou à un épisode du catalogue D1.</p></div>
       {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
     </header>
-    <AdminSessionPanel authState={auth} password={password} loggingIn={loggingIn} onPasswordChange={setPassword} onLogin={login} onLogout={() => { setAuth("anonymous"); setSources([]); setTargets([]); setRemoteFiles([]); }} description="La gestion Uqload est protégée par la session administrateur." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
+    <AdminSessionPanel authState={auth} password={password} loggingIn={loggingIn} onPasswordChange={setPassword} onLogin={login} onLogout={() => void logout()} description="La gestion Uqload est protégée par la session administrateur." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
+    {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
     {auth === "authenticated" && <>
-      <form onSubmit={importUrl} className="admin-shared-toolbar" style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,1fr) minmax(180px,1fr) auto",gap:12,alignItems:"end"}}>
+      <form onSubmit={importUrl} className="admin-shared-toolbar">
         <label><span>URL Uqload</span><input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://uqload.to/…"/></label>
         <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":"Film"} · {t.title}</option>)}</select></label>
         <label><span>Épisode (facultatif)</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
         <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Associer</button>
       </form>
-      {message && <p role={error?"alert":"status"} className={`admin-shared-message ${error?"is-error":"is-success"}`}>{message}</p>}
       <div className="admin-shared-list">{sources.map(source=><article key={source.id} className="admin-shared-row"><div><strong>{source.title || source.title_id}</strong><p>{source.episode_title || "Vidéo principale"} · Code {source.file_code} · {source.encoding_status}</p></div><a href={source.playback_url} target="_blank" rel="noreferrer">Ouvrir la vidéo</a></article>)}{!sources.length&&!loading&&<p className="admin-shared-state">Aucune source Uqload associée pour le moment.</p>}</div>
       {remoteFiles.length>0 && <details className="admin-shared-list"><summary>Fichiers détectés dans le compte Uqload ({remoteFiles.length})</summary>{remoteFiles.map(file=><p key={file.file_code}>{file.file_title || file.title || "Sans titre"} · {file.file_code} · {file.status || "statut inconnu"}</p>)}</details>}
       <p className="local-note">Les clés Uqload restent côté serveur. L’import par URL demande à Uqload de récupérer une vidéo dont tu possèdes les droits de diffusion.</p>
