@@ -16,6 +16,7 @@ test("l'export statique sert une CSP stricte et s'hydrate", async ({ page }) => 
   expect(csp).toContain("default-src 'self'");
   expect(csp).toContain("script-src 'self'");
   expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+  expect(csp).toContain("img-src 'self' data: blob: https://image.tmdb.org https://cdn.discordapp.com");
   expect(csp).toContain("object-src 'none'");
   expect(csp).toContain("base-uri 'self'");
   expect(csp).toContain("form-action 'self'");
