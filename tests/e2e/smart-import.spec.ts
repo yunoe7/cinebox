@@ -131,7 +131,6 @@ test("la série importe ses saisons et épisodes, en laissant les saisons spéci
 test("une mise à jour existante conserve les références vidéo et la progression", async ({ page }) => {
   const seeded = [{ id: 88001, name: "Étoiles", kind: "Film", year: 2020, genre: "Ancien", description: "Ancien résumé", poster: "", backdrop: "", progress: 43, currentTime: 51, duration: "100 min", videoAssetKey: "88001:video:v:personal", viewCount: 7, tmdbId: 71001 }];
   await page.evaluate(value => localStorage.setItem("cinebox-titles", JSON.stringify(value)), seeded);
-  await page.evaluate(() => localStorage.removeItem("cinebox-profiles"));
   await page.evaluate(() => localStorage.setItem("cinebox-favorites", "[88001]"));
   await page.reload();
   await page.locator(".add-btn").click();
