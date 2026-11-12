@@ -299,6 +299,13 @@ function sharedCatalogErrorMessage(reason?: string) {
   return "Le catalogue partagé n’a pas pu être chargé.";
 }
 
+/** Decorative artwork for streaming rows: never renders an empty `src` attribute. */
+function StreamingArtwork({ src }: { src?: string }) {
+  return src
+    ? <img src={src} alt="" loading="lazy"/>
+    : <span className="streaming-artwork-empty" aria-hidden="true"/>;
+}
+
 export default function HomePage() {
   const [titles, setTitles] = useState<Title[]>([]);
   const [sharedCatalogTitles, setSharedCatalogTitles] = useState<Title[]>([]);
@@ -1399,7 +1406,7 @@ export default function HomePage() {
             {upNext.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
-                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><img src={episode.thumbnailUrl || item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
+                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {collections.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
@@ -1407,26 +1414,26 @@ export default function HomePage() {
                 <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
                 {collections.map(([name, items]) => <div className="collection-saga" key={name}>
                   <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
-                  <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                  <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
                 </div>)}
               </section>
             </BlurFade>}
             {topTenFilms.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOS FILMS LES PLUS REGARDÉS</div><h2>Top 10 <em>Films</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-                <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {topTenSeries.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOS SÉRIES LES PLUS REGARDÉES</div><h2>Top 10 <em>Séries</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-                <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {homeRows.map(row => <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap" key={row.title}>
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">{row.kicker}</div><h2>{row.title}</h2></div><span className="subtle">{row.items.length} contenu{row.items.length > 1 ? "s" : ""}</span></div>
-                <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><img src={item.poster} alt="" loading="lazy"/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
               </section>
             </BlurFade>)}
           </>}

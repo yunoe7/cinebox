@@ -47,7 +47,7 @@ export function buildPolicy(hashes) {
     "img-src 'self' data: blob: https://image.tmdb.org https://*.b-cdn.net",
     "font-src 'self' data: https://fonts.gstatic.com",
     "media-src 'self' blob: data:",
-    "frame-src https://iframe.mediadelivery.net https://player.mediadelivery.net",
+    "frame-src https://iframe.mediadelivery.net https://player.mediadelivery.net https://vidsrc.sh",
     "connect-src 'self'",
     "worker-src 'self' blob:",
     "object-src 'none'",

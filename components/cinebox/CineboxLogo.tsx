@@ -19,6 +19,7 @@ export function CineboxLogo({ variant = "sidebar" }: CineboxLogoProps) {
         src={spiderMark}
         alt=""
         draggable={false}
+        priority
         className="cinebox-logo"
       />
       <span className="cinebox-logo-finish" style={maskStyle} />

@@ -95,10 +95,11 @@ const TextAnimateBase = ({
     <AnimatePresence mode="popLayout">
       <MotionComponent
         variants={finalVariants.container as Variants}
-        initial={reducedMotion ? false : "hidden"}
-        whileInView={reducedMotion ? undefined : startOnView ? "show" : undefined}
-        animate={reducedMotion ? "show" : startOnView ? undefined : "show"}
+        initial="hidden"
+        whileInView={startOnView ? "show" : undefined}
+        animate={startOnView ? undefined : "show"}
         exit={reducedMotion ? undefined : "exit"}
+        transition={reducedMotion ? { duration: 0 } : undefined}
         className={`magic-text-animate ${className ?? ""}`.trim()}
         viewport={{ once }}
         aria-label={accessible ? children : undefined}
@@ -108,7 +109,8 @@ const TextAnimateBase = ({
         {segments.map((segment, i) => (
           <motion.span
             key={`${by}-${segment}-${i}`}
-            variants={reducedMotion ? undefined : finalVariants.item}
+            variants={finalVariants.item}
+            transition={reducedMotion ? { duration: 0 } : undefined}
             className={`magic-text-segment ${by === "line" ? "magic-text-line" : "magic-text-inline"} ${segmentClassName ?? ""}`.trim()}
             aria-hidden={accessible ? true : undefined}
           >

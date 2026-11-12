@@ -61,8 +61,8 @@ export function BlurFade({
     <AnimatePresence>
       <motion.div
         ref={ref}
-        initial={reducedMotion ? false : "hidden"}
-        animate={reducedMotion ? "visible" : isInView ? "visible" : "hidden"}
+        initial="hidden"
+        animate={reducedMotion || isInView ? "visible" : "hidden"}
         exit="hidden"
         variants={combinedVariants}
         transition={reducedMotion ? { duration: 0 } : {

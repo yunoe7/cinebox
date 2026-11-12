@@ -1,10 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CinéBox — Votre cinéma personnel",
   description: "Votre collection de films, séries et vidéos, réunie dans un seul espace.",
-  applicationName: "CinéBox"
+  applicationName: "CinéBox",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "CinéBox" }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#090a0d"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
