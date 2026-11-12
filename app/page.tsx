@@ -332,7 +332,7 @@ export default function HomePage() {
   const favoritesRef = useRef<number[]>([]);
   const catalogTitlesRef = useRef<Title[]>([]);
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
-  const accountDataRef = useRef(emptyAccountData);
+  const accountDataRef = useRef(emptyAccountData());
   const accountLibraryRevisionRef = useRef(0);
   const accountLibraryWriteRef = useRef(Promise.resolve());
   const accountLibraryReadyRef = useRef(false);
