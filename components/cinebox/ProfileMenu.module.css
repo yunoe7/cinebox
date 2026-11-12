@@ -44,3 +44,5 @@
 .footer>button:disabled{opacity:.55}
 @media(max-width:700px){.trigger{min-width:0;width:40px;height:40px;justify-content:center;padding:2px}.triggerCopy,.chevron,.chevronOpen{display:none}.avatar{width:34px;height:34px}.popover{position:fixed;top:66px;right:9px;width:min(340px,calc(100vw - 18px));max-height:calc(100dvh - 82px);overflow-y:auto}}
 @media(prefers-reduced-motion:reduce){.trigger,.chevron,.chevronOpen,.accountLink,.popover>button{transition:none}}
+
+.vipBadge{display:flex;align-items:center;gap:7px;margin:-2px 0 11px;padding:9px 10px;border:1px solid rgba(212,183,127,.32);border-radius:9px;background:linear-gradient(100deg,rgba(212,183,127,.13),rgba(212,183,127,.035));color:#e7c98f;font-size:9px;font-weight:900;letter-spacing:.7px}.vipBadge span{margin-left:auto;color:#b9ad99;font-size:8px;font-weight:600;letter-spacing:0}

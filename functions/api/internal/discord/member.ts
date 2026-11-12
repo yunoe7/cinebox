@@ -13,24 +13,19 @@ export async function onRequestPost({ request, env }: { request: Request; env: A
   if (!env.CINEBOX_BOT_API_SECRET) return json({ error: "service-unavailable" }, 503);
   const authorization = request.headers.get("authorization") || "";
   const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if (!supplied || !safeEqual(supplied, env.CINEBOX_BOT_API_SECRET)) {
-    return json({ error: "unauthorized" }, 401);
-  }
+  if (!supplied || !safeEqual(supplied, env.CINEBOX_BOT_API_SECRET)) return json({ error: "unauthorized" }, 401);
 
   const declaredLength = Number(request.headers.get("content-length") || 0);
   if (declaredLength > 1024) return json({ error: "payload-too-large" }, 413);
-
   try {
     const raw = await request.text();
     if (new TextEncoder().encode(raw).byteLength > 1024) return json({ error: "payload-too-large" }, 413);
     const body = JSON.parse(raw) as { discordUserId?: unknown };
-    if (typeof body.discordUserId !== "string" || !/^\d{17,20}$/.test(body.discordUserId)) {
-      return json({ error: "invalid-discord-user-id" }, 400);
-    }
+    if (typeof body.discordUserId !== "string" || !/^\d{17,20}$/.test(body.discordUserId)) return json({ error: "invalid-discord-user-id" }, 400);
 
     const account = await env.DB.prepare(
-      "SELECT u.display_name, u.role FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider='discord' AND i.provider_user_id=? LIMIT 1",
-    ).bind(body.discordUserId).first<{ display_name: string; role: string }>();
+      "SELECT u.display_name, u.role, v.expires_at AS vip_expires_at FROM auth_identities i JOIN users u ON u.id=i.user_id LEFT JOIN vip_memberships v ON v.user_id=u.id AND v.expires_at>? WHERE i.provider='discord' AND i.provider_user_id=? LIMIT 1",
+    ).bind(new Date().toISOString(), body.discordUserId).first<{ display_name: string; role: string; vip_expires_at: string | null }>();
 
     if (!account) return json({ linked: false });
     return json({
@@ -38,6 +33,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: A
       account: {
         displayName: account.display_name,
         role: account.role,
+        vip: { active: Boolean(account.vip_expires_at), expiresAt: account.vip_expires_at },
       },
     });
   } catch {
