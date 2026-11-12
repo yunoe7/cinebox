@@ -1,8 +1,6 @@
 import { readCookie } from "../../lib/cinebox/admin-auth.mjs";
 
-export interface AccountEnv {
-  DB: D1Database;
-  DISCORD_CLIENT_ID?: string;
+export interface AccountD1Statement { bind(...values: unknown[]): AccountD1Statement; first<T = Record<string, unknown>>(): Promise<T | null>; run(): Promise<unknown>; }\nexport interface AccountD1Database { prepare(query: string): AccountD1Statement; batch(statements: AccountD1Statement[]): Promise<unknown>; }\nexport interface AccountEnv {\n  DB: AccountD1Database;\n  DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;
 }
@@ -47,8 +45,7 @@ export async function verifyPassword(password: string, encoded: string) {
   } catch { return false; }
 }
 export async function createAccountSession(request: Request, env: AccountEnv, userId: string) {
-  if(!env.CINEBOX_ACCOUNT_SESSION_SECRET || env.CINEBOX_ACCOUNT_SESSION_SECRET.length<32) throw new Error("account-session-secret");
-  const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now()+ACCOUNT_TTL*1000).toISOString();
+const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now()+ACCOUNT_TTL*1000).toISOString();
   await env.DB.prepare("INSERT INTO account_sessions (id,user_id,token_hash,expires_at) VALUES (?,?,?,?)").bind(id,userId,await sha256(token),expiresAt).run();
   return {cookie:cookieHeader(request,ACCOUNT_COOKIE,token,ACCOUNT_TTL),expiresAt};
 }
