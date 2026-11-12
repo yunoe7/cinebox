@@ -47,7 +47,6 @@ async function seed(page: Page, titles: FixtureTitle[], assets: FixtureAsset[] =
   await page.goto("/");
   await page.evaluate(async ({ titles, assets, dbName, storeName }) => {
     // The browser context is fresh and isolated by Playwright. Replace only its synthetic library.
-    localStorage.removeItem("cinebox-profiles");
     localStorage.setItem("cinebox-titles", JSON.stringify(titles));
     localStorage.setItem("cinebox-favorites", "[]");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
