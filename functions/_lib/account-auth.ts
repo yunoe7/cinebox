@@ -14,12 +14,12 @@ const b64 = (bytes: Uint8Array) => btoa(Array.from(bytes, b => String.fromCharCo
 const unb64 = (value: string) => Uint8Array.from(atob(value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4)), c=>c.charCodeAt(0));
 export const json = (body: unknown, status=200, headers: Record<string,string>={}) => new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff",...headers}});
 export function secure(request: Request) { return new URL(request.url).protocol === "https:"; }
-export function cookie(request: Request,name=ACCOUNT_COOKIE) { return readCookie(request.headers.get("cookie"),name); }
+export function cookie(request: Request,name=ACCOUNT_COOKIE) { const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name; return readCookie(request.headers.get("cookie"),actual); }
 export function cookieHeader(request: Request, name: string, value: string, maxAge: number, sameSite="Lax") {
-  return [`${name}=${value}`,"Path=/","HttpOnly",`SameSite=${sameSite}`,`Max-Age=${maxAge}`,...(secure(request)?["Secure"]:[])].join("; ");
+  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;\n  return [`${actual}=${value}`,"Path=/","HttpOnly",`SameSite=${sameSite}`,`Max-Age=${maxAge}`,...(secure(request)?["Secure"]:[])].join("; ");
 }
 export function clearCookie(request: Request,name: string,sameSite="Lax") {
-  return [`${name}=`,"Path=/","HttpOnly",`SameSite=${sameSite}`,"Max-Age=0","Expires=Thu, 01 Jan 1970 00:00:00 GMT",...(secure(request)?["Secure"]:[])].join("; ");
+  const actual=name===ACCOUNT_COOKIE&&!secure(request)?"cinebox_session":name;\n  return [`${actual}=`,"Path=/","HttpOnly",`SameSite=${sameSite}`,"Max-Age=0","Expires=Thu, 01 Jan 1970 00:00:00 GMT",...(secure(request)?["Secure"]:[])].join("; ");
 }
 export function validOrigin(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return false;
@@ -55,7 +55,7 @@ export async function createAccountSession(request: Request, env: AccountEnv, us
 }
 export async function getAccount(request: Request, env: AccountEnv) {
   const token=cookie(request);
-  if(!token || !env.CINEBOX_ACCOUNT_SESSION_SECRET || env.CINEBOX_ACCOUNT_SESSION_SECRET.length<32) return null;
+  if(!token) return null;
   const row=await env.DB.prepare("SELECT u.id,u.display_name,u.role,u.email,s.expires_at FROM account_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? LIMIT 1").bind(await sha256(token),new Date().toISOString()).first<{id:string;display_name:string;role:string;email:string|null;expires_at:string}>();
   return row;
 }
