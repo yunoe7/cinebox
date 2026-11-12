@@ -43,37 +43,7 @@ jobs:
           path: out
           retention-days: 3
 
-  # Temporarily disabled: the E2E suite is currently too slow/flaky in CI.
-  # Re-enable once the Playwright bottlenecks have been fixed.
-  e2e:
-    if: ${{ false }}
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Playwright end-to-end tests (diagnostic: stop at first failure)
-        run: npx playwright test --max-failures=1 --retries=0 --reporter=list,html
-      - name: Upload Playwright report and traces
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cinebox-e2e-diagnostics
-          path: |
-            test-results/
-            playwright-report/
-          if-no-files-found: ignore
-          retention-days: 7
+  # E2E temporarily removed from CI while Playwright performance is investigated.
 
   csp-smoke:
     needs: validate
