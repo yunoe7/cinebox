@@ -27,6 +27,7 @@ import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
+import { DiscordAccessGate } from "../components/cinebox/DiscordAccessGate";
 
 import { addProfileView, createInitialProfileStore, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
@@ -329,6 +330,7 @@ export default function HomePage() {
   const componentId = useId();
   const blobOwnerPrefix = `cinebox:${componentId}`;
   const [ready, setReady] = useState(false);
+  const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "unauthenticated" | "error">("checking");
   const fileRef = useRef<HTMLInputElement>(null);
   const posterRef = useRef<HTMLInputElement>(null);
   const titlesRef = useRef<Title[]>([]);
@@ -587,6 +589,7 @@ export default function HomePage() {
         const session = sessionResponse.ok ? await sessionResponse.json() : null;
         if (!session?.authenticated) {
           if (!cancelled) {
+            setAuthStatus("unauthenticated");
             canWriteTitlesRef.current = false;
             canWriteFavoritesRef.current = false;
             setNotice({ title: "Connexion requise", message: "Connectez-vous avec Discord pour accéder à votre bibliothèque personnelle." });
@@ -594,6 +597,7 @@ export default function HomePage() {
           }
           return;
         }
+        if (!cancelled) setAuthStatus("authenticated");
         const remote = await fetchAccountLibrary();
         if (remote.status !== "ready") throw new Error("Votre session a expiré. Reconnectez-vous.");
         if (cancelled) return;
@@ -627,6 +631,7 @@ export default function HomePage() {
         setReady(true);
       } catch {
         if (!cancelled) {
+          setAuthStatus(current => current === "checking" ? "error" : current);
           accountLibraryReadyRef.current = false;
           canWriteTitlesRef.current = false;
           canWriteFavoritesRef.current = false;
@@ -1107,6 +1112,10 @@ export default function HomePage() {
     activePage === "Ma liste" ? <>Ma <em>liste.</em></> :
     activePage === "Administration" ? <>Gérez votre <em>bibliothèque.</em></> :
     <>Explorez les <em>{activePage.toLowerCase()}.</em></>;
+
+  if (authStatus === "unauthenticated" || authStatus === "error") {
+    return <DiscordAccessGate connectionError={authStatus === "error"} />;
+  }
 
   if (!ready) {
     return (
