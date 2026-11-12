@@ -1,61 +1,93 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type AccountUser = { id: string; displayName: string; email?: string | null; role: string };
+
+const discordErrors: Record<string, string> = {
+  session: "Ta session a expiré. Reconnecte-toi avec Discord.",
+  "discord-state": "La demande de connexion a expiré. Réessaie.",
+  "discord-config": "La connexion Discord n'est pas encore configurée.",
+  "discord-token": "Discord n'a pas pu valider la connexion. Réessaie.",
+  "discord-profile": "Impossible de récupérer ton profil Discord.",
+  "discord-already-linked": "Ce compte Discord est déjà associé à un autre compte CinéBox.",
+  "discord-unavailable": "La connexion Discord est momentanément indisponible. Réessaie.",
+};
+
 export default function ConnexionPage() {
-  const [mode,setMode]=useState<"login"|"register">("login");
-  const [email,setEmail]=useState("");
-  const [password,setPassword]=useState("");
-  const [displayName,setDisplayName]=useState("");
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState("");
-  const [user,setUser]=useState<AccountUser|null>(null);
-  useEffect(()=>{ fetch("/api/account/session",{cache:"no-store"}).then(r=>r.json()).then(data=>{if(data.authenticated)setUser(data.user)}).catch(()=>{}); },[]);
-  async function submit(event:FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      const response=await fetch(`/api/account/${mode}`,{method:"POST",headers:{"content-type":"application/json","x-cinebox-request":"1"},body:JSON.stringify({email,password,displayName})});
-      const data=await response.json();
-      if(!response.ok) throw new Error(data.error||"Connexion impossible.");
-      setUser(data.user); setPassword("");
-    } catch(e) { setError(e instanceof Error?e.message:"Une erreur est survenue."); }
-    finally { setBusy(false); }
-  }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [user, setUser] = useState<AccountUser | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("erreur");
+    if (reason) setError(discordErrors[reason] || "La connexion n'a pas abouti. Réessaie.");
+    if (params.get("connexion") === "discord") setNotice("Connexion Discord réussie. Bienvenue sur CinéBox !");
+    if (params.get("discord") === "lie") setNotice("Ton compte Discord est bien associé à CinéBox.");
+    fetch("/api/account/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => { if (data.authenticated) setUser(data.user); })
+      .catch(() => {});
+  }, []);
+
   async function logout() {
     setBusy(true);
-    try { await fetch("/api/account/logout",{method:"POST",headers:{"x-cinebox-request":"1"}}); setUser(null); }
-    catch { setError("Déconnexion impossible."); }
-    finally { setBusy(false); }
+    setError("");
+    try {
+      const response = await fetch("/api/account/logout", {
+        method: "POST",
+        headers: { "x-cinebox-request": "1" },
+      });
+      if (!response.ok) throw new Error("Déconnexion impossible.");
+      setUser(null);
+      setNotice("Tu es bien déconnecté.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Déconnexion impossible.");
+    } finally {
+      setBusy(false);
+    }
   }
-  return <main className="account-page">
-    <section className="account-card">
-      <Link href="/" className="account-back">← Retour à CinéBox</Link>
-      <div className="account-kicker">VOTRE CINÉMA PERSONNEL</div>
-      <h1>{user ? "Votre compte" : mode==="login"?"Bon retour parmi nous.":"Rejoignez CinéBox."}</h1>
-      <p className="account-intro">{user?"Votre session CinéBox est active.":"Connectez-vous avec Discord ou votre adresse e-mail."}</p>
-      {user ? <div className="account-logged">
-        <strong>{user.displayName}</strong><span>{user.email||"Compte lié à Discord"}</span>
-        <button disabled={busy} onClick={logout}>Se déconnecter</button>
-        <a href="/api/auth/discord/start?mode=link">Lier mon compte Discord</a>
-      </div> : <>
-        <a className="account-discord" href="/api/auth/discord/start"><span>◉</span> Continuer avec Discord</a>
-        <div className="account-separator"><span>ou avec votre e-mail</span></div>
-        <div className="account-tabs">
-          <button className={mode==="login"?"active":""} onClick={()=>{setMode("login");setError("")}}>Connexion</button>
-          <button className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("")}}>Créer un compte</button>
-        </div>
-        <form onSubmit={submit}>
-          {mode==="register"&&<label>Nom affiché<input autoComplete="nickname" value={displayName} onChange={e=>setDisplayName(e.target.value)} required maxLength={80}/></label>}
-          <label>Adresse e-mail<input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254}/></label>
-          <label>Mot de passe<input type="password" autoComplete={mode==="login"?"current-password":"new-password"} value={password} onChange={e=>setPassword(e.target.value)} required minLength={mode==="register"?12:1} maxLength={256}/>{mode==="register"&&<small>12 caractères minimum.</small>}</label>
-          {error&&<p className="account-error" role="alert">{error}</p>}
-          <button className="account-submit" disabled={busy}>{busy?"Patientez…":mode==="login"?"Se connecter":"Créer mon compte"}</button>
-        </form>
-        <p className="account-note">La liaison entre Discord et un compte e-mail se fait uniquement à votre demande. Aucune fusion automatique par adresse e-mail.</p>
-      </>}
-      <p className="account-legal">En continuant, vous utilisez un compte personnel CinéBox.</p>
-    </section>
-  </main>;
+
+  return (
+    <main className="account-page">
+      <section className="account-card">
+        <Link href="/" className="account-back">← Retour à CinéBox</Link>
+        <div className="account-kicker">VOTRE CINÉMA PERSONNEL</div>
+        <h1>{user ? "Heureux de te revoir." : "Bienvenue sur CinéBox."}</h1>
+        <p className="account-intro">
+          {user
+            ? "Ton compte CinéBox est connecté à Discord."
+            : "Retrouve ton espace cinéma en te connectant simplement avec ton compte Discord."}
+        </p>
+
+        {notice && <p className="account-notice" role="status">{notice}</p>}
+        {error && <p className="account-error" role="alert">{error}</p>}
+
+        {user ? (
+          <div className="account-logged">
+            <strong>{user.displayName}</strong>
+            <span>Connecté avec Discord</span>
+            <button disabled={busy} onClick={logout}>
+              {busy ? "Patiente…" : "Se déconnecter"}
+            </button>
+          </div>
+        ) : (
+          <>
+            <a className="account-discord" href="/api/auth/discord/start">
+              <span aria-hidden="true">◉</span>
+              Continuer avec Discord
+            </a>
+            <p className="account-note">
+              La connexion est sécurisée par Discord. CinéBox ne te demandera jamais ton mot de passe Discord.
+            </p>
+          </>
+        )}
+
+        <p className="account-legal">En continuant, tu acceptes d'utiliser un compte personnel CinéBox.</p>
+      </section>
+    </main>
+  );
 }
