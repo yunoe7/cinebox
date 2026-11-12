@@ -1147,7 +1147,7 @@ export default function HomePage() {
             </MagicCard>
             <div className="top-actions"><a className="account-nav-link" href="/connexion" aria-label="Connexion et compte">Compte</a>
               {activePage !== "Administration" && <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={activePage === "Séries" ? "Rechercher une série…" : activePage === "Vidéos" ? "Rechercher une vidéo…" : activePage === "Ma liste" ? "Rechercher dans ma liste…" : "Rechercher dans ma collection…"} aria-label={activePage === "Séries" ? "Rechercher une série" : activePage === "Vidéos" ? "Rechercher une vidéo" : activePage === "Ma liste" ? "Rechercher dans ma liste" : "Rechercher dans ma collection"}/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>}
-              {!isChildProfile && <ShimmerButton aria-label="Ajouter un titre" title="Ajouter un titre" className="add-btn" onClick={() => { setEditingTitle(null); setAddKind(activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? "Vidéo" : activePage === "Administration" && adminSection === "series" ? "Série" : "Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></ShimmerButton>}
+
               {activeProfile && <ProfileMenu />}
             </div>
           </BlurFade>
@@ -1167,7 +1167,7 @@ export default function HomePage() {
               {sharedCatalogStatus.status === "error" ? <ShieldAlert size={15} aria-hidden="true"/> : <LoaderCircle size={15} className="admin-spin" aria-hidden="true"/>}
               <div>
                 <strong>{sharedCatalogStatus.status === "error" ? "Catalogue partagé indisponible" : "Chargement du catalogue partagé…"}</strong>
-                {sharedCatalogStatus.status === "error" && <small>{sharedCatalogErrorMessage(sharedCatalogStatus.reason)} Votre bibliothèque locale reste accessible.</small>}
+                {sharedCatalogStatus.status === "error" && <small>{sharedCatalogErrorMessage(sharedCatalogStatus.reason)}</small>}
               </div>
               {sharedCatalogStatus.status === "error" && (
                 <button type="button" onClick={() => setSharedCatalogRetryKey((key) => key + 1)}><RefreshCw size={13} aria-hidden="true"/> Réessayer</button>
@@ -1201,7 +1201,7 @@ export default function HomePage() {
               <span className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>VOTRE CINÉMA PERSONNEL</AnimatedShinyText></span>
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} once>Votre prochaine histoire commence ici.</TextAnimate></h1>
               <p className="hero-cinema-desc">Ajoutez vos films et séries pour composer une collection à votre image.</p>
-              <ShimmerButton className="hero-cinema-play" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</ShimmerButton>
+
             </div>
           </section>)}
 
@@ -1280,7 +1280,7 @@ export default function HomePage() {
           {activePage === "Administration" && adminSection === "overview" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-overview-wrap">
             <section className="admin-overview" aria-labelledby="admin-dashboard-title">
               <AnimatedGridPattern className="admin-overview-grid" numSquares={10} maxOpacity={0.06} duration={6} />
-              <div className="admin-heading"><div><div className="eyebrow">CATALOGUE CENTRAL</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord <span className={`admin-source-badge ${sharedAdminStats.loaded ? "is-d1" : "is-local"}`}>{sharedAdminStats.loaded ? "D1" : "D1 HORS LIGNE"}</span></h2><p>Le catalogue partagé D1 est la source de référence. Les contenus locaux non publiés sont listés à part et ne sont jamais additionnés aux compteurs D1.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Créer un titre local</button></div>
+              <div className="admin-heading"><div><div className="eyebrow">CATALOGUE CENTRAL</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord <span className={`admin-source-badge ${sharedAdminStats.loaded ? "is-d1" : "is-local"}`}>{sharedAdminStats.loaded ? "D1" : "INDISPONIBLE"}</span></h2><p>Le catalogue partagé D1 est la source unique des fiches de contenus. Gérez les films, séries, vidéos et médias depuis les sections dédiées.</p></div></div>
               <div className="admin-stats">
                 <div><span><Library size={14}/> TITRES</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.titles} /> : "—"}</strong><small>catalogue partagé D1</small></div>
                 <div><span><Film size={14}/> FILMS</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.films} /> : "—"}</strong><small>fiches films D1</small></div>
@@ -1288,32 +1288,6 @@ export default function HomePage() {
                 <div><span><Play size={14}/> ÉPISODES</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.episodes} /> : "—"}</strong><small>épisodes D1</small></div>
                 <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.videos} /> : "—"}</strong><small>fiches vidéos D1</small></div>
               </div>
-              <div className="admin-dashboard-grid">
-                <section className="admin-panel admin-activity" aria-labelledby="admin-activity-title">
-                  <div className="admin-panel-heading"><div><span className="eyebrow">BIBLIOTHÈQUE LOCALE · NON PUBLIÉE</span><h3 id="admin-activity-title"><HardDrive size={16}/> Contenus locaux</h3></div><span className="admin-total-badge">{localUnpublishedTitles.length}</span></div>
-                  <p className="admin-setting-note">{sharedCatalogStatus.status === "success" ? "Ces fiches existent uniquement dans ce navigateur. Elles restent lisibles et modifiables ; elles ne font pas partie du catalogue D1." : "Le catalogue D1 n’a pas pu être chargé : la présence de ces fiches dans D1 n’a pas pu être vérifiée."}</p>
-                  {localUnpublishedTitles.length ? <div className="admin-legacy-list">{localUnpublishedTitles.map((item) => <div className="admin-legacy-row" key={item.id}>
-                    {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="admin-activity-placeholder"><Film size={15}/></span>}
-                    <div className="admin-legacy-copy"><small>{item.kind.toUpperCase()} · {item.year}</small><strong>{item.name}</strong><span>{item.genre || "Genre non renseigné"}</span></div>
-                    <div className="admin-legacy-actions">
-                      <button type="button" onClick={() => openTitle(item)}><Play size={13}/> Ouvrir</button>
-                      <button type="button" onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); }}><Pencil size={13}/> Modifier</button>
-                      <button type="button" className="is-danger" onClick={() => setConfirmDelete(item)}><Trash2 size={13}/> Supprimer</button>
-                    </div>
-                  </div>)}</div> : <div className="admin-activity-empty">Aucun contenu local non publié.</div>}
-                </section>
-                <aside className="admin-dashboard-aside">
-                  <section className="admin-panel admin-export-panel" aria-labelledby="admin-export-title">
-                    <div className="admin-panel-heading"><div><span className="eyebrow">SAUVEGARDE</span><h3 id="admin-export-title"><Database size={16}/> Exporter la bibliothèque locale</h3></div></div>
-                    <p className="admin-setting-note">Télécharge un manifeste JSON des {titles.length} fiche{titles.length === 1 ? "" : "s"} locales et copie chaque affiche, fond, vidéo et miniature conservé dans IndexedDB. Aucune donnée n’est supprimée ni modifiée, et rien n’est envoyé sur le réseau.</p>
-                  </section>
-                  <section className="admin-panel admin-quick-actions" aria-labelledby="admin-quick-title">
-                    <div className="admin-panel-heading"><div><span className="eyebrow">AJOUT RAPIDE</span><h3 id="admin-quick-title">Nouveau contenu local</h3></div></div>
-                    <div className="admin-create-actions">{(["Film", "Série", "Vidéo"] as Kind[]).map((kind) => <button key={kind} type="button" onClick={() => { setAddKind(kind); setEditingTitle(null); setShowAdd(true); }}><Plus size={14}/>{kind}</button>)}</div>
-                  </section>
-                </aside>
-              </div>
-              <div className="admin-hint"><Database size={14}/> Les compteurs proviennent uniquement du catalogue partagé D1. La liste locale n’est ni fusionnée ni comptée avec D1 ; son export sert de sauvegarde avant toute migration future.</div>
             </section>
           </BlurFade>}
 
@@ -1340,7 +1314,7 @@ export default function HomePage() {
                   <h2 id="admin-type-title">{adminSection === "films" ? "Gérer les films" : adminSection === "series" ? "Gérer les séries" : "Gérer les vidéos"} <span className="admin-source-badge is-d1">D1</span></h2>
                   <p>{adminSection === "films" ? "Fiches films publiées ou masquées dans le catalogue partagé. Les droits sont vérifiés côté serveur." : adminSection === "series" ? "Fiches séries, saisons et épisodes du catalogue partagé. Les droits sont vérifiés côté serveur." : "Fiches vidéos du catalogue partagé. Les droits sont vérifiés côté serveur."}</p>
                 </div>
-                <button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={15}/> Créer un titre local</button>
+
               </div>
               <SharedCatalogManager kindFilter={adminSection === "films" ? "movie" : adminSection === "series" ? "series" : "video"} />
             </section>
