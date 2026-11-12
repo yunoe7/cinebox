@@ -368,8 +368,8 @@ test("8 — le remplacement remet à zéro uniquement la progression de l'épiso
     { key: "72008:episode:1:2", contents: "synthetic-kept-episode-two" },
   ]);
   await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
-  await page.locator(".admin-section-nav").getByRole("button", { name: "Séries" }).click();
-  await page.getByRole("button", { name: `Ouvrir ${title.name}` }).click();
+  const legacyRow = page.locator(".admin-legacy-row").filter({ hasText: title.name });
+  await legacyRow.getByRole("button", { name: "Ouvrir" }).click();
   const details = page.getByRole("dialog");
   await details.getByRole("button", { name: "Saisons & épisodes" }).click();
   await details.getByRole("button", { name: /Modifier À remplacer/ }).click();

@@ -83,10 +83,11 @@ test("les URL restaurées restent valides dans le détail et le lecteur puis son
   expect(await page.evaluate(() => window.__cineboxBlobRevoked)).toEqual([]);
 
   await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
-  await page.locator(".admin-section-nav").getByRole("button", { name: "Films" }).click();
-  await page.getByRole("button", { name: "Actions pour Cycle Blob synthétique" }).click();
-  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  const legacyRow = page.locator(".admin-legacy-row").filter({ hasText: "Cycle Blob synthétique" });
+  await expect(legacyRow).toHaveCount(1);
+  await legacyRow.getByRole("button", { name: "Supprimer" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Supprimer" }).click();
+  await expect(legacyRow).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ouvrir Cycle Blob synthétique" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => [...window.__cineboxBlobRevoked].sort())).toEqual([...created].sort());
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cinebox-titles") || "[]"))).toEqual([]);

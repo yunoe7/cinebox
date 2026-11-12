@@ -5,7 +5,7 @@ Application personnelle de cinéma : catalogue de films, séries et vidéos, fic
 - **Frontend** : Next.js 15, React 19, TypeScript, Motion (Framer Motion), Lucide.
 - **Hébergement** : Cloudflare Pages (export statique `out/`).
 - **API** : Cloudflare Pages Functions (`functions/api/*`).
-- **Catalogue partagé** : Cloudflare D1 (`migrations/0001_shared_catalog.sql`).
+- **Catalogue partagé** : Cloudflare D1 (`migrations/0001_shared_catalog.sql`, `migrations/0002_catalog_sources.sql`).
 - **Vidéo** : Vidsrc pour les titres TMDB, fichiers locaux/directs pour les vidéos importées.
 - **Métadonnées** : TMDB via un proxy serveur en lecture seule.
 
@@ -120,7 +120,9 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 La migration initiale se trouve dans `migrations/0001_shared_catalog.sql`. Elle crée les tables `users`, `admin_allowlist`, `catalog_titles`, `catalog_episodes`, `media_assets`, `user_favorites`, `user_progress`, `watch_history` et les index associés.
 
-> `media_assets` est préparée pour un futur suivi multi-fournisseurs. Le catalogue partagé actuel conserve les métadonnées TMDB dans `catalog_titles.metadata_json` ; la migration déjà appliquée ne doit pas être modifiée. Toute évolution doit passer par une nouvelle migration D1 validée.
+La migration `migrations/0002_catalog_sources.sql` est additive et prépare le fournisseur vidéo Uqload : elle crée `catalog_media_sources` (fournisseur, `file_code`, `video_id`, `playback_url`, qualité, statut d’encodage, date de téléversement) et associe une source à un film (`catalog_titles`) ou à un épisode (`catalog_episodes`). Aucun appel réseau Uqload n’est effectué par l’application à ce stade.
+
+> `media_assets` est préparée pour un futur suivi multi-fournisseurs. Le catalogue partagé actuel conserve les métadonnées TMDB dans `catalog_titles.metadata_json` ; les migrations déjà appliquées ne doivent pas être modifiées. Toute évolution doit passer par une nouvelle migration D1 validée.
 
 ```bash
 # Base locale Wrangler
@@ -131,6 +133,13 @@ npx wrangler d1 migrations apply <nom-ou-binding-d1> --remote
 ```
 
 Ne jamais lancer de migration ni d'écriture sur la base de production sans validation explicite.
+
+### Administration et bibliothèque locale
+
+- L’administration est centrée sur le catalogue partagé D1 : Vue d’ensemble, Films, Séries, Vidéos et Médias. Les compteurs affichés proviennent uniquement de D1 ; en cas d’indisponibilité, ils restent à `—` et l’interface l’indique.
+- Les anciennes fiches locales non publiées ne sont ni supprimées ni vidées. Elles restent lisibles et gérables (ouvrir, modifier, supprimer) depuis une liste compacte de la Vue d’ensemble, séparée des compteurs D1.
+- L’onglet Médias inventorie les affiches, fonds et miniatures d’épisodes réellement enregistrés dans D1. Il ne lit aucun fichier IndexedDB du navigateur.
+- L’export « Exporter la bibliothèque locale » télécharge un manifeste JSON et chaque média IndexedDB référencé. L’opération est strictement en lecture seule : aucune fiche D1, aucune entrée `localStorage` et aucun média IndexedDB n’est supprimé ou modifié, et rien n’est envoyé sur le réseau.
 
 ## Lecture vidéo
 
@@ -158,7 +167,7 @@ functions/api/
   catalog/                  Catalogue public, gestion admin, publication
   tmdb/[[path]].ts          Proxy TMDB
 lib/cinebox/                Logique testable (.mjs) et types
-migrations/                 Schéma D1
+migrations/                 Schéma D1 (catalogue partagé et sources média)
 tests/                      Tests Node et Playwright
 ```
 

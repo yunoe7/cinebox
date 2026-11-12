@@ -119,7 +119,33 @@ function searchable(item: Item): string {
   ].join(" ").toLocaleLowerCase("fr");
 }
 
-export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "series" | "video" }) {
+type MediaEntry = {
+  key: string;
+  item: Item;
+  label: string;
+  path: string;
+  episode: Episode | null;
+  size: "w185" | "w300";
+};
+
+/**
+ * Builds the D1 media inventory. Only paths actually stored in the shared
+ * catalogue are listed: nothing is invented and no local IndexedDB file is read.
+ */
+function collectMedia(items: Item[]): MediaEntry[] {
+  const entries: MediaEntry[] = [];
+  for (const item of items) {
+    if (item.poster_path) entries.push({ key: `${item.id}:poster`, item, label: item.kind === "video" ? "Miniature vidéo" : "Affiche", path: item.poster_path, episode: null, size: "w185" });
+    if (item.backdrop_path) entries.push({ key: `${item.id}:backdrop`, item, label: "Fond", path: item.backdrop_path, episode: null, size: "w300" });
+    for (const episode of item.episodes || []) {
+      if (episode.thumbnail_path) entries.push({ key: `${item.id}:episode:${episode.id}`, item, label: `Miniature S${episode.season_number} E${episode.episode_number}`, path: episode.thumbnail_path, episode, size: "w300" });
+    }
+  }
+  return entries;
+}
+
+export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFilter?: "movie" | "series" | "video"; mode?: "catalog" | "media" }) {
+  const isMediaMode = mode === "media";
   const headingId = useId();
   const [authState, setAuthState] = useState<AdminAuthState>("checking");
   const [password, setPassword] = useState("");
@@ -251,6 +277,26 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   const kindPlural = kindFilter === "movie" ? "films" : kindFilter === "series" ? "séries" : kindFilter === "video" ? "vidéos" : "fiches";
   const filtersActive = Boolean(query.trim()) || statusFilter !== "all" || sortMode !== "updated";
 
+  const mediaEntries = useMemo(() => collectMedia(items), [items]);
+  const visibleMedia = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase("fr");
+    return mediaEntries
+      .filter((entry) => !needle || [
+        entry.item.title,
+        entry.label,
+        kindLabels[entry.item.kind],
+        ...(entry.item.genres || []),
+        entry.episode?.title || "",
+      ].join(" ").toLocaleLowerCase("fr").includes(needle))
+      .sort((a, b) => {
+        if (sortMode === "title") return a.item.title.localeCompare(b.item.title, "fr") || a.label.localeCompare(b.label, "fr");
+        return new Date(b.item.updated_at || 0).getTime() - new Date(a.item.updated_at || 0).getTime()
+          || a.item.title.localeCompare(b.item.title, "fr")
+          || a.label.localeCompare(b.label, "fr");
+      });
+  }, [mediaEntries, query, sortMode]);
+  const mediaFiltersActive = Boolean(query.trim()) || sortMode !== "updated";
+
   const save = async (item: Item) => {
     setBusy(item.id);
     setActionError(false);
@@ -299,12 +345,12 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
   };
 
   return (
-    <section className={`admin-shared-catalog ${kindFilter === "video" ? "is-video-library" : ""}`} aria-labelledby={headingId}>
+    <section className={`admin-shared-catalog ${kindFilter === "video" ? "is-video-library" : ""} ${isMediaMode ? "is-media-inventory" : ""}`.trim()} aria-labelledby={headingId}>
       <header className="admin-shared-header">
         <div className="admin-shared-heading">
-          <div className="eyebrow">CATALOGUE PARTAGÉ · D1</div>
-          <h3 id={headingId}>Fiches {kindPlural} <span className="admin-source-badge is-d1">D1</span></h3>
-          <p>Source distante, visible par tous les utilisateurs. Les droits sont vérifiés côté serveur.</p>
+          <div className="eyebrow">{isMediaMode ? "MÉDIATHÈQUE · D1" : "CATALOGUE PARTAGÉ · D1"}</div>
+          <h3 id={headingId}>{isMediaMode ? "Inventaire des médias" : `Fiches ${kindPlural}`} <span className="admin-source-badge is-d1">D1</span></h3>
+          <p>{isMediaMode ? "Affiches, fonds et miniatures d’épisodes enregistrés dans D1. Aucun fichier de ce navigateur n’est lu." : "Source distante, visible par tous les utilisateurs. Les droits sont vérifiés côté serveur."}</p>
         </div>
         {authState === "authenticated" && (
           <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}>
@@ -321,46 +367,52 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
         onPasswordChange={setPassword}
         onLogin={login}
         onLogout={() => void logout()}
-        description="Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1."
+        description={isMediaMode ? "L’inventaire des médias D1 est protégé côté serveur. Saisis le mot de passe administrateur pour le charger." : "Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1."}
         status={
-          <>
-            {publishedCount} publié{publishedCount === 1 ? "" : "s"} · {kindItems.length} {kindLabel}{kindItems.length === 1 ? "" : "s"}
-          </>
+          isMediaMode
+            ? <>{mediaEntries.length} média{mediaEntries.length === 1 ? "" : "s"} · {items.length} fiche{items.length === 1 ? "" : "s"}</>
+            : <>{publishedCount} publié{publishedCount === 1 ? "" : "s"} · {kindItems.length} {kindLabel}{kindItems.length === 1 ? "" : "s"}</>
         }
         className="admin-shared-session"
       />
 
       {authState === "authenticated" && (
-        <div className="admin-shared-toolbar" role="group" aria-label={`Recherche, filtres et tri des ${kindPlural} partagés`}>
+        <div className="admin-shared-toolbar" role="group" aria-label={isMediaMode ? "Recherche et tri des médias D1" : `Recherche, filtres et tri des ${kindPlural} partagés`}>
           <label className="admin-shared-search">
             <Search size={14} aria-hidden="true" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Rechercher une fiche…"
-              aria-label="Rechercher dans le catalogue partagé"
+              placeholder={isMediaMode ? "Rechercher un média…" : "Rechercher une fiche…"}
+              aria-label={isMediaMode ? "Rechercher dans les médias D1" : "Rechercher dans le catalogue partagé"}
             />
           </label>
-          <label>
-            <span>Statut</span>
-            <select aria-label="Filtrer le catalogue partagé par statut" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-              <option value="all">Tous les statuts</option>
-              <option value="published">Publiés</option>
-              <option value="hidden">Masqués</option>
-            </select>
-          </label>
+          {!isMediaMode && (
+            <label>
+              <span>Statut</span>
+              <select aria-label="Filtrer le catalogue partagé par statut" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+                <option value="all">Tous les statuts</option>
+                <option value="published">Publiés</option>
+                <option value="hidden">Masqués</option>
+              </select>
+            </label>
+          )}
           <label>
             <span>Trier</span>
-            <select aria-label="Trier le catalogue partagé" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+            <select aria-label={isMediaMode ? "Trier les médias D1" : "Trier le catalogue partagé"} value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
               <option value="updated">Mise à jour récente</option>
               <option value="title">Titre A à Z</option>
-              <option value="year-desc">Année décroissante</option>
-              <option value="year-asc">Année croissante</option>
-              <option value="episodes">Nombre d’épisodes</option>
-              <option value="duration">Durée décroissante</option>
+              {!isMediaMode && (
+                <>
+                  <option value="year-desc">Année décroissante</option>
+                  <option value="year-asc">Année croissante</option>
+                  <option value="episodes">Nombre d’épisodes</option>
+                  <option value="duration">Durée décroissante</option>
+                </>
+              )}
             </select>
           </label>
-          {filtersActive && (
+          {(isMediaMode ? mediaFiltersActive : filtersActive) && (
             <button type="button" className="admin-shared-reset" onClick={() => { setQuery(""); setStatusFilter("all"); setSortMode("updated"); }}>
               Réinitialiser
             </button>
@@ -370,12 +422,12 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
 
       {actionMessage && <p role={actionError ? "alert" : "status"} className={`admin-shared-message ${actionError ? "is-error" : "is-success"}`}>{actionMessage}</p>}
 
-      {loadError && kindItems.length > 0 && (
+      {loadError && (isMediaMode ? mediaEntries.length > 0 : kindItems.length > 0) && (
         <div className="admin-shared-load-error" role="alert">
           <ShieldAlert size={15} aria-hidden="true" />
           <div>
             <strong>Catalogue partagé indisponible</strong>
-            <span>{loadError} Les fiches affichées peuvent être obsolètes.</span>
+            <span>{loadError} Les données affichées peuvent être obsolètes.</span>
           </div>
           <button type="button" onClick={() => void refresh()} disabled={loading}>
             {loading ? <LoaderCircle size={13} className="admin-spin" /> : <RefreshCw size={13} />} Réessayer
@@ -387,25 +439,41 @@ export function SharedCatalogManager({ kindFilter }: { kindFilter?: "movie" | "s
         <div className="admin-shared-skeletons" aria-label="Chargement du catalogue partagé">
           {[0, 1, 2].map((entry) => <div className="admin-shared-skeleton" key={entry}><i /><span><b /><b /><b /></span></div>)}
         </div>
-      ) : loadError && !kindItems.length ? (
+      ) : loadError && !(isMediaMode ? mediaEntries.length : kindItems.length) ? (
         <div className="admin-shared-state is-error" role="alert">
           <Database size={22} aria-hidden="true" />
           <strong>Catalogue partagé indisponible</strong>
           <span>{loadError || "La requête D1 n'a pas abouti. Vérifie la session administrateur et réessaie."}</span>
           <button type="button" onClick={() => void refresh()}>Réessayer</button>
         </div>
-      ) : !kindItems.length ? (
+      ) : !(isMediaMode ? mediaEntries.length : kindItems.length) ? (
         <div className="admin-shared-state">
           <Database size={22} aria-hidden="true" />
-          <strong>Aucune fiche {kindLabel} dans le catalogue partagé</strong>
-          <span>Publie un contenu depuis l’onglet Médias pour le retrouver ici.</span>
+          <strong>{isMediaMode ? "Aucun média dans le catalogue partagé" : `Aucune fiche ${kindLabel} dans le catalogue partagé`}</strong>
+          <span>{isMediaMode ? "Les fiches D1 ne contiennent encore aucune affiche, aucun fond ni aucune miniature d’épisode." : "Publie un contenu depuis l’onglet Médias pour le retrouver ici."}</span>
         </div>
-      ) : !visibleItems.length ? (
+      ) : !(isMediaMode ? visibleMedia.length : visibleItems.length) ? (
         <div className="admin-shared-state">
           <Search size={22} aria-hidden="true" />
-          <strong>Aucune fiche ne correspond</strong>
-          <span>Modifie la recherche ou le filtre de statut pour retrouver les fiches {kindPlural}.</span>
+          <strong>{isMediaMode ? "Aucun média ne correspond" : "Aucune fiche ne correspond"}</strong>
+          <span>{isMediaMode ? "Modifie la recherche pour retrouver les médias D1." : `Modifie la recherche ou le filtre de statut pour retrouver les fiches ${kindPlural}.`}</span>
           <button type="button" onClick={() => { setQuery(""); setStatusFilter("all"); setSortMode("updated"); }}>Effacer les filtres</button>
+        </div>
+      ) : isMediaMode ? (
+        <div className="admin-shared-media-grid">
+          {visibleMedia.map((entry) => (
+            <article className="admin-shared-media-card" key={entry.key}>
+              <div className="admin-shared-media-preview">
+                <img src={tmdbImage(entry.path, entry.size)} alt={`${entry.label} de ${entry.item.title}`} loading="lazy" />
+                <span className="admin-shared-media-label">{entry.label}</span>
+              </div>
+              <div className="admin-shared-media-body">
+                <strong>{entry.item.title}</strong>
+                <small>{kindLabels[entry.item.kind]} · {yearOf(entry.item) || "Année inconnue"}{entry.episode ? ` · ${entry.episode.title}` : ""}</small>
+                <span className="admin-shared-media-path">{entry.path}</span>
+              </div>
+            </article>
+          ))}
         </div>
       ) : (
         <div className={`admin-shared-list ${kindFilter === "video" ? "is-video-library" : ""}`.trim()}>
