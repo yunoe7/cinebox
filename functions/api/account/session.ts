@@ -14,8 +14,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
       provider_avatar: string | null;
     }>();
 
-    const avatarUrl = identity?.provider_avatar && identity.provider_user_id
-      ? `https://cdn.discordapp.com/avatars/${identity.provider_user_id}/${identity.provider_avatar}.${identity.provider_avatar.startsWith("a_") ? "gif" : "png"}?size=256`
+    const defaultAvatarIndex = identity?.provider_user_id
+      ? Number((BigInt(identity.provider_user_id) >> 22n) % 6n)
+      : 0;
+    const avatarUrl = identity?.provider_user_id
+      ? identity.provider_avatar
+        ? `https://cdn.discordapp.com/avatars/${identity.provider_user_id}/${identity.provider_avatar}.${identity.provider_avatar.startsWith("a_") ? "gif" : "png"}?size=256`
+        : `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex}.png`
       : null;
 
     return json({
