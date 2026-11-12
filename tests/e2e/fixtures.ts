@@ -22,15 +22,6 @@ async function installAccountApi(page: Page) {
     const writeJson = (key: string, value: unknown) => {
       window.localStorage.setItem(key, JSON.stringify(value));
     };
-    const activeProfileData = () => {
-      const store = readJson<{
-        activeProfileId?: string;
-        data?: Record<string, Record<string, unknown>>;
-      } | null>("cinebox-profiles", null);
-      return store?.activeProfileId && store.data?.[store.activeProfileId]
-        ? store.data[store.activeProfileId]
-        : null;
-    };
     const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
       status,
       headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
@@ -57,19 +48,11 @@ async function installAccountApi(page: Page) {
       if (url.pathname === "/api/account/library") {
         const revision = Number(window.localStorage.getItem("__cinebox_e2e_revision") || "0");
         if (method === "GET") {
-          const profile = activeProfileData();
-          const library = {
+          const library = readJson<Record<string, unknown> | null>("__cinebox_e2e_library", null) || {
             version: 1,
             titles: readJson<unknown[]>("cinebox-titles", []),
-            favorites: Array.isArray(profile?.favorites)
-              ? profile!.favorites as number[]
-              : readJson<number[]>("cinebox-favorites", []),
-            playback: profile?.playback && typeof profile.playback === "object" ? profile.playback : {},
-            history: Array.isArray(profile?.history) ? profile.history : [],
-            viewCounts: profile?.viewCounts && typeof profile.viewCounts === "object" ? profile.viewCounts : {},
-            preferences: profile?.preferences && typeof profile.preferences === "object"
-              ? profile.preferences
-              : { autoplayNext: true },
+            favorites: readJson<number[]>("cinebox-favorites", []),
+            playback: {}, history: [], viewCounts: {}, preferences: { autoplayNext: true },
           };
           return response({ library, revision });
         }
@@ -85,22 +68,7 @@ async function installAccountApi(page: Page) {
           const nextRevision = revision + 1;
           writeJson("cinebox-titles", body.library.titles || []);
           writeJson("cinebox-favorites", body.library.favorites || []);
-          const profiles = readJson<Record<string, unknown> | null>("cinebox-profiles", null);
-          if (profiles && typeof profiles === "object") {
-            const activeProfileId = profiles.activeProfileId;
-            const data = profiles.data as Record<string, Record<string, unknown>> | undefined;
-            if (typeof activeProfileId === "string" && data?.[activeProfileId]) {
-              data[activeProfileId] = {
-                ...data[activeProfileId],
-                favorites: body.library.favorites || [],
-                playback: body.library.playback || {},
-                history: body.library.history || [],
-                viewCounts: body.library.viewCounts || {},
-                preferences: body.library.preferences || { autoplayNext: true },
-              };
-              writeJson("cinebox-profiles", profiles);
-            }
-          }
+          writeJson("__cinebox_e2e_library", body.library);
           window.localStorage.setItem("__cinebox_e2e_revision", String(nextRevision));
           return response({ saved: true, revision: nextRevision });
         }
