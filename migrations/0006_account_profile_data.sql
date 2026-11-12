@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS account_profile_data (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  profile_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
