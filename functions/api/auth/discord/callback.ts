@@ -26,8 +26,14 @@ export async function onRequestGet({request,env}:{request:Request;env:AccountEnv
       userId=current.id;
     } else {
       const linked=await env.DB.prepare("SELECT user_id FROM auth_identities WHERE provider='discord' AND provider_user_id=?").bind(profile.id).first<{user_id:string}>();
-      if(linked) userId=linked.user_id;
-      else {
+      if(linked) {
+        userId=linked.user_id;
+        // Refresh Discord profile data on every login so avatar changes and
+        // previously missing avatar hashes are reflected in the account UI.
+        await env.DB.prepare(
+          "UPDATE auth_identities SET provider_username=?,provider_global_name=?,provider_avatar=? WHERE provider='discord' AND provider_user_id=?",
+        ).bind(profile.username,profile.global_name||null,profile.avatar||null,profile.id).run();
+      } else {
         userId=crypto.randomUUID();
         const displayName=(profile.global_name||profile.username).slice(0,80);
         await env.DB.batch([
