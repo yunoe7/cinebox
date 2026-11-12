@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Link2, LoaderCircle, Film, Tv } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { RefreshCw, Link2, LoaderCircle } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError } from "../../lib/cinebox/admin-session.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
@@ -39,7 +39,7 @@ export function UqloadManager() {
   useEffect(() => { void getAdminSession().then(s => setAuth(s.authenticated ? "authenticated" : "anonymous")); }, []);
   useEffect(() => { if (auth === "authenticated") void refresh(); }, [auth, refresh]);
 
-  const login = async (event: React.FormEvent<HTMLFormElement>) => {
+  const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!password || loggingIn) return;
     setLoggingIn(true);
     try {
