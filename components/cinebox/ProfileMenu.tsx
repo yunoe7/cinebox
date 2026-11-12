@@ -1,66 +1,102 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown } from "lucide-react";
-import { ProfileAvatar } from "./ProfileAvatar";
-import type { Profile } from "../../lib/cinebox/profiles.mjs";
+import { ArrowUpRight, Check, ChevronDown, CircleUserRound, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import styles from "./ProfileMenu.module.css";
 
-export function ProfileMenu({ profile, onManage, onSwitch, onUnavailable }: {
-  profile: Profile;
-  onManage: () => void;
-  onSwitch: () => void;
-  onUnavailable: (feature: string) => void;
-}) {
+type Account = { displayName: string; discord: { username: string | null; globalName: string | null; avatarUrl: string | null } | null };
+
+export function ProfileMenu() {
   const [open, setOpen] = useState(false);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [checkedSession, setCheckedSession] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const items = useRef<HTMLButtonElement[]>([]);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    let active = true;
+    fetch("/api/account/session", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!active) return;
+        setAccount(data?.authenticated && data.user ? data.user : null);
+        setCheckedSession(true);
+      })
+      .catch(() => { if (active) setCheckedSession(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
-    const onPointer = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
-    const onKey = (event: KeyboardEvent) => {
+    const pointer = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); }
     };
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    items.current[0]?.focus();
-    return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
+    document.addEventListener("pointerdown", pointer);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); };
   }, [open]);
 
-  // Menu items are unmounted as soon as the menu closes. Restore focus to the
-  // stable trigger first so a dialog opened by the action can return it there.
-  const activate = (action: () => void) => { trigger.current?.focus({ preventScroll: true }); setOpen(false); action(); };
-  const handleMenuKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const enabled = items.current.filter((item) => item && !item.disabled);
-    const index = enabled.indexOf(document.activeElement as HTMLButtonElement);
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const direction = event.key === "ArrowDown" ? 1 : -1;
-      enabled[(index + direction + enabled.length) % enabled.length]?.focus();
-    } else if (event.key === "Home") { event.preventDefault(); enabled[0]?.focus(); }
-    else if (event.key === "End") { event.preventDefault(); enabled.at(-1)?.focus(); }
+  const logout = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/account/logout", { method: "POST", headers: { "x-cinebox-request": "1" } });
+      if (!response.ok) throw new Error();
+      window.location.assign("/");
+    } catch { setBusy(false); }
   };
 
-  return <div className="profile-menu-root" ref={root}>
-    <button ref={trigger} className="profile-menu-trigger" type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Profil actif : ${profile.name}`} onClick={() => setOpen((value) => !value)}>
-      <ProfileAvatar avatarId={profile.avatarId} label={`Avatar de ${profile.name}`} />
-      <span className="profile-menu-trigger-copy"><strong>{profile.name}</strong><small>{profile.isChild ? "Profil enfant" : "Profil actif"}</small></span>
-      <ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""} />
+  const name = account?.discord?.globalName || account?.discord?.username || account?.displayName || "Mon compte";
+  const initials = name.slice(0, 1).toUpperCase();
+
+  return <div className={styles.root} ref={root}>
+    <button ref={trigger} className={styles.trigger} type="button" aria-haspopup="menu" aria-expanded={open} aria-label={account ? `Compte Discord : ${name}` : "Ouvrir la connexion CinéBox"} onClick={() => setOpen((value) => !value)}>
+      <span className={styles.avatar}>
+        {account?.discord?.avatarUrl && !avatarFailed ? <img src={account.discord.avatarUrl} alt="" onError={() => setAvatarFailed(true)} /> : <span>{account ? initials : <CircleUserRound size={19} />}</span>}
+        {account && <i aria-label="Compte connecté"><Check size={9}/></i>}
+      </span>
+      <span className={styles.triggerCopy}><strong>{account ? name : "Connexion"}</strong><small>{account ? "Discord connecté" : "Espace personnel"}</small></span>
+      <ChevronDown size={14} aria-hidden="true" className={open ? styles.chevronOpen : styles.chevron}/>
     </button>
+
     <AnimatePresence>
-      {open && <motion.div className="profile-menu-popover" role="menu" aria-label={`Menu de ${profile.name}`} onKeyDown={handleMenuKey}
-        initial={reducedMotion ? false : { opacity: 0, y: 8, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: 6, scale: .99 }} transition={{ duration: reducedMotion ? 0 : .18, ease: [0.22, 1, 0.36, 1] }}>
-        <div className="profile-menu-heading"><ProfileAvatar avatarId={profile.avatarId} size={44} label={`Avatar de ${profile.name}`}/><span><strong>{profile.name}</strong><small>{profile.isChild ? "Profil enfant · Données locales" : "Profil actif · Données locales"}</small></span></div>
-        <div className="profile-menu-divider" />
-        <button ref={(node) => { if (node) items.current[0] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}>Profil <small>Gérer</small></button>
-        <button ref={(node) => { if (node) items.current[1] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Abonnement"))}>S’abonner <small>Indisponible</small></button>
-        <button ref={(node) => { if (node) items.current[2] = node; }} type="button" role="menuitem" onClick={() => activate(() => onUnavailable("Nouveautés"))}>Nouveautés <small>Indisponible</small></button>
-        <button ref={(node) => { if (node) items.current[3] = node; }} type="button" role="menuitem" onClick={() => activate(onManage)}>Paramètres</button>
-        <button ref={(node) => { if (node) items.current[4] = node; }} type="button" role="menuitem" onClick={() => activate(onSwitch)}>Quitter ce profil <small>Changer</small></button>
-        <div className="profile-menu-foot">Le changement de profil conserve les médias et la bibliothèque partagée.</div>
+      {open && <motion.div className={styles.popover} role="menu" aria-label="Espace personnel"
+        initial={reducedMotion ? false : { opacity: 0, y: 9, scale: .98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={reducedMotion ? undefined : { opacity: 0, y: 6, scale: .99 }}
+        transition={{ duration: reducedMotion ? 0 : .2, ease: [.22, 1, .36, 1] }}>
+        <div className={styles.hero}>
+          <div className={styles.heroTop}>
+            <span className={styles.overline}><span/> ESPACE PERSONNEL</span>
+            {account && <span className={styles.connected}><ShieldCheck size={12}/> ACTIF</span>}
+          </div>
+          <div className={styles.identity}>
+            <span className={styles.heroAvatar}>
+              {account?.discord?.avatarUrl && !avatarFailed ? <img src={account.discord.avatarUrl} alt="" onError={() => setAvatarFailed(true)} /> : <span>{account ? initials : <CircleUserRound size={26}/>}</span>}
+              {account && <i><Check size={11}/></i>}
+            </span>
+            <span className={styles.identityCopy}>
+              <strong>{account ? name : "Votre espace personnel"}</strong>
+              <small>{account?.discord?.username ? `@${account.discord.username}` : account ? "Compte CinéBox connecté" : checkedSession ? "Connectez-vous avec Discord" : "Vérification de la session…"}</small>
+            </span>
+          </div>
+          {account ? (
+            <a className={styles.accountLink} href="https://discord.com/channels/@me" target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
+              Gérer mon compte Discord <ArrowUpRight size={14}/>
+            </a>
+          ) : (
+            <a className={styles.accountLink} href="/api/auth/discord/start" onClick={() => setOpen(false)}>
+              <span><LogIn size={14} style={{ verticalAlign: "middle", marginRight: 8 }}/>Se connecter avec Discord</span><ArrowUpRight size={14}/>
+            </a>
+          )}
+        </div>
+        {account && <div className={styles.footer}>
+          <span>Bibliothèque synchronisée avec votre compte</span>
+          <button type="button" disabled={busy} onClick={() => void logout()}><LogOut size={14}/>{busy ? "Déconnexion…" : "Se déconnecter"}</button>
+        </div>}
       </motion.div>}
     </AnimatePresence>
   </div>;

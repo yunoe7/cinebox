@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -22,20 +23,18 @@ import { NumberTicker } from "../components/magicui/number-ticker";
 import { TextAnimate } from "../components/magicui/text-animate";
 import { AnimatedGridPattern } from "../components/magicui/animated-grid-pattern";
 import { AnimatedShinyText } from "../components/magicui/animated-shiny-text";
-import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
-import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
+import { addProfileView, createInitialProfileStore, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
 import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
 import { loadSharedCatalog } from "../lib/cinebox/shared-catalog.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
-import { buildLegacyExport, collectLegacyAssetReferences, legacyAssetFilename, legacyExportFilename } from "../lib/cinebox/legacy-export.mjs";
 
 import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
@@ -312,7 +311,6 @@ export default function HomePage() {
   const [videoDurationFilter, setVideoDurationFilter] = useState("all");
   const [videoSortBy, setVideoSortBy] = useState("recent");
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]["id"]>("overview");
-  const [exportingLegacy, setExportingLegacy] = useState(false);
   const [selected, setSelected] = useState<Title | null>(null);
   const [selectedEpisodeUrl, setSelectedEpisodeUrl] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<{ season: number; episode: number } | null>(null);
@@ -339,6 +337,9 @@ export default function HomePage() {
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const profileStoreRef = useRef<ProfileStore | null>(null);
   const activeProfileIdRef = useRef<string | null>(null);
+  const accountLibraryRevisionRef = useRef(0);
+  const accountLibraryWriteRef = useRef(Promise.resolve());
+  const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
   const activeProfile = useMemo(() => profileStore?.profiles.find((profile) => profile.id === activeProfileId) || null, [profileStore, activeProfileId]);
@@ -379,21 +380,25 @@ export default function HomePage() {
   };
 
   const persistProfileStore = async (next: ProfileStore, refresh = true): Promise<boolean> => {
-    const result = writeProfileStore(window.localStorage, next);
-    if (!result.ok) {
-      setNotice(result.reason === "quota"
-        ? { title: "Sauvegarde impossible", message: "Le stockage local est plein : les données du profil n’ont pas été sauvegardées. Les données précédentes sont conservées." }
-        : { title: "Profils non sauvegardés", message: "Les données précédentes des profils sont conservées. Vérifiez l’accès au stockage puis réessayez." });
+    const profileId = activeProfileIdRef.current || next.activeProfileId;
+    const data = next.data[profileId];
+    if (!data || !accountLibraryReadyRef.current) return false;
+    const library = createAccountLibrary(data, catalogTitlesRef.current);
+    let saved = false;
+    const operation = accountLibraryWriteRef.current.then(async () => {
+      const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
+      if (result.status !== "saved") throw new Error(result.status === "conflict" ? "La bibliothèque a été modifiée dans un autre onglet. Rechargez la page avant de continuer." : "Session expirée.");
+      accountLibraryRevisionRef.current = result.revision;
+      saved = true;
+    });
+    accountLibraryWriteRef.current = operation.catch(() => {});
+    try { await operation; }
+    catch (error) {
+      setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
       return false;
     }
     profileStoreRef.current = next;
     setProfileStore(next);
-    if (activeProfileIdRef.current && !next.data[activeProfileIdRef.current]) {
-      activeProfileIdRef.current = null;
-      setActiveProfileId(null);
-      setSelected(null);
-      setActivePage("Accueil");
-    }
     if (refresh && activeProfileIdRef.current && next.data[activeProfileIdRef.current]) {
       const profileData = next.data[activeProfileIdRef.current];
       const displayed = overlayProfileData(catalogTitlesRef.current, profileData);
@@ -402,7 +407,7 @@ export default function HomePage() {
       setTitles(displayed);
       setFavorites(profileData.favorites);
     }
-    return true;
+    return saved;
   };
 
   const saveActiveProfileData = async (updater: Parameters<typeof updateProfileData>[2]): Promise<boolean> => {
@@ -454,26 +459,26 @@ export default function HomePage() {
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
-    if (!canWriteTitlesRef.current) {
-      setNotice({ title: "Bibliothèque protégée", message: "Les données de la bibliothèque n’ont pas pu être lues correctement. Aucune modification ne sera enregistrée." });
+    if (!canWriteTitlesRef.current || !accountLibraryReadyRef.current) {
+      setNotice({ title: "Bibliothèque indisponible", message: "Connectez-vous à votre compte Discord avant de modifier la bibliothèque." });
       return false;
     }
-    const preserved = preserveLegacyPlaybackFields(next);
-    if (!preserved) {
-      setNotice({ title: "Bibliothèque protégée", message: "Les métadonnées historiques n’ont pas pu être relues. Aucune modification n’a été enregistrée." });
-      return false;
-    }
-    const result = writeLocalJson(() => window.localStorage, "cinebox-titles", serializeTitles(preserved));
-    if (!result.ok) {
-      if (result.error.name === "LocalStorageRecoveryError") blockForPendingRecovery();
-      else reportWriteFailure("la bibliothèque", result.reason);
-      return false;
-    }
-    catalogTitlesRef.current = next;
+    const safeTitles = next.map((title) => ({ ...title, videoUrl: undefined, videoAssetKey: undefined, posterAssetKey: undefined, backdropAssetKey: undefined }));
+    catalogTitlesRef.current = safeTitles;
     const profileData = profileStoreRef.current?.data[activeProfileIdRef.current || ""];
-    const displayed = profileData ? overlayProfileData(next, profileData) : next;
+    const displayed = profileData ? overlayProfileData(safeTitles, profileData) : safeTitles;
     titlesRef.current = displayed;
     setTitles(displayed);
+    if (profileData) {
+      const library = createAccountLibrary(profileData, safeTitles);
+      const operation = accountLibraryWriteRef.current.then(async () => {
+        const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
+        if (result.status !== "saved") throw new Error(result.status === "conflict" ? "Conflit de synchronisation : rechargez la page." : "Session expirée.");
+        accountLibraryRevisionRef.current = result.revision;
+      });
+      accountLibraryWriteRef.current = operation.catch(() => {});
+      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n’a pas été enregistrée sur votre compte." }));
+    }
     return true;
   };
 
@@ -576,125 +581,63 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    let restorationBatch: ReturnType<typeof createProvisionalBlobUrlBatch> | null = null;
     async function restoreLibrary() {
-      const startupRead = await withMediaReferencesLock(() => ({
-        saved: readLocalJson(() => window.localStorage, "cinebox-titles", isTitleList),
-        savedFavs: readLocalJson(() => window.localStorage, "cinebox-favorites", isFavoriteList),
-      }));
-      const startupLockUnavailable = startupRead.status !== "locked";
-      const saved = startupLockUnavailable
-        ? { status: "error" as const, reason: "access" as const, error: new Error("Le verrou des références médias est indisponible.") }
-        : startupRead.value.saved;
-      const savedFavs = startupLockUnavailable
-        ? { status: "error" as const, reason: "access" as const, error: new Error("Le verrou des références médias est indisponible.") }
-        : startupRead.value.savedFavs;
-      const profiles = loadOrMigrateProfiles(window.localStorage, saved, savedFavs);
-      if (profiles.status !== "ready") {
-        if (!cancelled) {
-          setProfileStorageError(profiles.error instanceof Error ? profiles.error.message : "Les profils n’ont pas pu être lus. Les données existantes sont conservées.");
-          setReady(true);
-        }
-        return;
-      }
-      profileStoreRef.current = profiles.store;
-      setProfileStore(profiles.store);
-      const records = initialValueFor(saved, [] as Title[]);
-      let restored = records;
-      const restoreBatch = createProvisionalBlobUrlBatch();
-      restorationBatch = restoreBatch;
-      const recoveryBlocked = saved.status === "error" && saved.error.name === "LocalStorageRecoveryError";
-      let restorationFailed = recoveryBlocked || startupLockUnavailable;
-      if (saved.status === "valid") {
-        try {
-          restored = await Promise.all(records.map(async (item) => {
-            const legacyPosterKey = `${item.id}:poster`;
-            const legacyVideoKey = `${item.id}:video`;
-            const posterBlob = await loadAssetWithLegacyFallback(item.posterAssetKey || legacyPosterKey, legacyPosterKey);
-            const videoBlob = item.kind === "Série" ? undefined : await loadAssetWithLegacyFallback(item.videoAssetKey || legacyVideoKey, legacyVideoKey);
-            const seasons = await Promise.all((item.seasons || []).map(async (season) => {
-              const seasonPoster = season.posterAssetKey ? await readAsset(season.posterAssetKey) : { status: "missing" as const };
-              return ({
-              ...season,
-              posterUrl: seasonPoster.status === "found" ? restoreBatch.create(seasonPoster.blob) : season.posterUrl,
-              episodes: await Promise.all(season.episodes.map(async (episode) => {
-                const baseKey = `${item.id}:episode:${season.number}:${episode.number}`;
-                const videoBlob = await loadAssetWithLegacyFallback(episode.videoAssetKey || baseKey, baseKey);
-                const thumbnailBlob = await loadAssetWithLegacyFallback(episode.thumbnailAssetKey || `${baseKey}:thumbnail`, `${baseKey}:thumbnail`);
-                return {
-                  ...episode,
-                  videoUrl: videoBlob ? restoreBatch.create(videoBlob) : undefined,
-                  thumbnailUrl: thumbnailBlob ? restoreBatch.create(thumbnailBlob) : episode.thumbnailUrl
-                };
-              }))
-            }); }));
-            const backdropBlob = item.backdropAssetKey ? await readAsset(item.backdropAssetKey) : { status: "missing" as const };
-            return {
-              ...item,
-              seasons,
-              poster: posterBlob ? restoreBatch.create(posterBlob) : item.poster.startsWith("blob:") || item.poster.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.poster,
-              backdrop: backdropBlob.status === "found" ? restoreBatch.create(backdropBlob.blob) : item.backdrop?.includes("images.unsplash.com/photo-1489599849927-2ee91cede3ba") ? "" : item.backdrop || "",
-              videoUrl: videoBlob ? restoreBatch.create(videoBlob) : undefined
-            };
-          }));
-        } catch {
-          restoreBatch.release();
-          restorationFailed = true;
+      try {
+        const sessionResponse = await fetch("/api/account/session", { cache: "no-store" });
+        const session = sessionResponse.ok ? await sessionResponse.json() : null;
+        if (!session?.authenticated) {
           if (!cancelled) {
-            setNotice({ title: "Bibliothèque protégée", message: "La bibliothèque n’a pas pu être restaurée complètement. Aucune donnée ne sera remplacée." });
+            canWriteTitlesRef.current = false;
+            canWriteFavoritesRef.current = false;
+            setNotice({ title: "Connexion requise", message: "Connectez-vous avec Discord pour accéder à votre bibliothèque personnelle." });
+            setReady(true);
           }
+          return;
         }
-      }
-      if (cancelled) { restoreBatch.release(); return; }
-      restoreBatch.transferTo(`${blobOwnerPrefix}:library`);
-
-      let cleanupIssue = "";
-      if ((saved.status === "valid" || saved.status === "missing") && !restorationFailed && !recoveryBlocked) {
-        const cleanup = await processMediaCleanupJobs({ readReferencedKeys: readPersistedReferencedKeys, deleteAssets: deleteAssetKeys });
-        if (cleanup.status === "deferred") cleanupIssue = "Le nettoyage des anciens médias est différé : le verrou partagé n’est pas disponible.";
-        else if (cleanup.status === "incomplete") cleanupIssue = "Certains travaux de nettoyage restent en attente. Ils seront réessayés au prochain démarrage.";
-      }
-      if (cancelled) return;
-
-      canWriteTitlesRef.current = saved.status !== "error" && !restorationFailed;
-      canWriteFavoritesRef.current = true;
-      catalogTitlesRef.current = restored;
-      const autoProfile = profiles.store.profiles.length === 1 && !profiles.store.profiles[0].pin ? profiles.store.profiles[0] : null;
-      if (autoProfile) {
-        const data = profiles.store.data[autoProfile.id];
-        const displayed = overlayProfileData(restored, data);
-        activeProfileIdRef.current = autoProfile.id;
-        setActiveProfileId(autoProfile.id);
+        const remote = await fetchAccountLibrary();
+        if (remote.status !== "ready") throw new Error("Votre session a expiré. Reconnectez-vous.");
+        if (cancelled) return;
+        accountLibraryRevisionRef.current = remote.revision;
+        const library = remote.library;
+        const initial = createInitialProfileStore({ status: "valid", value: [] }, { status: "valid", value: [] });
+        const profileId = initial.activeProfileId;
+        const data = initial.data[profileId];
+        if (library) {
+          catalogTitlesRef.current = library.titles as Title[];
+          data.favorites = library.favorites;
+          data.playback = library.playback as typeof data.playback;
+          data.history = library.history;
+          data.viewCounts = library.viewCounts;
+          data.preferences = library.preferences;
+        } else {
+          catalogTitlesRef.current = [];
+        }
+        profileStoreRef.current = initial;
+        setProfileStore(initial);
+        activeProfileIdRef.current = profileId;
+        setActiveProfileId(profileId);
+        const displayed = overlayProfileData(catalogTitlesRef.current, data);
         titlesRef.current = displayed;
         favoritesRef.current = data.favorites;
         setTitles(displayed);
         setFavorites(data.favorites);
-      } else {
-        activeProfileIdRef.current = null;
-        setActiveProfileId(null);
-        titlesRef.current = restored;
-        favoritesRef.current = [];
-        setTitles(restored);
-        setFavorites([]);
+        accountLibraryReadyRef.current = true;
+        canWriteTitlesRef.current = true;
+        canWriteFavoritesRef.current = true;
+        setReady(true);
+      } catch {
+        if (!cancelled) {
+          accountLibraryReadyRef.current = false;
+          canWriteTitlesRef.current = false;
+          canWriteFavoritesRef.current = false;
+          setNotice({ title: "Bibliothèque indisponible", message: "Impossible de charger les données du compte. Aucune donnée locale n’a été utilisée ni écrasée." });
+          setReady(true);
+        }
       }
-
-      const issues: string[] = [];
-      if (recoveryBlocked) {
-        issues.push("Une récupération du catalogue et des favoris reste en attente. Le journal est conservé et aucune modification ne sera enregistrée.");
-      } else if (startupLockUnavailable) {
-        issues.push("Le verrou partagé est indisponible. La bibliothèque reste protégée jusqu’à ce que le stockage puisse être lu sans concurrence.");
-      } else if (saved.status === "error") issues.push(readFailureMessage("la bibliothèque", saved.reason));
-      if (savedFavs.status === "error") issues.push(readFailureMessage("les favoris", savedFavs.reason));
-      if (cleanupIssue) issues.push(cleanupIssue);
-      if (issues.length) setNotice({
-        title: recoveryBlocked ? "Récupération en attente" : "Stockage local à vérifier",
-        message: issues.join(" "),
-      });
-      setReady(true);
     }
-    restoreLibrary();
-    return () => { cancelled = true; restorationBatch?.release(); };
-  }, [blobOwnerPrefix]);
+    void restoreLibrary();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (activePage !== "Administration") return;
@@ -760,12 +703,6 @@ export default function HomePage() {
   const seriesGenres = useMemo(() => Array.from(new Set(seriesTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [seriesTitles]);
   const seriesYears = useMemo(() => Array.from(new Set(seriesTitles.map((item) => item.year))).sort((a, b) => b - a), [seriesTitles]);
   const videoTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Vidéo"), [browseTitles]);
-  const localUnpublishedTitles = useMemo(() => {
-    const published = new Set(sharedCatalogTitles.map((item) => item.sharedId).filter((id): id is string => Boolean(id)));
-    return [...localBrowseTitles]
-      .sort((a, b) => b.id - a.id)
-      .filter((item) => !item.sharedId || !published.has(item.sharedId));
-  }, [localBrowseTitles, sharedCatalogTitles]);
   const favoriteTypeCounts = useMemo(() => computeFavoriteTypeCounts(browseTitles, favorites), [browseTitles, favorites]);
   const videoCategories = useMemo(() => Array.from(new Set(videoTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [videoTitles]);
   const availableVideoDurationBands = useMemo(() => videoDurationBands.filter((band) => videoTitles.some((item) => getDurationBand(item.duration) === band.value)), [videoTitles]);
@@ -904,48 +841,6 @@ export default function HomePage() {
     await commitFavorites(next);
   };
 
-  const exportLegacyLibrary = async () => {
-    if (exportingLegacy) return;
-    setExportingLegacy(true);
-    try {
-      const localTitles = catalogTitlesRef.current;
-      const references = collectLegacyAssetReferences(localTitles);
-      const assets: Array<Record<string, unknown>> = [];
-      const downloads: Array<{ blob: Blob; filename: string }> = [];
-      for (const reference of references) {
-        try {
-          const result = await readAsset(reference.key);
-          if (result.status === "found") {
-            const asset = { ...reference, status: "found", type: result.blob.type || "", size: result.blob.size };
-            assets.push(asset);
-            downloads.push({ blob: result.blob, filename: legacyAssetFilename(asset, downloads.length) });
-          } else {
-            assets.push({ ...reference, status: "missing" });
-          }
-        } catch {
-          assets.push({ ...reference, status: "unreadable" });
-        }
-      }
-      const exportedAt = new Date().toISOString();
-      const document = buildLegacyExport({ titles: localTitles, assets, exportedAt });
-      downloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: "application/json" }), legacyExportFilename(exportedAt));
-      for (const download of downloads) {
-        downloadBlob(download.blob, download.filename);
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-      }
-      const found = assets.filter((asset) => asset.status === "found").length;
-      setNotice({
-        title: "Export local terminé",
-        message: `${localTitles.length} fiche${localTitles.length === 1 ? "" : "s"} et ${found} média${found === 1 ? "" : "s"} exporté${found === 1 ? "" : "s"}. Aucune donnée locale, aucun média et aucune fiche D1 n’a été supprimé.`,
-      });
-      window.setTimeout(() => setNotice(null), 5200);
-    } catch {
-      setNotice({ title: "Export impossible", message: "L’export local n’a pas pu être préparé. Aucune donnée n’a été supprimée ; vérifiez l’accès au stockage du navigateur." });
-      window.setTimeout(() => setNotice(null), 5200);
-    } finally {
-      setExportingLegacy(false);
-    }
-  };
 
   const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -972,17 +867,12 @@ export default function HomePage() {
       ? [{ slot: fieldName.slice("smartAsset:".length), file: value }]
       : []);
     const smartAssetMap = new Map(smartAssetFiles.map(({ slot, file: assetFile }) => [slot, assetFile]));
-    const kind = form.get("kind") as Kind;
-    if (activePage === "Administration" && posterFile) {
-      const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
-      const extension = posterFile.name.split(".").pop()?.toLocaleLowerCase("fr");
-      const supportedExtensions = ["jpg", "jpeg", "png", "webp"];
-      if ((!supportedTypes.includes(posterFile.type) && !(posterFile.type === "" && supportedExtensions.includes(extension || ""))) || posterFile.size > MAX_ADMIN_IMAGE_BYTES) {
-        setNotice({ title: "Image non acceptée", message: posterFile.size > MAX_ADMIN_IMAGE_BYTES ? "L’image dépasse la limite de 20 Mo. Choisissez une version plus légère." : "Utilisez une image JPG, PNG ou WebP." });
-        window.setTimeout(() => setNotice(null), 4200);
-        return;
-      }
+    if (file || episodeFiles.length || posterFile || smartAssetFiles.length) {
+      setNotice({ title: "Import média temporairement désactivé", message: "Les fichiers locaux ne sont plus stockés dans le navigateur. L’ajout de vidéos et d’images sera réactivé après l’intégration des hébergeurs vidéo et du stockage média distant." });
+      setSubmittingTitle(false);
+      return;
     }
+    const kind = form.get("kind") as Kind;
     const seasonCount = Math.max(1, Math.min(20, Number(form.get("seasonCount")) || 1));
     const episodeCount = Math.max(0, Math.min(100, Number(form.get("episodeCount")) || 0));
     const episodeNames = String(form.get("episodeTitles") || "").split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean);
@@ -1228,17 +1118,6 @@ export default function HomePage() {
     );
   }
 
-  if (profileStorageError || !profileStore) {
-    return <main className="profile-gate-screen"><section className="profile-storage-block" role="alert"><span className="profile-center-brand"><i>C</i> CINÉBOX</span><ShieldCheck size={24}/><h1>Profils protégés</h1><p>{profileStorageError || "Le stockage des profils n’est pas disponible."}</p><p>Les données historiques de la bibliothèque n’ont pas été remplacées. Corrigez l’accès au stockage puis rechargez la page.</p></section></main>;
-  }
-
-  if (!activeProfileId) {
-    return <>
-      <ProfileCenter store={profileStore} initialMode="gate" onCommit={persistProfileStore} onActivate={activateProfile}/>
-      {notice && <div className="profile-gate-toast" role="status"><strong>{notice.title}</strong><span>{notice.message}</span></div>}
-    </>;
-  }
-
   return (
     <main className={`app-shell ${activePage === "Films" ? "films-screen" : activePage === "Séries" ? "series-screen" : activePage === "Vidéos" ? "videos-screen" : activePage === "Ma liste" ? "ma-list-screen" : activePage === "Administration" ? "admin-screen" : ""}`}>
       <aside className="sidebar" aria-label="Navigation principale">
@@ -1252,8 +1131,8 @@ export default function HomePage() {
             </MagicCard>
             <div className="top-actions">
               {activePage !== "Administration" && <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={activePage === "Séries" ? "Rechercher une série…" : activePage === "Vidéos" ? "Rechercher une vidéo…" : activePage === "Ma liste" ? "Rechercher dans ma liste…" : "Rechercher dans ma collection…"} aria-label={activePage === "Séries" ? "Rechercher une série" : activePage === "Vidéos" ? "Rechercher une vidéo" : activePage === "Ma liste" ? "Rechercher dans ma liste" : "Rechercher dans ma collection"}/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>}
-              {!isChildProfile && <ShimmerButton aria-label="Ajouter un titre" title="Ajouter un titre" className="add-btn" onClick={() => { setEditingTitle(null); setAddKind(activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? "Vidéo" : activePage === "Administration" && adminSection === "series" ? "Série" : "Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></ShimmerButton>}
-              {activeProfile && <ProfileMenu profile={activeProfile} onManage={() => isChildProfile ? unavailableProfileFeature("gestion des profils en mode enfant") : setProfileCenterOpen(true)} onSwitch={leaveActiveProfile} onUnavailable={unavailableProfileFeature}/>}
+
+              <ProfileMenu />
             </div>
           </BlurFade>
         </header>
@@ -1272,7 +1151,7 @@ export default function HomePage() {
               {sharedCatalogStatus.status === "error" ? <ShieldAlert size={15} aria-hidden="true"/> : <LoaderCircle size={15} className="admin-spin" aria-hidden="true"/>}
               <div>
                 <strong>{sharedCatalogStatus.status === "error" ? "Catalogue partagé indisponible" : "Chargement du catalogue partagé…"}</strong>
-                {sharedCatalogStatus.status === "error" && <small>{sharedCatalogErrorMessage(sharedCatalogStatus.reason)} Votre bibliothèque locale reste accessible.</small>}
+                {sharedCatalogStatus.status === "error" && <small>{sharedCatalogErrorMessage(sharedCatalogStatus.reason)}</small>}
               </div>
               {sharedCatalogStatus.status === "error" && (
                 <button type="button" onClick={() => setSharedCatalogRetryKey((key) => key + 1)}><RefreshCw size={13} aria-hidden="true"/> Réessayer</button>
@@ -1306,7 +1185,7 @@ export default function HomePage() {
               <span className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>VOTRE CINÉMA PERSONNEL</AnimatedShinyText></span>
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} once>Votre prochaine histoire commence ici.</TextAnimate></h1>
               <p className="hero-cinema-desc">Ajoutez vos films et séries pour composer une collection à votre image.</p>
-              <ShimmerButton className="hero-cinema-play" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter un titre</ShimmerButton>
+
             </div>
           </section>)}
 
@@ -1385,7 +1264,7 @@ export default function HomePage() {
           {activePage === "Administration" && adminSection === "overview" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-overview-wrap">
             <section className="admin-overview" aria-labelledby="admin-dashboard-title">
               <AnimatedGridPattern className="admin-overview-grid" numSquares={10} maxOpacity={0.06} duration={6} />
-              <div className="admin-heading"><div><div className="eyebrow">CATALOGUE CENTRAL</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord <span className={`admin-source-badge ${sharedAdminStats.loaded ? "is-d1" : "is-local"}`}>{sharedAdminStats.loaded ? "D1" : "D1 HORS LIGNE"}</span></h2><p>Le catalogue partagé D1 est la source de référence. Les contenus locaux non publiés sont listés à part et ne sont jamais additionnés aux compteurs D1.</p></div><button className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Créer un titre local</button></div>
+              <div className="admin-heading"><div><div className="eyebrow">CATALOGUE CENTRAL</div><h2 id="admin-dashboard-title"><ShieldCheck size={19}/> Tableau de bord <span className={`admin-source-badge ${sharedAdminStats.loaded ? "is-d1" : "is-local"}`}>{sharedAdminStats.loaded ? "D1" : "INDISPONIBLE"}</span></h2><p>Le catalogue partagé D1 est la source unique des fiches de contenus. Gérez les films, séries, vidéos et médias depuis les sections dédiées.</p></div></div>
               <div className="admin-stats">
                 <div><span><Library size={14}/> TITRES</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.titles} /> : "—"}</strong><small>catalogue partagé D1</small></div>
                 <div><span><Film size={14}/> FILMS</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.films} /> : "—"}</strong><small>fiches films D1</small></div>
@@ -1393,33 +1272,6 @@ export default function HomePage() {
                 <div><span><Play size={14}/> ÉPISODES</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.episodes} /> : "—"}</strong><small>épisodes D1</small></div>
                 <div><span><Clapperboard size={14}/> VIDÉOS</span><strong>{sharedAdminStats.loaded ? <NumberTicker value={sharedAdminStats.videos} /> : "—"}</strong><small>fiches vidéos D1</small></div>
               </div>
-              <div className="admin-dashboard-grid">
-                <section className="admin-panel admin-activity" aria-labelledby="admin-activity-title">
-                  <div className="admin-panel-heading"><div><span className="eyebrow">BIBLIOTHÈQUE LOCALE · NON PUBLIÉE</span><h3 id="admin-activity-title"><HardDrive size={16}/> Contenus locaux</h3></div><span className="admin-total-badge">{localUnpublishedTitles.length}</span></div>
-                  <p className="admin-setting-note">{sharedCatalogStatus.status === "success" ? "Ces fiches existent uniquement dans ce navigateur. Elles restent lisibles et modifiables ; elles ne font pas partie du catalogue D1." : "Le catalogue D1 n’a pas pu être chargé : la présence de ces fiches dans D1 n’a pas pu être vérifiée."}</p>
-                  {localUnpublishedTitles.length ? <div className="admin-legacy-list">{localUnpublishedTitles.map((item) => <div className="admin-legacy-row" key={item.id}>
-                    {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="admin-activity-placeholder"><Film size={15}/></span>}
-                    <div className="admin-legacy-copy"><small>{item.kind.toUpperCase()} · {item.year}</small><strong>{item.name}</strong><span>{item.genre || "Genre non renseigné"}</span></div>
-                    <div className="admin-legacy-actions">
-                      <button type="button" onClick={() => openTitle(item)}><Play size={13}/> Ouvrir</button>
-                      <button type="button" onClick={() => { setEditingTitle(item); setAddKind(item.kind); setShowAdd(true); }}><Pencil size={13}/> Modifier</button>
-                      <button type="button" className="is-danger" onClick={() => setConfirmDelete(item)}><Trash2 size={13}/> Supprimer</button>
-                    </div>
-                  </div>)}</div> : <div className="admin-activity-empty">Aucun contenu local non publié.</div>}
-                </section>
-                <aside className="admin-dashboard-aside">
-                  <section className="admin-panel admin-export-panel" aria-labelledby="admin-export-title">
-                    <div className="admin-panel-heading"><div><span className="eyebrow">SAUVEGARDE</span><h3 id="admin-export-title"><Database size={16}/> Exporter la bibliothèque locale</h3></div></div>
-                    <p className="admin-setting-note">Télécharge un manifeste JSON des {titles.length} fiche{titles.length === 1 ? "" : "s"} locales et copie chaque affiche, fond, vidéo et miniature conservé dans IndexedDB. Aucune donnée n’est supprimée ni modifiée, et rien n’est envoyé sur le réseau.</p>
-                    <button type="button" className="admin-export-action" onClick={() => void exportLegacyLibrary()} disabled={exportingLegacy}>{exportingLegacy ? <LoaderCircle size={14} className="admin-spin"/> : <HardDrive size={14}/>} {exportingLegacy ? "Préparation de l’export…" : "Exporter la bibliothèque locale"}</button>
-                  </section>
-                  <section className="admin-panel admin-quick-actions" aria-labelledby="admin-quick-title">
-                    <div className="admin-panel-heading"><div><span className="eyebrow">AJOUT RAPIDE</span><h3 id="admin-quick-title">Nouveau contenu local</h3></div></div>
-                    <div className="admin-create-actions">{(["Film", "Série", "Vidéo"] as Kind[]).map((kind) => <button key={kind} type="button" onClick={() => { setAddKind(kind); setEditingTitle(null); setShowAdd(true); }}><Plus size={14}/>{kind}</button>)}</div>
-                  </section>
-                </aside>
-              </div>
-              <div className="admin-hint"><Database size={14}/> Les compteurs proviennent uniquement du catalogue partagé D1. La liste locale n’est ni fusionnée ni comptée avec D1 ; son export sert de sauvegarde avant toute migration future.</div>
             </section>
           </BlurFade>}
 
@@ -1446,7 +1298,7 @@ export default function HomePage() {
                   <h2 id="admin-type-title">{adminSection === "films" ? "Gérer les films" : adminSection === "series" ? "Gérer les séries" : "Gérer les vidéos"} <span className="admin-source-badge is-d1">D1</span></h2>
                   <p>{adminSection === "films" ? "Fiches films publiées ou masquées dans le catalogue partagé. Les droits sont vérifiés côté serveur." : adminSection === "series" ? "Fiches séries, saisons et épisodes du catalogue partagé. Les droits sont vérifiés côté serveur." : "Fiches vidéos du catalogue partagé. Les droits sont vérifiés côté serveur."}</p>
                 </div>
-                <button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={15}/> Créer un titre local</button>
+
               </div>
               <SharedCatalogManager kindFilter={adminSection === "films" ? "movie" : adminSection === "series" ? "series" : "video"} />
             </section>
@@ -1487,11 +1339,11 @@ export default function HomePage() {
                 <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
                 <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
               </motion.article>)}
-              {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Votre cinémathèque commence ici</strong><span>Ajoutez un film à votre bibliothèque pour le retrouver sur cet écran.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={14}/> Ajouter un film</button></div>}
+              {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucun film dans le catalogue</strong><span>Les films publiés dans le catalogue partagé apparaîtront ici.</span></div>}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length > 0 && <div className="empty-state films-empty"><strong>Aucun film ne correspond à votre recherche</strong><span>Essayez un autre terme ou réinitialisez les filtres.</span><button type="button" onClick={() => { setQuery(""); setFilmGenreFilter("all"); setFilmYearFilter("all"); setFilmViewingFilter("all"); setFilmSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
-              {!visibleTitles.length && activePage === "Séries" && seriesTitles.length === 0 && <div className="empty-state films-empty"><strong>Votre collection de séries commence ici</strong><span>Ajoutez une série à votre collection pour la retrouver sur cet écran.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Série"); setShowAdd(true); }}><Plus size={14}/> Ajouter une série</button></div>}
+              {!visibleTitles.length && activePage === "Séries" && seriesTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucune série dans le catalogue</strong><span>Les séries publiées dans le catalogue partagé apparaîtront ici.</span></div>}
               {!visibleTitles.length && activePage === "Séries" && seriesTitles.length > 0 && <div className="empty-state films-empty"><strong>Aucune série ne correspond à votre recherche</strong><span>Essayez un autre terme ou réinitialisez les filtres.</span><button type="button" onClick={() => { setQuery(""); setSeriesGenreFilter("all"); setSeriesYearFilter("all"); setSeriesViewingFilter("all"); setSeriesSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
-              {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length === 0 && <div className="empty-state videos-empty"><strong>Votre vidéothèque commence ici</strong><span>Ajoutez une vidéo à votre collection pour la retrouver sur cet écran.</span><button type="button" onClick={() => { setEditingTitle(null); setAddKind("Vidéo"); setShowAdd(true); }}><Plus size={14}/> Ajouter une vidéo</button></div>}
+              {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length === 0 && <div className="empty-state videos-empty"><strong>Aucune vidéo dans le catalogue</strong><span>Les vidéos publiées dans le catalogue partagé apparaîtront ici.</span></div>}
               {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length > 0 && <div className="empty-state videos-empty"><strong>Aucune vidéo ne correspond à votre recherche</strong><span>Modifiez votre recherche ou vos filtres pour retrouver vos vidéos.</span><button type="button" onClick={() => { setQuery(""); setVideoCategoryFilter("all"); setVideoDurationFilter("all"); setVideoSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
               {!visibleTitles.length && activePage === "Ma liste" && favorites.length === 0 && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Heart size={21}/></span><strong>Votre liste commence avec vos coups de cœur</strong><span>Ajoutez des films, séries ou vidéos à vos favoris pour les retrouver ici.</span></div>}
               {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && visibleFavorites.count === 0 && isChildProfile && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><ShieldCheck size={21}/></span><strong>Aucun favori visible pour ce profil</strong><span>Certains favoris enregistrés ne sont pas classés ou dépassent la limite d’âge du mode enfant. Ils restent enregistrés et réapparaîtront sur un profil adulte.</span></div>}
@@ -1687,7 +1539,6 @@ export default function HomePage() {
           }}
         />
       </AnimatePresence>
-      {profileCenterOpen && profileStore && activeProfile && <ProfileCenter store={profileStore} initialMode="manage" isChildSession={isChildProfile} onClose={() => setProfileCenterOpen(false)} onCommit={persistProfileStore} onActivate={activateProfile}/>}
       <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
     </main>
   );
