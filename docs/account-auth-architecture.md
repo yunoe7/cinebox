@@ -74,7 +74,7 @@ La migration `0004_account_auth.sql` est additive :
 - crée `account_email_tokens` pour validation/réinitialisation ;
 - crée `account_sessions` pour révocation serveur.
 
-Elle ne modifie aucune migration antérieure et ne supprime aucune donnée. Elle doit être testée localement puis appliquée en production uniquement après validation explicite.
+Elle reprend également chaque `users.discord_user_id` existant dans `auth_identities` avec le même `user_id` (identifiant de migration déterministe `legacy-discord-*`) afin de préserver les connexions Discord déjà associées. Elle ne modifie aucune migration antérieure et ne supprime aucune donnée. Elle doit être testée localement puis appliquée en production uniquement après validation explicite.
 
 ## Découpage de livraison
 
