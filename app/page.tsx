@@ -24,13 +24,11 @@ import { TextAnimate } from "../components/magicui/text-animate";
 import { AnimatedGridPattern } from "../components/magicui/animated-grid-pattern";
 import { AnimatedShinyText } from "../components/magicui/animated-shiny-text";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
-import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 import { DiscordAccessGate } from "../components/cinebox/DiscordAccessGate";
 
-import { addProfileView, createInitialProfileStore, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
-import { CHILD_PROFILE_MAX_AGE, filterTitlesForProfile, selectFeaturedTitles } from "../lib/cinebox/child-safety.mjs";
+import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cinebox/account-data.mjs";
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
 import { loadSharedCatalog } from "../lib/cinebox/shared-catalog.mjs";
@@ -321,10 +319,7 @@ export default function HomePage() {
   const [editingTitle, setEditingTitle] = useState<Title | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Title | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
-  const [profileStore, setProfileStore] = useState<ProfileStore | null>(null);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
-  const [profileCenterOpen, setProfileCenterOpen] = useState(false);
-  const [profileStorageError, setProfileStorageError] = useState("");
+  const [accountData, setAccountData] = useState(emptyAccountData);
   const [editingEpisode, setEditingEpisode] = useState<{ season: number; episode: number; title: string } | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const componentId = useId();
@@ -337,23 +332,14 @@ export default function HomePage() {
   const favoritesRef = useRef<number[]>([]);
   const catalogTitlesRef = useRef<Title[]>([]);
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
-  const profileStoreRef = useRef<ProfileStore | null>(null);
-  const activeProfileIdRef = useRef<string | null>(null);
+  const accountDataRef = useRef(emptyAccountData);
   const accountLibraryRevisionRef = useRef(0);
   const accountLibraryWriteRef = useRef(Promise.resolve());
   const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
-  const activeProfile = useMemo(() => profileStore?.profiles.find((profile) => profile.id === activeProfileId) || null, [profileStore, activeProfileId]);
-  const activeProfileData = activeProfile && profileStore ? profileStore.data[activeProfile.id] : null;
-  const isChildProfile = Boolean(activeProfile?.isChild);
-  const localBrowseTitles = useMemo(() => filterTitlesForProfile(titles, isChildProfile), [titles, isChildProfile]);
-  const browseTitles = useMemo(() => {
-    const merged = mergeCatalogTitles(titles, sharedCatalogTitles);
-    const filtered = filterTitlesForProfile(merged, isChildProfile);
-    return activeProfileData ? overlayProfileData(filtered, activeProfileData) : filtered;
-  }, [titles, sharedCatalogTitles, isChildProfile, activeProfileData]);
-  const visibleFavorites = useMemo(() => {
+  const browseTitles = useMemo(() => overlayAccountData(mergeCatalogTitles(titles, sharedCatalogTitles), accountData), [titles, sharedCatalogTitles, accountData]);
+  const visibleFavorites = useMemo((() => {
     const ids = visibleFavoriteIds(browseTitles, favorites);
     return { ids, idSet: new Set(ids), count: ids.length };
   }, [browseTitles, favorites]);
@@ -381,83 +367,18 @@ export default function HomePage() {
     setNotice({ title: "Récupération en attente", message: "Un journal de récupération est présent ou n’a pas pu être vérifié. Toute modification est bloquée jusqu’à sa résolution." });
   };
 
-  const persistProfileStore = async (next: ProfileStore, refresh = true): Promise<boolean> => {
-    const profileId = activeProfileIdRef.current || next.activeProfileId;
-    const data = next.data[profileId];
-    if (!data || !accountLibraryReadyRef.current) return false;
-    const library = createAccountLibrary(data, catalogTitlesRef.current);
-    let saved = false;
+  const saveActiveProfileData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
+    if (!accountLibraryReadyRef.current) return false;
+    const next = updater(structuredClone(accountDataRef.current));
+    const library = createAccountLibrary(next, catalogTitlesRef.current);
     const operation = accountLibraryWriteRef.current.then(async () => {
       const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
       if (result.status !== "saved") throw new Error(result.status === "conflict" ? "La bibliothèque a été modifiée dans un autre onglet. Rechargez la page avant de continuer." : "Session expirée.");
       accountLibraryRevisionRef.current = result.revision;
-      saved = true;
     });
     accountLibraryWriteRef.current = operation.catch(() => {});
-    try { await operation; }
-    catch (error) {
-      setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
-      return false;
-    }
-    profileStoreRef.current = next;
-    setProfileStore(next);
-    if (refresh && activeProfileIdRef.current && next.data[activeProfileIdRef.current]) {
-      const profileData = next.data[activeProfileIdRef.current];
-      const displayed = overlayProfileData(catalogTitlesRef.current, profileData);
-      titlesRef.current = displayed;
-      favoritesRef.current = profileData.favorites;
-      setTitles(displayed);
-      setFavorites(profileData.favorites);
-    }
-    return saved;
-  };
-
-  const saveActiveProfileData = async (updater: Parameters<typeof updateProfileData>[2]): Promise<boolean> => {
-    const current = profileStoreRef.current;
-    const profileId = activeProfileIdRef.current;
-    if (!current || !profileId) return false;
-    try {
-      const next = updateProfileData(current, profileId, updater);
-      return persistProfileStore(next);
-    } catch {
-      setNotice({ title: "Profil protégé", message: "Les données du profil sont incohérentes et n’ont pas été remplacées." });
-      return false;
-    }
-  };
-
-  const activateProfile = async (profileId: string) => {
-    const current = profileStoreRef.current;
-    if (!current) return;
-    try {
-      const next = selectProfile(current, profileId);
-      if (!await persistProfileStore(next, false)) return;
-      const data = next.data[profileId];
-      const displayed = overlayProfileData(catalogTitlesRef.current, data);
-      activeProfileIdRef.current = profileId;
-      setActiveProfileId(profileId);
-      titlesRef.current = displayed;
-      favoritesRef.current = data.favorites;
-      setTitles(displayed);
-      setFavorites(data.favorites);
-      setActivePage("Accueil");
-      setSelected(null);
-      setProfileCenterOpen(false);
-    } catch {
-      setNotice({ title: "Profil indisponible", message: "Les données de ce profil n’ont pas pu être chargées." });
-    }
-  };
-
-  const leaveActiveProfile = () => {
-    activeProfileIdRef.current = null;
-    setActiveProfileId(null);
-    setProfileCenterOpen(false);
-    setSelected(null);
-    setSelectedEpisode(null);
-    setSelectedEpisodeUrl(null);
-  };
-
-  const unavailableProfileFeature = (feature: string) => {
-    setNotice({ title: `${feature} indisponible`, message: `CinéBox ne dispose pas encore d’une fonctionnalité ${feature.toLocaleLowerCase("fr")} connectée. Aucun abonnement ni service externe n’a été simulé.` });
+    try { await operation; accountDataRef.current = next; setAccountData(next); return true; }
+    catch (error) { setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." }); return false; }
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
@@ -467,12 +388,11 @@ export default function HomePage() {
     }
     const safeTitles = next.map((title) => ({ ...title, videoUrl: undefined, videoAssetKey: undefined, posterAssetKey: undefined, backdropAssetKey: undefined }));
     catalogTitlesRef.current = safeTitles;
-    const profileData = profileStoreRef.current?.data[activeProfileIdRef.current || ""];
-    const displayed = profileData ? overlayProfileData(safeTitles, profileData) : safeTitles;
+    const displayed = overlayAccountData(safeTitles, accountDataRef.current);
     titlesRef.current = displayed;
     setTitles(displayed);
-    if (profileData) {
-      const library = createAccountLibrary(profileData, safeTitles);
+    if (accountLibraryReadyRef.current) {
+      const library = createAccountLibrary(accountDataRef.current, safeTitles);
       const operation = accountLibraryWriteRef.current.then(async () => {
         const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
         if (result.status !== "saved") throw new Error(result.status === "conflict" ? "Conflit de synchronisation : rechargez la page." : "Session expirée.");
@@ -520,7 +440,7 @@ export default function HomePage() {
     };
   });
 
-  const recordProfileView = (titleId: number) => saveActiveProfileData((data) => addProfileView(data, titleId));
+  const recordAccountView = (titleId: number) => saveActiveProfileData((data) => addAccountView(data, titleId));
 
   const commitCatalogAndFavorites = (nextTitles: Title[], nextFavorites: number[]) => {
     if (!canWriteTitlesRef.current) {
@@ -530,9 +450,7 @@ export default function HomePage() {
     const keptIds = new Set(nextTitles.map((item) => item.id));
     const removedIds = new Set(catalogTitlesRef.current.filter((item) => !keptIds.has(item.id)).map((item) => String(item.id)));
     if (!commitTitlesUnlocked(nextTitles)) return false;
-    const current = profileStoreRef.current;
-    const profileId = activeProfileIdRef.current;
-    if (current && profileId) {
+    if (accountLibraryReadyRef.current) {
       void saveActiveProfileData((data) => {
         const playback = { ...data.playback };
         const viewCounts = { ...data.viewCounts };
@@ -603,9 +521,7 @@ export default function HomePage() {
         if (cancelled) return;
         accountLibraryRevisionRef.current = remote.revision;
         const library = remote.library;
-        const initial = createInitialProfileStore({ status: "valid", value: [] }, { status: "valid", value: [] });
-        const profileId = initial.activeProfileId;
-        const data = initial.data[profileId];
+        const data = emptyAccountData();
         if (library) {
           catalogTitlesRef.current = library.titles as Title[];
           data.favorites = library.favorites;
@@ -616,11 +532,9 @@ export default function HomePage() {
         } else {
           catalogTitlesRef.current = [];
         }
-        profileStoreRef.current = initial;
-        setProfileStore(initial);
-        activeProfileIdRef.current = profileId;
-        setActiveProfileId(profileId);
-        const displayed = overlayProfileData(catalogTitlesRef.current, data);
+        accountDataRef.current = data;
+        setAccountData(data);
+        const displayed = overlayAccountData(catalogTitlesRef.current, data);
         titlesRef.current = displayed;
         favoritesRef.current = data.favorites;
         setTitles(displayed);
@@ -658,22 +572,13 @@ export default function HomePage() {
     return () => controller.abort();
   }, [activePage]);
 
-  // The shared catalogue is part of the public browsing experience: it is
-  // merged with the personal library for Films, Séries, Vidéos, search,
-  // favourites and the home page. A child profile asks the server for a
-  // pre-filtered list and filters again locally (defence in depth).
+  // Shared catalogue for all Discord accounts.
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
-    // Fail closed: a child profile must never keep adult shared titles while
-    // the age-filtered request is in flight or after it fails.
-    if (isChildProfile) {
-      sharedCatalogTitlesRef.current = [];
-      setSharedCatalogTitles([]);
-    }
     setSharedCatalogStatus({ status: "loading" });
     loadSharedCatalog({
-      maxAge: isChildProfile ? CHILD_PROFILE_MAX_AGE : null,
+      maxAge: null,
       signal: controller.signal,
     }).then((result) => {
       if (cancelled || result.status === "aborted") return;
@@ -683,23 +588,13 @@ export default function HomePage() {
         setSharedCatalogStatus({ status: "success" });
         return;
       }
-      // Keep the previous adult catalogue visible on failure, but never reuse
-      // it for a child profile. The failure stays explicit with a retry.
-      if (isChildProfile) {
-        sharedCatalogTitlesRef.current = [];
-        setSharedCatalogTitles([]);
-      }
       setSharedCatalogStatus({ status: "error", reason: result.reason });
     }).catch(() => {
       if (cancelled) return;
-      if (isChildProfile) {
-        sharedCatalogTitlesRef.current = [];
-        setSharedCatalogTitles([]);
-      }
       setSharedCatalogStatus({ status: "error", reason: "invalid-response" });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [isChildProfile, sharedCatalogRetryKey]);
+  }, [sharedCatalogRetryKey]);
 
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
@@ -754,10 +649,7 @@ export default function HomePage() {
           : b.id - a.id
         : sortBy === "title" ? a.name.localeCompare(b.name, "fr") : sortBy === "oldest" ? a.year - b.year : sortBy === "popular" ? (b.viewCount || 0) - (a.viewCount || 0) || b.year - a.year : b.year - a.year), [browseTitles, activePage, favorites, visibleFavorites, filter, genreFilter, query, sortBy, filmGenreFilter, filmYearFilter, filmViewingFilter, filmSortBy, seriesGenreFilter, seriesYearFilter, seriesViewingFilter, seriesSortBy, videoCategoryFilter, videoDurationFilter, videoSortBy, listSortBy]);
 
-  const featuredTitles = useMemo(() => {
-    const local = [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5);
-    return selectFeaturedTitles({ localFeatured: local, sharedFeaturedTitle: null, localLibrarySize: browseTitles.length, isChildProfile });
-  }, [browseTitles, isChildProfile]);
+  const featuredTitles = useMemo(() => [...browseTitles].sort((a, b) => b.year - a.year).slice(0, 5), [browseTitles]);
   const activeFeatured = featuredTitles[heroIndex % Math.max(1, featuredTitles.length)];
   useEffect(() => {
     if (featuredTitles.length < 2 || prefersReducedMotion) return;
@@ -815,11 +707,7 @@ export default function HomePage() {
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: browseTitles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...browseTitles].sort((a, b) => b.id - a.id).slice(0, 10) }
   ].filter(row => row.items.length), [browseTitles]);
-  const withActiveProfilePlayback = (item: Title): Title => {
-    const profileId = activeProfileIdRef.current;
-    const data = profileId ? profileStoreRef.current?.data[profileId] : undefined;
-    return data ? overlayProfileData([item], data)[0] : item;
-  };
+  const withActiveProfilePlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
   const openTitle = (item: Title) => {
     setSelectedEpisodeUrl(null);
@@ -849,7 +737,7 @@ export default function HomePage() {
 
   const addTitle = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isChildProfile) return;
+    
     if (submittingTitle) return;
     if (!canWriteTitlesRef.current) {
       setNotice({ title: "Bibliothèque protégée", message: "Les données existantes n’ont pas pu être lues. Elles sont conservées ; corrigez le problème de stockage avant toute modification." });
@@ -1135,7 +1023,7 @@ export default function HomePage() {
             <a className="brand topbar-brand" href="#" aria-label="CinéBox, accueil" onClick={(event) => { event.preventDefault(); setActivePage("Accueil"); setFilter("Tout"); }}><CineboxLogo variant="sidebar" /></a>
             <MagicCard className="primary-nav-surface">
               <nav className="side-nav primary-nav" aria-label="Rubriques CinéBox">
-                {navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{visibleFavorites.count}</small>}</button>)}
+                {navItems.map(({ label }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={`nav-item ${activePage === label ? "active" : ""}`} onClick={() => { setActivePage(label); setFilter("Tout"); if (label === "Administration") setAdminSection("overview"); }}><span>{label}</span>{label === "Ma liste" && <small>{visibleFavorites.count}</small>}</button>)}
               </nav>
             </MagicCard>
             <div className="top-actions">
@@ -1150,7 +1038,6 @@ export default function HomePage() {
       <section className="main-area">
 
         <div className={`page-content ${activePage === "Films" ? "films-page" : activePage === "Séries" ? "series-page" : activePage === "Vidéos" ? "videos-page" : activePage === "Ma liste" ? "ma-list-page" : activePage === "Administration" ? "admin-page" : ""}`}>
-          {isChildProfile && <div className="profile-child-content-note" role="note"><ShieldCheck size={14}/> Mode enfant : seuls les contenus dont la classification d’âge est connue et adaptée sont affichés. La gestion et les contenus non classés sont masqués.</div>}
           {activePage !== "Administration" && sharedCatalogStatus.status !== "success" && (
             <div
               className={`shared-catalog-status ${sharedCatalogStatus.status === "error" ? "is-error" : "is-loading"}`}
@@ -1355,8 +1242,7 @@ export default function HomePage() {
               {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length === 0 && <div className="empty-state videos-empty"><strong>Aucune vidéo dans le catalogue</strong><span>Les vidéos publiées dans le catalogue partagé apparaîtront ici.</span></div>}
               {!visibleTitles.length && activePage === "Vidéos" && videoTitles.length > 0 && <div className="empty-state videos-empty"><strong>Aucune vidéo ne correspond à votre recherche</strong><span>Modifiez votre recherche ou vos filtres pour retrouver vos vidéos.</span><button type="button" onClick={() => { setQuery(""); setVideoCategoryFilter("all"); setVideoDurationFilter("all"); setVideoSortBy("recent"); }}>Effacer la recherche et les filtres</button></div>}
               {!visibleTitles.length && activePage === "Ma liste" && favorites.length === 0 && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Heart size={21}/></span><strong>Votre liste commence avec vos coups de cœur</strong><span>Ajoutez des films, séries ou vidéos à vos favoris pour les retrouver ici.</span></div>}
-              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && visibleFavorites.count === 0 && isChildProfile && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><ShieldCheck size={21}/></span><strong>Aucun favori visible pour ce profil</strong><span>Certains favoris enregistrés ne sont pas classés ou dépassent la limite d’âge du mode enfant. Ils restent enregistrés et réapparaîtront sur un profil adulte.</span></div>}
-              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && !(visibleFavorites.count === 0 && isChildProfile) && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Search size={20}/></span><strong>Aucun favori ne correspond à votre recherche</strong><span>Essayez un autre titre ou affichez tous vos favoris.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); }}>Effacer la recherche et les filtres</button></div>}
+              {!visibleTitles.length && activePage === "Ma liste" && favorites.length > 0 && <div className="empty-state favorites-empty"><span className="favorites-empty-mark"><Search size={20}/></span><strong>Aucun favori ne correspond à votre recherche</strong><span>Essayez un autre titre ou affichez tous vos favoris.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); }}>Effacer la recherche et les filtres</button></div>}
               {!visibleTitles.length && activePage === "Accueil" && <div className="empty-state"><strong>Aucun titre trouvé</strong><span>Modifiez votre recherche ou réinitialisez les filtres pour retrouver votre collection.</span><button type="button" onClick={() => { setQuery(""); setFilter("Tout"); setGenreFilter("Tous les genres"); }}>Réinitialiser la recherche et les filtres</button></div>}
             </div>
           </section>}
@@ -1413,7 +1299,7 @@ export default function HomePage() {
           editingEpisode={editingEpisode}
           onClose={() => setEditingEpisode(null)}
           onSave={async (target, file, thumbnailFile) => {
-            if (!selected || isChildProfile) return;
+            if (!selected) return;
             if (!canWriteTitlesRef.current) {
               setNotice({ title: "Bibliothèque protégée", message: "Les données existantes n’ont pas pu être lues. Aucune modification ne sera enregistrée." });
               return;
@@ -1504,7 +1390,7 @@ export default function HomePage() {
           }}
           onEditEpisode={(season, episode, title) => setEditingEpisode({ season, episode, title })}
           onToggleFavorite={toggleFavorite}
-          onView={async (titleId) => { await recordProfileView(titleId); }}
+          onView={async (titleId) => { await recordAccountView(titleId); }}
           onProgress={async (titleId, episodeSelection, second, progress) => {
             if (!await savePlaybackForActive(titleId, episodeSelection, second, progress)) return;
             if (episodeSelection) {
@@ -1541,14 +1427,14 @@ export default function HomePage() {
               .map(episode => ({ season: season.number, episode: episode.number, url: episode.videoUrl || "" })));
             const currentIndex = playable.findIndex(item => item.season === episodeSelection.season && item.episode === episodeSelection.episode);
             const next = playable[currentIndex + 1];
-            if (next && activeProfileData?.preferences.autoplayNext !== false) {
+            if (next && accountData.preferences.autoplayNext !== false) {
               setSelectedEpisode({ season: next.season, episode: next.episode });
               setSelectedEpisodeUrl(next.url);
             }
           }}
         />
       </AnimatePresence>
-      <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
+      <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
     </main>
   );
 }
