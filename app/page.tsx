@@ -339,7 +339,7 @@ export default function HomePage() {
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
   const browseTitles = useMemo(() => overlayAccountData(mergeCatalogTitles(titles, sharedCatalogTitles), accountData), [titles, sharedCatalogTitles, accountData]);
-  const visibleFavorites = useMemo((() => {
+  const visibleFavorites = useMemo(() => {
     const ids = visibleFavoriteIds(browseTitles, favorites);
     return { ids, idSet: new Set(ids), count: ids.length };
   }, [browseTitles, favorites]);
@@ -367,7 +367,7 @@ export default function HomePage() {
     setNotice({ title: "Récupération en attente", message: "Un journal de récupération est présent ou n’a pas pu être vérifié. Toute modification est bloquée jusqu’à sa résolution." });
   };
 
-  const saveActiveProfileData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
+  const saveAccountData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
     if (!accountLibraryReadyRef.current) return false;
     const next = updater(structuredClone(accountDataRef.current));
     const library = createAccountLibrary(next, catalogTitlesRef.current);
@@ -411,9 +411,9 @@ export default function HomePage() {
     return false;
   };
 
-  const commitFavorites = async (next: number[]) => saveActiveProfileData((data) => ({ ...data, favorites: next }));
+  const commitFavorites = async (next: number[]) => saveAccountData((data) => ({ ...data, favorites: next }));
 
-  const savePlaybackForActive = (titleId: number, episodeSelection: { season: number; episode: number } | null, second: number, progress: number) => saveActiveProfileData((data) => {
+  const savePlaybackForActive = (titleId: number, episodeSelection: { season: number; episode: number } | null, second: number, progress: number) => saveAccountData((data) => {
     const id = String(titleId);
     const previous = data.playback[id] || { currentTime: 0, progress: 0, episodes: {} };
     const title = catalogTitlesRef.current.find((item) => item.id === titleId)
@@ -440,7 +440,7 @@ export default function HomePage() {
     };
   });
 
-  const recordAccountView = (titleId: number) => saveActiveProfileData((data) => addAccountView(data, titleId));
+  const recordAccountView = (titleId: number) => saveAccountData((data) => addAccountView(data, titleId));
 
   const commitCatalogAndFavorites = (nextTitles: Title[], nextFavorites: number[]) => {
     if (!canWriteTitlesRef.current) {
@@ -451,7 +451,7 @@ export default function HomePage() {
     const removedIds = new Set(catalogTitlesRef.current.filter((item) => !keptIds.has(item.id)).map((item) => String(item.id)));
     if (!commitTitlesUnlocked(nextTitles)) return false;
     if (accountLibraryReadyRef.current) {
-      void saveActiveProfileData((data) => {
+      void saveAccountData((data) => {
         const playback = { ...data.playback };
         const viewCounts = { ...data.viewCounts };
         for (const id of removedIds) { delete playback[id]; delete viewCounts[id]; }
@@ -707,12 +707,12 @@ export default function HomePage() {
     { title: "Séries à découvrir", kicker: "À SUIVRE", items: browseTitles.filter(item => item.kind === "Série").sort((a, b) => b.year - a.year).slice(0, 10) },
     { title: "Ajouts récents", kicker: "FRAÎCHEMENT AJOUTÉS", items: [...browseTitles].sort((a, b) => b.id - a.id).slice(0, 10) }
   ].filter(row => row.items.length), [browseTitles]);
-  const withActiveProfilePlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
+  const withAccountPlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
   const openTitle = (item: Title) => {
     setSelectedEpisodeUrl(null);
     setSelectedEpisode(null);
-    setSelected(withActiveProfilePlayback(item));
+    setSelected(withAccountPlayback(item));
   };
 
   const resumeTitle = (item: Title) => {
@@ -1066,8 +1066,8 @@ export default function HomePage() {
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
               <div className="hero-cinema-actions">
-                <ShimmerButton className="hero-cinema-play" onClick={() => setSelected(withActiveProfilePlayback(activeFeatured))}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
-                <button className="hero-cinema-info" onClick={() => setSelected(withActiveProfilePlayback(activeFeatured))}>Détails</button>
+                <ShimmerButton className="hero-cinema-play" onClick={() => setSelected(withAccountPlayback(activeFeatured))}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
+                <button className="hero-cinema-info" onClick={() => setSelected(withAccountPlayback(activeFeatured))}>Détails</button>
               </div>
             </BlurFade>
             {featuredTitles.length > 1 && <div className="hero-cinema-controls">
@@ -1409,7 +1409,7 @@ export default function HomePage() {
           onEnded={async (title, episodeSelection) => {
             if (!episodeSelection || !title.seasons) return;
             const episodeKey = `${episodeSelection.season}:${episodeSelection.episode}`;
-            if (!await saveActiveProfileData((data) => {
+            if (!await saveAccountData((data) => {
               const id = String(title.id);
               const current = data.playback[id] || { currentTime: 0, progress: 0, episodes: {} };
               const episode = current.episodes[episodeKey] || { currentTime: 0, progress: 0 };
