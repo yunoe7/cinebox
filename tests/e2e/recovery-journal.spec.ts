@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 const TITLES_KEY = "cinebox-titles";
 const FAVORITES_KEY = "cinebox-favorites";
