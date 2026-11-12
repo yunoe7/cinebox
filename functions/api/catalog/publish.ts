@@ -41,7 +41,6 @@ type PublishBody = {
   backdropPath?: string | null;
   genres?: string[];
   metadata?: Record<string, unknown>;
-  targetEpisode?: { seasonNumber: number; episodeNumber: number };
   /** Replace the full episode list of the single season present in `seasons`. */
   replaceSeason?: boolean;
   /** Replace the full episode list of the title. Requires a complete snapshot. */
@@ -242,7 +241,6 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     ? body.genres.filter((item): item is string => typeof item === "string").slice(0, 30).map(item => item.slice(0, 80))
     : [];
   const metadata = normalizeCatalogMetadata(isRecord(body.metadata) ? body.metadata : {});
-  const targetEpisode = body.targetEpisode && Number.isInteger(body.targetEpisode.seasonNumber) && Number.isInteger(body.targetEpisode.episodeNumber) && body.targetEpisode.seasonNumber >= 0 && body.targetEpisode.episodeNumber >= 1 ? body.targetEpisode : null;
 
   if (body.replaceSeason !== undefined && typeof body.replaceSeason !== "boolean") {
     return json({ error: "L’indicateur replaceSeason est invalide." }, 400);
