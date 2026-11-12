@@ -202,11 +202,6 @@ function getViewingLabel(title: Title): string {
   return title.kind === "Série" ? "À découvrir" : "À voir";
 }
 
-function getBunnyVideoIdFromUrl(url?: string): string | null {
-  if (!url) return null;
-  const match = url.match(/mediadelivery\.net\/(?:embed|play)\/([^/]+)\/([a-f0-9-]{20,64})/i);
-  return match?.[2] || null;
-}
 
 const videoDurationBands = [
   { value: "under-10", label: "Moins de 10 min", min: 0, max: 10 },
@@ -1590,7 +1585,7 @@ export default function HomePage() {
                   <span className={`admin-status-chip ${getViewingLabel(item) === "Terminé" ? "is-published" : ""}`}>{getViewingLabel(item)}</span>
                   {adminSection === "series" && <><span>{getSeriesManagementStats(item).seasons} saison{getSeriesManagementStats(item).seasons === 1 ? "" : "s"} · {getSeriesManagementStats(item).total} ép.</span><span>{getSeriesManagementStats(item).withVideo}/{getSeriesManagementStats(item).total} vidéos</span><div className="admin-progress-track" role="progressbar" aria-label={`Association des vidéos de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesManagementStats(item).percent}><i style={{ width: `${getSeriesManagementStats(item).percent}%` }}/></div></>}
                   {adminSection === "videos" && (() => {
-                    const bunnyId = getBunnyVideoIdFromUrl(item.videoUrl);
+                    return <span>{item.duration || "Durée inconnue"}</span>;
                     return <><span>{item.duration || "Durée inconnue"}</span>{bunnyId ? <span className="admin-status-chip is-bunny"><Clapperboard size={10}/> Bunny</span> : <span className="admin-muted">Sans Bunny</span>}{bunnyId && <span className="admin-card-bunny-id" title={bunnyId}>ID {bunnyId.length > 14 ? `${bunnyId.slice(0, 14)}…` : bunnyId}</span>}</>;
                   })()}
                   {adminSection === "films" && <span>{item.duration || "Durée inconnue"}</span>}
