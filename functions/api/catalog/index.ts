@@ -48,8 +48,8 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     const now = new Date().toISOString();
     const earlyCutoff = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
     const accessSql = isVip
-      ? "(vip_exclusive=0 OR 1=1) AND (vip_early_access=0 OR public_at IS NULL OR public_at<=?)"
-      : "vip_exclusive=0 AND (vip_early_access=0 OR public_at IS NULL OR public_at<=?)";
+      ? "(vip_exclusive=0 OR 1=1) AND (vip_early_access=0 OR (public_at IS NOT NULL AND public_at<=?))"
+      : "vip_exclusive=0 AND (vip_early_access=0 OR (public_at IS NOT NULL AND public_at<=?))";
     const accessParams: (string | number | null)[] = isVip ? [earlyCutoff] : [now];
     const whereKind = kind ? " AND kind=?" : "";
     const params = [...accessParams, ...(kind ? [kind] : [])];
