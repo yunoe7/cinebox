@@ -2,7 +2,7 @@ name: CinéBox checks
 
 # Keep every commit's checks alive; newer PR pushes must not cancel in-flight validation.
 concurrency:
-  group: cinebox-${{ github.run_id }}
+  group: cinebox-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 on:
