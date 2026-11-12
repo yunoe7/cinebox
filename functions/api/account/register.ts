@@ -1,6 +1,8 @@
-import { json, validOrigin, normalizeEmail, passwordHash, createAccountSession, type AccountEnv } from "../../_lib/account-auth.ts";
+import { json, validOrigin, enforceRateLimit, normalizeEmail, passwordHash, createAccountSession, type AccountEnv } from "../../_lib/account-auth.ts";
 export async function onRequestPost({request,env}:{request:Request;env:AccountEnv}) {
   if(!validOrigin(request)) return json({error:"Requête refusée."},403);
+  try { if(!await enforceRateLimit(env,request,"register",4,900)) return json({error:"Trop de tentatives. Réessaie dans quelques minutes."},429,{"retry-after":"900"}); }
+  catch { return json({error:"Service temporairement indisponible."},503); }
   let body: unknown; try { body=await request.json(); } catch { return json({error:"Corps JSON invalide."},400); }
   const data=body as Record<string,unknown>, email=normalizeEmail(data?.email), password=typeof data?.password==="string"?data.password:"", displayName=typeof data?.displayName==="string"?data.displayName.trim().slice(0,80):"";
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254) return json({error:"Adresse e-mail invalide."},400);
