@@ -557,7 +557,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                       <label><span>Synopsis</span><textarea value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} aria-label="Synopsis" rows={4} maxLength={12000} /></label>
                       <fieldset className="admin-vip-access-fields"><legend>Accès VIP CinéBox</legend>
                         <label><input type="checkbox" checked={draftVipExclusive} onChange={(event) => { setDraftVipExclusive(event.target.checked); if (event.target.checked) setDraftVipEarlyAccess(false); }} /> Réserver ce titre aux membres VIP</label>
-                        <label><input type="checkbox" checked={draftVipEarlyAccess} disabled={draftVipExclusive} onChange={(event) => setDraftVipEarlyAccess(event.target.checked)} /> Avant-première VIP (48 h)</label>
+                        <label><input type="checkbox" checked={draftVipEarlyAccess} disabled={draftVipExclusive} onChange={(event) => { setDraftVipEarlyAccess(event.target.checked); if (event.target.checked) setDraftVipExclusive(false); }} /> Avant-première VIP (48 h)</label>
                         <label><span>Date et heure d’ouverture au public</span><input type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} disabled={!draftVipEarlyAccess} /></label>
                         <small>Les VIP peuvent voir le titre 48 h avant cette date. Les autres comptes le verront à la date indiquée.</small>
                       </fieldset>
