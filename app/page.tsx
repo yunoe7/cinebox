@@ -23,7 +23,6 @@ import { NumberTicker } from "../components/magicui/number-ticker";
 import { TextAnimate } from "../components/magicui/text-animate";
 import { AnimatedGridPattern } from "../components/magicui/animated-grid-pattern";
 import { AnimatedShinyText } from "../components/magicui/animated-shiny-text";
-import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
@@ -1179,17 +1178,6 @@ export default function HomePage() {
     );
   }
 
-  if (profileStorageError || !profileStore) {
-    return <main className="profile-gate-screen"><section className="profile-storage-block" role="alert"><span className="profile-center-brand"><i>C</i> CINÉBOX</span><ShieldCheck size={24}/><h1>Profils protégés</h1><p>{profileStorageError || "Le stockage des profils n’est pas disponible."}</p><p>Les données historiques de la bibliothèque n’ont pas été remplacées. Corrigez l’accès au stockage puis rechargez la page.</p></section></main>;
-  }
-
-  if (!activeProfileId) {
-    return <>
-      <ProfileCenter store={profileStore} initialMode="gate" onCommit={persistProfileStore} onActivate={activateProfile}/>
-      {notice && <div className="profile-gate-toast" role="status"><strong>{notice.title}</strong><span>{notice.message}</span></div>}
-    </>;
-  }
-
   return (
     <main className={`app-shell ${activePage === "Films" ? "films-screen" : activePage === "Séries" ? "series-screen" : activePage === "Vidéos" ? "videos-screen" : activePage === "Ma liste" ? "ma-list-screen" : activePage === "Administration" ? "admin-screen" : ""}`}>
       <aside className="sidebar" aria-label="Navigation principale">
@@ -1204,7 +1192,7 @@ export default function HomePage() {
             <div className="top-actions"><a className="account-nav-link" href="/connexion" aria-label="Connexion et compte">Compte</a>
               {activePage !== "Administration" && <label className="search"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={activePage === "Séries" ? "Rechercher une série…" : activePage === "Vidéos" ? "Rechercher une vidéo…" : activePage === "Ma liste" ? "Rechercher dans ma liste…" : "Rechercher dans ma collection…"} aria-label={activePage === "Séries" ? "Rechercher une série" : activePage === "Vidéos" ? "Rechercher une vidéo" : activePage === "Ma liste" ? "Rechercher dans ma liste" : "Rechercher dans ma collection"}/>{query && <button type="button" className="search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}><X size={14}/></button>}</label>}
               {!isChildProfile && <ShimmerButton aria-label="Ajouter un titre" title="Ajouter un titre" className="add-btn" onClick={() => { setEditingTitle(null); setAddKind(activePage === "Vidéos" || (activePage === "Administration" && adminSection === "videos") ? "Vidéo" : activePage === "Administration" && adminSection === "series" ? "Série" : "Film"); setShowAdd(true); }}><Plus size={15}/> <span>Ajouter un titre</span></ShimmerButton>}
-              {activeProfile && <ProfileMenu profile={activeProfile} onManage={() => isChildProfile ? unavailableProfileFeature("gestion des profils en mode enfant") : setProfileCenterOpen(true)} onSwitch={leaveActiveProfile} onUnavailable={unavailableProfileFeature}/>}
+              {activeProfile && <ProfileMenu />}
             </div>
           </BlurFade>
         </header>
@@ -1638,7 +1626,6 @@ export default function HomePage() {
           }}
         />
       </AnimatePresence>
-      {profileCenterOpen && profileStore && activeProfile && <ProfileCenter store={profileStore} initialMode="manage" isChildSession={isChildProfile} onClose={() => setProfileCenterOpen(false)} onCommit={persistProfileStore} onActivate={activateProfile}/>}
       <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.filter(({ label }) => !isChildProfile || label !== "Administration").map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
     </main>
   );
