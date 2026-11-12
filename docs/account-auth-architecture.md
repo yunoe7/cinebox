@@ -61,7 +61,6 @@ Les endpoints qui modifient l'état exigent un contrôle d'origine exact et une 
 - `DISCORD_CLIENT_ID` : identifiant de l'application OAuth Discord.
 - `DISCORD_CLIENT_SECRET` : secret OAuth Discord, stocké comme secret Cloudflare.
 - `DISCORD_REDIRECT_URI` : URL HTTPS exacte de callback, identique à celle déclarée dans le portail développeur Discord.
-- `CINEBOX_ACCOUNT_SESSION_SECRET` : secret HMAC distinct de l'administration, 32 caractères minimum.
 - `CINEBOX_ACCOUNT_PASSWORD_PEPPER` : optionnel ; si utilisé, secret serveur uniquement et procédure de rotation documentée.
 
 Ne pas réutiliser `DISCORD_TOKEN` du bot comme secret OAuth. Ne jamais transmettre le token du bot au site.
