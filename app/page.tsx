@@ -26,6 +26,7 @@ import { AnimatedShinyText } from "../components/magicui/animated-shiny-text";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
+import { UqloadManager } from "../components/cinebox/UqloadManager";
 import { DiscordAccessGate } from "../components/cinebox/DiscordAccessGate";
 
 import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cinebox/account-data.mjs";
@@ -1186,6 +1187,7 @@ export default function HomePage() {
                 </div>
               </div>
               <SharedCatalogManager mode="media" />
+              <UqloadManager />
             </section>
           </BlurFade>}
 
