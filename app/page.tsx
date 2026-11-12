@@ -27,7 +27,6 @@ import { ProfileCenter } from "../components/cinebox/ProfileCenter";
 import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { ProfileAvatar } from "../components/cinebox/ProfileAvatar";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
-import { BunnyLibraryPanel } from "../components/cinebox/BunnyLibraryPanel";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 
 import { addProfileView, loadOrMigrateProfiles, overlayProfileData, selectProfile, updateProfileData, writeProfileStore, type ProfileStore } from "../lib/cinebox/profiles.mjs";
@@ -330,7 +329,6 @@ export default function HomePage() {
   const [adminYearFilter, setAdminYearFilter] = useState("all");
   const [adminViewingFilter, setAdminViewingFilter] = useState("all");
   const [adminDurationFilter, setAdminDurationFilter] = useState("all");
-  const [mediaTab, setMediaTab] = useState<"bunny" | "posters">("bunny");
   const [renamingGenre, setRenamingGenre] = useState<string | null>(null);
   const [genreDraft, setGenreDraft] = useState("");
   const [adminAssetDetails, setAdminAssetDetails] = useState<Record<string, { size: number; type: string }>>({});
@@ -1478,14 +1476,8 @@ export default function HomePage() {
           {activePage === "Administration" && adminSection === "media" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-media-wrap">
             <section className="admin-media-page" aria-labelledby="admin-media-title">
               <AnimatedGridPattern className="admin-media-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
-            <div className="admin-page-heading"><div><div className="eyebrow">MÉDIATHÈQUE</div><h2 id="admin-media-title">Gestion des médias</h2><p>Deux espaces distincts : les vidéos hébergées dans Bunny et les images conservées sur cet appareil.</p></div><button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Importer une affiche</button></div>
-            <div className="admin-media-tabs" role="tablist" aria-label="Sections de la médiathèque">
-              <button type="button" role="tab" id="admin-media-tab-bunny" aria-selected={mediaTab === "bunny"} aria-controls="admin-media-panel-bunny" className={mediaTab === "bunny" ? "is-active" : ""} onClick={() => setMediaTab("bunny")}><Clapperboard size={15}/> Bibliothèque Bunny</button>
-              <button type="button" role="tab" id="admin-media-tab-posters" aria-selected={mediaTab === "posters"} aria-controls="admin-media-panel-posters" className={mediaTab === "posters" ? "is-active" : ""} onClick={() => setMediaTab("posters")}><ImageIcon size={15}/> Affiches &amp; miniatures <span>{adminMedia.length}</span></button>
-            </div>
-            {mediaTab === "bunny" ? <div role="tabpanel" id="admin-media-panel-bunny" aria-labelledby="admin-media-tab-bunny" className="admin-media-tab-panel">
-              <BunnyLibraryPanel/>
-            </div> : <div role="tabpanel" id="admin-media-panel-posters" aria-labelledby="admin-media-tab-posters" className="admin-media-tab-panel">
+            <div className="admin-page-heading"><div><div className="eyebrow">MÉDIATHÈQUE</div><h2 id="admin-media-title">Gestion des médias</h2><p>Affiches et miniatures conservées sur cet appareil.</p></div><button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind("Film"); setShowAdd(true); }}><Plus size={15}/> Importer une affiche</button></div>
+            <div className="admin-media-tab-panel">
               <div className="admin-media-summary"><div><ImageIcon size={17}/><span><strong>{adminMedia.length}</strong> image{adminMedia.length === 1 ? "" : "s"} associée{adminMedia.length === 1 ? "" : "s"}</span></div><div><Play size={17}/><span><strong>{adminVideoFileCount}</strong> fichier{adminVideoFileCount === 1 ? "" : "s"} vidéo lié{adminVideoFileCount === 1 ? "" : "s"}</span></div><p>Formats d’image acceptés à l’import : JPG, PNG et WebP · maximum 20 Mo par image.</p></div>
               {adminMedia.length ? <div className="admin-media-grid">{adminMedia.map((media) => {
                 const details = adminAssetDetails[media.id];
@@ -1531,7 +1523,7 @@ export default function HomePage() {
                 <div>
                   <div className="eyebrow">{adminSection === "films" ? "CATALOGUE FILMS" : adminSection === "series" ? "CATALOGUE SÉRIES" : "CATALOGUE VIDÉOS"}</div>
                   <h2 id="admin-type-title">{adminSection === "films" ? "Gérer les films" : adminSection === "series" ? "Gérer les séries" : "Gérer les vidéos"} <span className="admin-source-badge is-split">D1 + LOCAL</span></h2>
-                  <p>{adminSection === "films" ? "Affiches, informations, statut de publication et actions sur les fiches partagées et locales." : adminSection === "series" ? "Saisons, épisodes, associations Bunny et progression de gestion des séries." : "Miniatures, durée, identifiants Bunny et informations des vidéos."}</p>
+                  <p>{adminSection === "films" ? "Affiches, informations, statut de publication et actions sur les fiches partagées et locales." : adminSection === "series" ? "Saisons, épisodes et progression de gestion des séries." : "Miniatures, durée et informations des vidéos."}</p>
                 </div>
                 <button type="button" className="gold-btn" onClick={() => { setEditingTitle(null); setAddKind(adminSection === "series" ? "Série" : adminSection === "videos" ? "Vidéo" : "Film"); setShowAdd(true); }}><Plus size={15}/> Ajouter {adminSection === "series" ? "une série" : adminSection === "videos" ? "une vidéo" : "un film"}</button>
               </div>
