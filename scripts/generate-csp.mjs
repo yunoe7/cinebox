@@ -42,12 +42,12 @@ export function buildPolicy(hashes) {
   const scriptHashes = [...new Set(hashes)].sort().map((hash) => `'${hash}'`).join(" ");
   return [
     "default-src 'self'",
-    `script-src 'self' ${scriptHashes} https://assets.mediadelivery.net`,
+    `script-src 'self' ${scriptHashes}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://image.tmdb.org https://*.b-cdn.net",
+    "img-src 'self' data: blob: https://image.tmdb.org",
     "font-src 'self' data: https://fonts.gstatic.com",
     "media-src 'self' blob: data:",
-    "frame-src https://iframe.mediadelivery.net https://player.mediadelivery.net https://vidsrc.sh",
+    "frame-src https://vidsrc.sh",
     "connect-src 'self'",
     "worker-src 'self' blob:",
     "object-src 'none'",

@@ -3,9 +3,6 @@ import assert from "node:assert/strict";
 import { onRequestPost } from "../../functions/api/catalog/publish.ts";
 import { ADMIN_ENV, adminHeaders } from "./helpers/admin-auth.mjs";
 import { createPublishD1 } from "./helpers/publish-d1.mjs";
-import { installFetch } from "./helpers/fake-d1.mjs";
-
-const VIDEO_ID = "0123456789abcdef0123456789abcdef";
 
 function makeEnv(options = {}) {
   const db = createPublishD1(options);
@@ -26,7 +23,7 @@ function seedSeries({ id = "tmdb:series:42", seasons = [1, 2] } = {}) {
         title: `S${seasonNumber}E${episodeNumber}`,
         overview: "",
         duration_seconds: 2700,
-        stream_uid: `bunny-${seasonNumber}-${episodeNumber}`,
+        stream_uid: `legacy-${seasonNumber}-${episodeNumber}`,
         thumbnail_path: null,
         metadata_json: "{}",
       });
@@ -138,17 +135,16 @@ test("publishing rejects a TMDB id that disagrees with the shared id", async () 
   assert.equal(calls.length, 0);
 });
 
-test("republishing merges metadata instead of overwriting Bunny and TMDB fields", async () => {
+test("republishing merges metadata instead of overwriting TMDB fields", async () => {
   const { env, calls } = makeEnv();
   const response = await onRequestPost({ request: request({
-    tmdbId: 42, kind: "movie", title: "Film", bunnyVideoId: "0123456789abcdef0123456789abcdef",
+    tmdbId: 42, kind: "movie", title: "Film",
     metadata: { voteAverage: 7.5 },
   }), env });
   assert.equal(response.status, 200);
   assert.match(calls[0].sql, /json_patch\(CASE WHEN json_valid\(metadata_json\)/);
   assert.match(calls[0].sql, /excluded\.metadata_json/);
   const metadata = JSON.parse(calls[0].values[8]);
-  assert.equal(metadata.bunnyVideoId, "0123456789abcdef0123456789abcdef");
   assert.equal(metadata.tmdbId, 42);
 });
 
@@ -163,32 +159,17 @@ test("an explicit cinebox id is preserved when TMDB metadata is added later", as
   assert.equal(JSON.parse(calls[0].values[8]).tmdbId, 42);
 });
 
-test("publishing a Bunny video rejects a target episode absent from the payload", async () => {
+test("publishing a video for a series ignores a legacy target episode", async () => {
   const { env, calls } = makeEnv();
   const response = await onRequestPost({ request: request({
-    tmdbId: 42, kind: "series", title: "Série", bunnyVideoId: "0123456789abcdef0123456789abcdef",
-    targetEpisode: { seasonNumber: 1, episodeNumber: 9 },
-    seasons: [{ number: 1, episodes: [{ number: 1, title: "Épisode 1" }] }],
-  }), env });
-  assert.equal(response.status, 400);
-  assert.equal(calls.length, 0);
-});
-
-test("publishing a Bunny video associates the existing target episode", async () => {
-  const { env, calls } = makeEnv();
-  const response = await onRequestPost({ request: request({
-    tmdbId: 42, kind: "series", title: "Série", bunnyVideoId: "0123456789abcdef0123456789abcdef",
+    tmdbId: 42, kind: "series", title: "Série",
     targetEpisode: { seasonNumber: 1, episodeNumber: 2 },
     seasons: [{ number: 1, episodes: [{ number: 2, title: "Épisode 2" }] }],
   }), env });
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 3);
-  assert.match(calls[2].sql, /UPDATE catalog_episodes SET stream_uid/);
-  assert.deepEqual(calls[2].values, [
-    "0123456789abcdef0123456789abcdef",
-    "tmdb:series:42:s1:e2",
-    "tmdb:series:42",
-  ]);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].sql, /INSERT INTO catalog_titles/);
+  assert.match(calls[1].sql, /INSERT INTO catalog_episodes/);
 });
 
 test("the local editor aliases are normalized to canonical metadata", async () => {
@@ -214,17 +195,16 @@ test("the local editor aliases are normalized to canonical metadata", async () =
   assert.equal(metadata.ageRating, "12");
 });
 
-test("the Bunny canonical metadata is preserved", async () => {
+test("the canonical TMDB metadata is preserved", async () => {
   const { env, calls } = makeEnv();
   const reviews = [{ author: "Critique", content: "Bien", rating: 8, createdAt: "2024-01-01" }];
   const response = await onRequestPost({ request: request({
-    tmdbId: 42, kind: "movie", title: "Film Bunny", bunnyVideoId: VIDEO_ID,
+    tmdbId: 42, kind: "movie", title: "Film TMDB",
     metadata: {
       voteAverage: 7.5, voteCount: 900, runtime: 120, originalLanguage: "en",
       cast: [{ name: "Acteur A", character: "Rôle" }],
       directors: ["John Smith"],
       tmdbReviews: reviews,
-      bunnyVideoId: VIDEO_ID,
     },
   }), env });
   assert.equal(response.status, 200);
@@ -235,7 +215,6 @@ test("the Bunny canonical metadata is preserved", async () => {
   assert.equal(metadata.duration, undefined);
   assert.deepEqual(metadata.directors, ["John Smith"]);
   assert.deepEqual(metadata.tmdbReviews, reviews);
-  assert.equal(metadata.bunnyVideoId, VIDEO_ID);
   assert.equal(metadata.tmdbId, 42);
 });
 
@@ -246,17 +225,17 @@ test("both publishing paths produce the same canonical values", async () => {
     metadata: { rating: 8.4, director: "Same Director", duration: "2 h 05" },
   }), env: local.env });
 
-  const bunny = makeEnv();
+  const remote = makeEnv();
   await onRequestPost({ request: request({
-    tmdbId: 7, kind: "movie", title: "Film Bunny",
+    tmdbId: 7, kind: "movie", title: "Film TMDB",
     metadata: { voteAverage: 8.4, directors: ["Same Director"], runtime: 125 },
-  }), env: bunny.env });
+  }), env: remote.env });
 
   const localMetadata = JSON.parse(local.calls[0].values[8]);
-  const bunnyMetadata = JSON.parse(bunny.calls[0].values[8]);
-  assert.equal(localMetadata.voteAverage, bunnyMetadata.voteAverage);
-  assert.deepEqual(localMetadata.directors, bunnyMetadata.directors);
-  assert.equal(localMetadata.runtime, bunnyMetadata.runtime);
+  const remoteMetadata = JSON.parse(remote.calls[0].values[8]);
+  assert.equal(localMetadata.voteAverage, remoteMetadata.voteAverage);
+  assert.deepEqual(localMetadata.directors, remoteMetadata.directors);
+  assert.equal(localMetadata.runtime, remoteMetadata.runtime);
 });
 
 test("a numeric duration becomes runtime minutes", async () => {
@@ -290,7 +269,7 @@ test("empty or invalid values are omitted so json_patch keeps existing data", as
   assert.deepEqual({ ...existing, ...patch }, existing);
 });
 
-test("local republishing does not send or erase Bunny and TMDB fields", async () => {
+test("local republishing does not send or erase TMDB fields", async () => {
   const { env, calls } = makeEnv();
   const response = await onRequestPost({ request: request({
     id: "cinebox:1700000000004", kind: "movie", title: "Reprise locale",
@@ -298,12 +277,10 @@ test("local republishing does not send or erase Bunny and TMDB fields", async ()
   }), env });
   assert.equal(response.status, 200);
   const patch = JSON.parse(calls[0].values[8]);
-  for (const key of ["bunnyVideoId", "bunnyLibraryId", "tmdbReviews", "stream_uid", "tmdbId"]) {
+  for (const key of ["tmdbReviews", "stream_uid", "tmdbId"]) {
     assert.equal(Object.hasOwn(patch, key), false, key);
   }
   const existing = {
-    bunnyVideoId: VIDEO_ID,
-    bunnyLibraryId: "library-id",
     tmdbReviews: [{ author: "Critique", content: "Bien" }],
     tmdbId: 42,
   };
@@ -340,7 +317,7 @@ test("a publication without a replacement indicator never deletes episodes", asy
   assert.equal(body.episodesDeleted, 0);
   assert.equal(state.episodes.length, 4);
   assert.equal(batches.length, 1);
-  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e2").stream_uid, "bunny-1-2");
+  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e2").stream_uid, "legacy-1-2");
 });
 
 test("replaceSeason deletes only the absent episodes of the targeted season", async () => {
@@ -363,9 +340,9 @@ test("replaceSeason deletes only the absent episodes of the targeted season", as
     "tmdb:series:42:s2:e1",
     "tmdb:series:42:s2:e2",
   ]);
-  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e1").stream_uid, "bunny-1-1");
+  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e1").stream_uid, "legacy-1-1");
   assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e3").stream_uid, null);
-  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s2:e1").stream_uid, "bunny-2-1");
+  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s2:e1").stream_uid, "legacy-2-1");
 });
 
 test("replaceTitle deletes every episode absent from the full snapshot", async () => {
@@ -380,7 +357,7 @@ test("replaceTitle deletes every episode absent from the full snapshot", async (
   assert.equal(body.episodesPublished, 1);
   assert.equal(body.episodesDeleted, 3);
   assert.deepEqual(state.episodes.map((episode) => episode.id), ["tmdb:series:42:s1:e1"]);
-  assert.equal(state.episodes[0].stream_uid, "bunny-1-1");
+  assert.equal(state.episodes[0].stream_uid, "legacy-1-1");
 });
 
 test("empty replacement snapshots are refused without writes", async () => {
@@ -434,7 +411,7 @@ test("changing a series to a movie without replaceTitle is rejected without writ
       title: "E1",
       overview: "",
       duration_seconds: 2700,
-      stream_uid: VIDEO_ID,
+      stream_uid: "legacy-episode",
       thumbnail_path: null,
       metadata_json: "{}",
     }],
@@ -446,7 +423,7 @@ test("changing a series to a movie without replaceTitle is rejected without writ
   assert.equal(batches.length, 0);
   assert.equal(state.titles[0].kind, "series");
   assert.equal(state.episodes.length, 1);
-  assert.equal(state.episodes[0].stream_uid, VIDEO_ID);
+  assert.equal(state.episodes[0].stream_uid, "legacy-episode");
 });
 
 test("changing a series to a movie with replaceTitle deletes its episodes atomically", async () => {
@@ -460,7 +437,7 @@ test("changing a series to a movie with replaceTitle deletes its episodes atomic
       title: `E${number}`,
       overview: "",
       duration_seconds: 2700,
-      stream_uid: VIDEO_ID,
+      stream_uid: "legacy-episode",
       thumbnail_path: null,
       metadata_json: "{}",
     })),
@@ -515,7 +492,7 @@ test("a D1 batch failure leaves the catalogue unchanged", async () => {
   assert.equal(response.status, 503);
   assert.equal(state.titles[0].title, "Série");
   assert.equal(state.episodes.length, 4);
-  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e2").stream_uid, "bunny-1-2");
+  assert.equal(state.episodes.find((episode) => episode.id === "tmdb:series:42:s1:e2").stream_uid, "legacy-1-2");
 });
 
 test("a publication above the episode cap is rejected", async () => {
@@ -540,7 +517,7 @@ test("a reconciliation above the deletion cap is rejected without writes", async
     title: `S1E${index + 1}`,
     overview: "",
     duration_seconds: 2700,
-    stream_uid: `bunny-1-${index + 1}`,
+    stream_uid: `legacy-1-${index + 1}`,
     thumbnail_path: null,
     metadata_json: "{}",
   }));
@@ -552,7 +529,7 @@ test("a reconciliation above the deletion cap is rejected without writes", async
   assert.equal(response.status, 400);
   assert.equal(batches.length, 0);
   assert.equal(state.episodes.length, 1002);
-  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e2`).stream_uid, "bunny-1-2");
+  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e2`).stream_uid, "legacy-1-2");
 });
 
 test("replaceSeason deletes only the obsolete episode and keeps every retained row", async () => {
@@ -568,7 +545,7 @@ test("replaceSeason deletes only the obsolete episode and keeps every retained r
       title: `S1E${number}`,
       overview: "",
       duration_seconds: 2700,
-      stream_uid: `bunny-1-${number}`,
+      stream_uid: `legacy-1-${number}`,
       thumbnail_path: null,
       metadata_json: "{}",
     });
@@ -582,7 +559,7 @@ test("replaceSeason deletes only the obsolete episode and keeps every retained r
       title: `S2E${number}`,
       overview: "",
       duration_seconds: 2700,
-      stream_uid: `bunny-2-${number}`,
+      stream_uid: `legacy-2-${number}`,
       thumbnail_path: null,
       metadata_json: "{}",
     });
@@ -610,24 +587,7 @@ test("replaceSeason deletes only the obsolete episode and keeps every retained r
   }
   assert.equal(ids.includes(`${id}:s2:e1`), true);
   assert.equal(ids.includes(`${id}:s2:e2`), true);
-  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e1`).stream_uid, "bunny-1-1");
-  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e120`).stream_uid, "bunny-1-120");
-  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s2:e2`).stream_uid, "bunny-2-2");
-});
-
-test("reconciliation never calls the Bunny API", async () => {
-  const { env } = makeEnv(seedSeries());
-  const bunny = installFetch(() => {
-    throw new Error("Bunny must not be called during D1 reconciliation");
-  });
-  try {
-    const response = await onRequestPost({ request: request({
-      tmdbId: 42, kind: "series", title: "Série", replaceSeason: true,
-      seasons: [{ number: 1, episodes: [{ number: 1, title: "S1E1" }] }],
-    }), env });
-    assert.equal(response.status, 200);
-    assert.equal(bunny.calls.length, 0);
-  } finally {
-    bunny.restore();
-  }
+  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e1`).stream_uid, "legacy-1-1");
+  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e120`).stream_uid, "legacy-1-120");
+  assert.equal(state.episodes.find((episode) => episode.id === `${id}:s2:e2`).stream_uid, "legacy-2-2");
 });

@@ -31,7 +31,6 @@ function toTitle(item:SharedTitle):Title {
       videoUrl:ep.videoUrl||undefined,tmdbId:ep.tmdbId||undefined
     }))
   }));
-  const bunnyVideoId=typeof metadata.bunnyVideoId==="string"?metadata.bunnyVideoId:null;
   const year=item.releaseDate?new Date(item.releaseDate).getUTCFullYear():0;
   const kind=item.kind==="series"?"Série":item.kind==="video"?"Vidéo":"Film";
   return {
@@ -40,7 +39,6 @@ function toTitle(item:SharedTitle):Title {
     poster:tmdbImage(item.posterPath)||"",backdrop:tmdbImage(item.backdropPath)||"",
     progress:0,duration:metadata.runtime?String(metadata.runtime)+" min":kind==="Série"?`${seasons.length} saisons`:"",
     seasons:seasons.length?seasons:undefined,
-    videoUrl:bunnyVideoId&&metadata.bunnyLibraryId? `https://iframe.mediadelivery.net/embed/${metadata.bunnyLibraryId}/${bunnyVideoId}`:undefined,
     rating:typeof metadata.voteAverage==="number"?metadata.voteAverage:undefined,
     voteCount:typeof metadata.voteCount==="number"?metadata.voteCount:undefined,
     cast:Array.isArray(metadata.cast)?metadata.cast.map((person:any)=>typeof person==="string"?person:person.name).filter(Boolean):[],

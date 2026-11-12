@@ -6,7 +6,7 @@ Application personnelle de cinéma : catalogue de films, séries et vidéos, fic
 - **Hébergement** : Cloudflare Pages (export statique `out/`).
 - **API** : Cloudflare Pages Functions (`functions/api/*`).
 - **Catalogue partagé** : Cloudflare D1 (`migrations/0001_shared_catalog.sql`).
-- **Vidéo** : Bunny Stream (lecteur et API serveur).
+- **Vidéo** : Vidsrc pour les titres TMDB, fichiers locaux/directs pour les vidéos importées.
 - **Métadonnées** : TMDB via un proxy serveur en lecture seule.
 
 > Le dépôt GitHub est privé. Ne jamais le rendre public. Ne jamais pousser directement sur `main` sans validation.
@@ -17,7 +17,6 @@ Application personnelle de cinéma : catalogue de films, séries et vidéos, fic
 - npm 10+.
 - Un projet Cloudflare Pages avec un binding D1 nommé **`DB`**.
 - Un compte TMDB avec un jeton Read Access.
-- Une bibliothèque Bunny Stream (facultatif pour le catalogue local).
 
 ## Installation
 
@@ -41,9 +40,6 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | `TMDB_READ_ACCESS_TOKEN` | Jeton TMDB (v4) ou clé v3, utilisé par le proxy `/api/tmdb` | Pour TMDB |
 | `CINEBOX_ADMIN_PASSWORD_HASH` | Vérificateur PBKDF2 du mot de passe admin, généré par `npm run hash:admin` | Pour l'administration |
 | `CINEBOX_SESSION_SECRET` | Secret HMAC des sessions signées, **32 caractères minimum** | Pour l'administration |
-| `BUNNY_STREAM_API_KEY` | Clé API Bunny Stream | Pour Bunny |
-| `BUNNY_STREAM_LIBRARY_ID` | Identifiant de la bibliothèque Bunny | Pour Bunny |
-| `BUNNY_STREAM_CDN_HOSTNAME` | Hostname CDN Bunny | Pour la lecture Bunny |
 | `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour le catalogue partagé |
 
 Générer le vérificateur sans jamais afficher le mot de passe :
@@ -103,7 +99,7 @@ Configuration du projet Pages :
 - **Répertoire de sortie** : `out`
 - **Version de Node** : 22
 - **Binding D1** : `DB` → base du catalogue partagé
-- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_PASSWORD_HASH`, `CINEBOX_SESSION_SECRET`, `BUNNY_STREAM_API_KEY`, `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_CDN_HOSTNAME`
+- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_PASSWORD_HASH`, `CINEBOX_SESSION_SECRET`
 
 Configurer ces variables dans **Production** et **Preview**. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. `CINEBOX_ADMIN_PASSWORD_HASH` et `CINEBOX_SESSION_SECRET` sont lus uniquement par les Pages Functions.
 
@@ -124,7 +120,7 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 La migration initiale se trouve dans `migrations/0001_shared_catalog.sql`. Elle crée les tables `users`, `admin_allowlist`, `catalog_titles`, `catalog_episodes`, `media_assets`, `user_favorites`, `user_progress`, `watch_history` et les index associés.
 
-> `media_assets` est préparée pour un futur suivi multi-fournisseurs. Le flux Bunny actuel utilise `catalog_episodes.stream_uid` et `catalog_titles.metadata_json.bunnyVideoId` ; ne pas modifier la migration déjà appliquée. Toute évolution doit passer par une nouvelle migration D1 validée.
+> `media_assets` est préparée pour un futur suivi multi-fournisseurs. Le catalogue partagé actuel conserve les métadonnées TMDB dans `catalog_titles.metadata_json` ; la migration déjà appliquée ne doit pas être modifiée. Toute évolution doit passer par une nouvelle migration D1 validée.
 
 ```bash
 # Base locale Wrangler
@@ -136,12 +132,11 @@ npx wrangler d1 migrations apply <nom-ou-binding-d1> --remote
 
 Ne jamais lancer de migration ni d'écriture sur la base de production sans validation explicite.
 
-## Bunny Stream
+## Lecture vidéo
 
-1. Créer une bibliothèque Bunny Stream.
-2. Renseigner `BUNNY_STREAM_API_KEY`, `BUNNY_STREAM_LIBRARY_ID` et `BUNNY_STREAM_CDN_HOSTNAME` côté serveur.
-3. Les routes `/api/bunny/status`, `/api/bunny/videos` et `/api/bunny/delete` exigent une session administrateur valide (cookie `HttpOnly` signé).
-4. La suppression d'une vidéo Bunny est définitive et réservée à l'administration.
+- Les films et séries identifiés par un `tmdbId` sont lus via Vidsrc, dans une iframe autorisée par la CSP (`frame-src https://vidsrc.sh`).
+- Les vidéos importées ou liées à un fichier local/direct utilisent le lecteur vidéo générique (`components/cinebox/VideoPlayer.tsx`).
+- La progression, la reprise de lecture, la navigation entre épisodes et la lecture automatique de l'épisode suivant restent disponibles dans les deux modes.
 
 ## TMDB
 
@@ -161,7 +156,6 @@ components/
   ui/                       Surfaces et primitives partagées
 functions/api/
   catalog/                  Catalogue public, gestion admin, publication
-  bunny/                    Statut, vidéos et suppression Bunny
   tmdb/[[path]].ts          Proxy TMDB
 lib/cinebox/                Logique testable (.mjs) et types
 migrations/                 Schéma D1
@@ -198,10 +192,9 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 - Pas encore de comptes synchronisés entre appareils ni d'authentification Discord.
 - Les données personnelles restent propres au navigateur.
 - Le filtrage du mode enfant est indicatif : les titres partagés n'ont pas de classification d'âge fiable.
-- Le catalogue public peut exposer les identifiants vidéo Bunny nécessaires à la lecture.
+- Le catalogue public n'expose que les métadonnées nécessaires à l'affichage et à la lecture.
 - La session admin est stateless : la déconnexion efface le cookie du navigateur, mais un cookie copié avant expiration reste valide jusqu'à son `exp`. La durée est plafonnée à 12 heures ; une révocation immédiate nécessiterait un stockage serveur supplémentaire, à valider avant mise en place.
 - Le rate limiting du login dépend d'une règle Cloudflare WAF / Rate Limiting à configurer et à valider dans le compte Cloudflare ; aucun contournement applicatif n'est fourni.
-- La suppression Bunny puis la mise à jour D1 ne sont pas encore atomiques : un échec partiel peut laisser une fiche D1 pointant vers une vidéo Bunny déjà supprimée. La stratégie de compensation est documentée dans l'audit de prépublication et doit être validée avant application.
 - Les styles hérités morts ont été retirés ; deux avertissements Autoprefixer historiques subsistent dans le CSS minifié.
 
 ## Scripts
