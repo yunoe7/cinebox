@@ -17,7 +17,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
     const avatarUrl = identity?.provider_user_id
       ? identity.provider_avatar
         ? "https://cdn.discordapp.com/avatars/" + encodeURIComponent(identity.provider_user_id) + "/" + encodeURIComponent(identity.provider_avatar) + "." + (identity.provider_avatar.startsWith("a_") ? "gif" : "png") + "?size=128"
-        : "https://cdn.discordapp.com/embed/avatars/" + Number((BigInt(identity.provider_user_id) >> 22n) % 6n) + ".png"
+        : "https://cdn.discordapp.com/embed/avatars/" + Number((BigInt(identity.provider_user_id) >> BigInt(22)) % BigInt(6)) + ".png"
       : null;
 
     return json({
