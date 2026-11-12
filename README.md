@@ -143,7 +143,7 @@ Ne jamais lancer de migration ni d'écriture sur la base de production sans vali
 - L’administration est centrée sur le catalogue partagé D1 : Vue d’ensemble, Films, Séries, Vidéos et Médias. Les compteurs affichés proviennent uniquement de D1 ; en cas d’indisponibilité, ils restent à `—` et l’interface l’indique.
 - Les anciennes fiches locales non publiées ne sont ni supprimées ni vidées. Elles restent lisibles et gérables (ouvrir, modifier, supprimer) depuis une liste compacte de la Vue d’ensemble, séparée des compteurs D1.
 - L’onglet Médias inventorie les affiches, fonds et miniatures d’épisodes réellement enregistrés dans D1. Il ne lit aucun fichier IndexedDB du navigateur.
-- L’export « Exporter la bibliothèque locale » télécharge un manifeste JSON et chaque média IndexedDB référencé. L’opération est strictement en lecture seule : aucune fiche D1, aucune entrée `localStorage` et aucun média IndexedDB n’est supprimé ou modifié, et rien n’est envoyé sur le réseau.
+- Les données locales historiques non migrées sont conservées dans le navigateur. Aucun export ou transfert automatique de ces données n’est effectué.
 
 ## Lecture vidéo
 
