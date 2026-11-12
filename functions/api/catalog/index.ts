@@ -1,5 +1,5 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
-import { getAccount } from "../../_lib/account-auth.ts";
+import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
 
 interface D1Result<T> { results: T[]; success: boolean; }
 interface D1Statement {
@@ -41,7 +41,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
 
   try {
     // VIP entitlement is derived only from the signed-in server session, never a client query parameter.
-    const account = await getAccount(request, env as Parameters<typeof getAccount>[1]);
+    const account = await getAccount(request, env as unknown as AccountEnv);
     const vip = account ? await env.DB.prepare("SELECT 1 AS active FROM vip_memberships WHERE user_id=? AND expires_at>? LIMIT 1")
       .bind(account.id, new Date().toISOString()).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
