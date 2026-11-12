@@ -918,6 +918,11 @@ export default function HomePage() {
       ? [{ slot: fieldName.slice("smartAsset:".length), file: value }]
       : []);
     const smartAssetMap = new Map(smartAssetFiles.map(({ slot, file: assetFile }) => [slot, assetFile]));
+    if (file || episodeFiles.length || posterFile || smartAssetFiles.length) {
+      setNotice({ title: "Import média temporairement désactivé", message: "Les fichiers locaux ne sont plus stockés dans le navigateur. L’ajout de vidéos et d’images sera réactivé après l’intégration des hébergeurs vidéo et du stockage média distant." });
+      setSubmittingTitle(false);
+      return;
+    }
     const kind = form.get("kind") as Kind;
     if (activePage === "Administration" && posterFile) {
       const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
