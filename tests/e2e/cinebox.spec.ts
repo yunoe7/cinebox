@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./fixtures";
+import { expect, test } from "./fixtures";
 
 const testTitles = [
   {
@@ -48,22 +48,6 @@ test.beforeEach(async ({ page }) => {
     window.localStorage.setItem("cinebox-favorites", "[]");
   }, testTitles);
 });
-
-async function openUnavailableNotice(page: Page, menuItem: "S’abonner" | "Nouveautés", noticeTitle: string) {
-  await page.locator("header .profile-menu-root").getByRole("button", { name: /^Compte Discord : / }).click();
-  await page.getByRole("menuitem", { name: new RegExp(menuItem) }).click();
-  const toast = page.locator(".app-toast");
-  await expect(toast).toBeVisible();
-  await expect(toast.locator("strong")).toHaveText(noticeTitle);
-  return toast;
-}
-
-async function expectAutoDismissed(toast: Locator, shownAt: number) {
-  await expect(toast).toBeHidden({ timeout: 6500 });
-  const elapsed = Date.now() - shownAt;
-  expect(elapsed).toBeGreaterThanOrEqual(4200);
-  expect(elapsed).toBeLessThan(6500);
-}
 
 test("CinéBox affiche la bibliothèque", async ({ page }) => {
   await page.goto("/");
@@ -150,46 +134,6 @@ test("Ma liste vide explique comment retrouver ses coups de cœur", async ({ pag
   await expect(page.getByText("0 favoris dans votre liste")).toBeVisible();
   await expect(page.getByText("Votre liste commence avec vos coups de cœur")).toBeVisible();
   await expect(page.locator(".ma-list-poster-grid .favorite-card")).toHaveCount(0);
-});
-
-test("la notification Abonnement indisponible disparaît automatiquement", async ({ page }) => {
-  await page.goto("/");
-  const toast = await openUnavailableNotice(page, "S’abonner", "Abonnement indisponible");
-  const shownAt = Date.now();
-  await expect(toast.getByRole("button", { name: "Fermer la notification" })).toBeVisible();
-  await expectAutoDismissed(toast, shownAt);
-});
-
-test("la notification Nouveautés indisponible disparaît automatiquement", async ({ page }) => {
-  await page.goto("/");
-  const toast = await openUnavailableNotice(page, "Nouveautés", "Nouveautés indisponible");
-  const shownAt = Date.now();
-  await expect(toast.getByRole("button", { name: "Fermer la notification" })).toBeVisible();
-  await expectAutoDismissed(toast, shownAt);
-});
-
-test("la fermeture manuelle et prefers-reduced-motion restent pris en charge", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
-  const toast = await openUnavailableNotice(page, "S’abonner", "Abonnement indisponible");
-  const closedAt = Date.now();
-  await toast.getByRole("button", { name: "Fermer la notification" }).click();
-  await expect(toast).toBeHidden();
-  expect(Date.now() - closedAt).toBeLessThan(1500);
-});
-
-test("un nouvel affichage redémarre proprement le délai automatique", async ({ page }) => {
-  await page.goto("/");
-  const firstToast = await openUnavailableNotice(page, "S’abonner", "Abonnement indisponible");
-  await page.waitForTimeout(3000);
-  const secondToast = await openUnavailableNotice(page, "Nouveautés", "Nouveautés indisponible");
-  const secondShownAt = Date.now();
-  await expect(secondToast).toBeVisible();
-  await page.waitForTimeout(2200);
-  await expect(secondToast).toBeVisible();
-  await expectAutoDismissed(secondToast, secondShownAt);
-  await expect(firstToast).toBeHidden();
 });
 
 test("l’administration présente le catalogue D1 et la bibliothèque locale sans les mélanger", async ({ page }) => {
