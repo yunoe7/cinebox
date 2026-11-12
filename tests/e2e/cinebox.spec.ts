@@ -50,7 +50,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openUnavailableNotice(page: Page, menuItem: "S’abonner" | "Nouveautés", noticeTitle: string) {
-  await page.locator("header .profile-menu-root").getByRole("button", { name: /^Profil actif : / }).click();
+  await page.locator("header .profile-menu-root").getByRole("button", { name: /^Compte Discord : / }).click();
   await page.getByRole("menuitem", { name: new RegExp(menuItem) }).click();
   const toast = page.locator(".app-toast");
   await expect(toast).toBeVisible();
