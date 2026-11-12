@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type AccountUser = { id: string; displayName: string; email?: string | null; role: string };
+type AccountUser = { id: string; displayName: string; role: string };
 
 const discordErrors: Record<string, string> = {
   session: "Ta session a expiré. Reconnecte-toi avec Discord.",

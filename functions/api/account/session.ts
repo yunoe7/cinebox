@@ -25,7 +25,6 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
       user: {
         id: user.id,
         displayName: user.display_name,
-        email: user.email,
         role: user.role,
         discord: identity ? {
           username: identity.provider_username,

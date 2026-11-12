@@ -31,25 +31,6 @@ export function validOrigin(request: Request) {
 }
 export function randomToken(bytes=32) { const value=new Uint8Array(bytes); crypto.getRandomValues(value); return b64(value); }
 export async function sha256(value: string) { return b64(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))); }
-export async function passwordHash(password: string) {
-  const salt=new Uint8Array(16); crypto.getRandomValues(salt);
-  const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
-  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:100000},key,256);
-  return `pbkdf2-sha256$100000$${b64(salt)}$${b64(new Uint8Array(bits))}`;
-}
-export async function verifyPassword(password: string, encoded: string) {
-  const [algorithm,iterationsText,saltText,hashText]=encoded.split("$");
-  const iterations=Number(iterationsText);
-  if(algorithm!=="pbkdf2-sha256" || iterations!==100000) return false;
-  try {
-    const salt=unb64(saltText), expected=unb64(hashText);
-    const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
-    const bits=new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations},key,256));
-    if(bits.length!==expected.length) return false;
-    let diff=0; for(let i=0;i<bits.length;i++) diff|=bits[i]^expected[i];
-    return diff===0;
-  } catch { return false; }
-}
 export async function createAccountSession(request: Request, env: AccountEnv, userId: string) {
 const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now()+ACCOUNT_TTL*1000).toISOString();
   await env.DB.prepare("INSERT INTO account_sessions (id,user_id,token_hash,expires_at) VALUES (?,?,?,?)").bind(id,userId,await sha256(token),expiresAt).run();
@@ -65,10 +46,6 @@ export async function revokeAccount(request: Request, env: AccountEnv) {
   const token=cookie(request);
   if(token) await env.DB.prepare("UPDATE account_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND revoked_at IS NULL").bind(await sha256(token)).run();
 }
-export function normalizeEmail(value: unknown) {
-  return typeof value==="string" ? value.trim().toLowerCase() : "";
-}
-
 export async function enforceRateLimit(env: AccountEnv, request: Request, action: string, limit: number, windowSeconds: number) {
   const ip=request.headers.get("cf-connecting-ip") || "unknown";
   const key=await sha256(action+":"+ip);
