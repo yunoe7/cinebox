@@ -14,7 +14,7 @@ La liaison d'identités est facultative et explicite. Une adresse e-mail Discord
 - API : Cloudflare Pages Functions sous `functions/api/auth/*`.
 - Persistance : D1 via le binding existant `DB`.
 - Identité : table `users` comme compte canonique ; `auth_identities` associe le compte à Discord.
-- Sessions membres : cookie dédié `__Host-cinebox_session`, HttpOnly, Secure, SameSite=Lax, Path=/ ; signature HMAC côté serveur et expiration courte (12 h initialement). Il reste distinct de `__Host-cinebox_admin`.
+- Sessions membres : jeton opaque aléatoire dans le cookie `__Host-cinebox_session`, HttpOnly, Secure, SameSite=Lax, Path=/ ; seule son empreinte SHA-256 et sa date d’expiration sont stockées dans D1, ce qui permet la révocation serveur. Expiration initiale : 12 h. Il reste distinct de `__Host-cinebox_admin`.
 - Secrets : variables Cloudflare Pages uniquement, jamais `NEXT_PUBLIC_*`, jamais dans Git.
 
 ## Parcours
@@ -54,7 +54,7 @@ La liaison d'identités est facultative et explicite. Une adresse e-mail Discord
 | GET | `/api/auth/discord/start` | Démarrer OAuth2 (connexion ou liaison) |
 | GET | `/api/auth/discord/callback` | Valider OAuth2 et ouvrir/lier le compte |
 
-Les endpoints qui modifient l'état exigent un contrôle d'origine exact et une protection CSRF. Les routes de connexion/inscription nécessitent une règle Cloudflare Rate Limiting/WAF avant ouverture publique.
+Les endpoints qui modifient l'état exigent un contrôle d'origine exact et une protection CSRF. Les routes de connexion/inscription nécessitent une règle Cloudflare Rate Limiting/WAF et une vérification d'adresse e-mail avant ouverture publique. Les premiers endpoints livrés utilisent les routes `/api/account/*` pour ne pas entrer en collision avec les routes d'administration existantes sous `/api/auth/*`.
 
 ## Variables Cloudflare à configurer
 
@@ -79,7 +79,7 @@ Elle reprend également chaque `users.discord_user_id` existant dans `auth_ident
 ## Découpage de livraison
 
 1. Fondation D1 et primitives cryptographiques testées.
-2. Inscription/connexion classique, session membre, logout et endpoint session.
+2. Inscription/connexion classique, session membre, logout et endpoint session (vérification e-mail et récupération à finaliser avec un fournisseur d’e-mail).
 3. OAuth Discord (state, échange serveur, profil, création/connexion).
 4. Liaison/déliaison explicite, validation e-mail et récupération du compte.
 5. Synchronisation des favoris, profils et progression vers D1 après stratégie de fusion validée.
