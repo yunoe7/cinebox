@@ -42,9 +42,10 @@ test("l'export statique sert une CSP stricte et s'hydrate", async ({ page }) => 
     expect(csp).toContain(`'${hash}'`);
   }
 
-  // Hydration works: the sidebar reacts to a click.
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.locator(".nav-item.active span")).toHaveText("Films");
+  // The private-access gate is the expected unauthenticated entry point.
+  await expect(page.getByRole("heading", { name: /Votre cinéma/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Se connecter avec Discord/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Rejoindre le Discord/i })).toBeVisible();
   expect(cspErrors).toEqual([]);
 });
 

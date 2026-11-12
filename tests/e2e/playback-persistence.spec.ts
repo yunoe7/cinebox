@@ -1,4 +1,4 @@
-import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, expect, test, type BrowserContext, type Page } from "./fixtures";
 import { rm } from "node:fs/promises";
 
 const DB_NAME = "cinebox-assets";
@@ -63,9 +63,6 @@ async function seedBrowser(page: Page, titles: StoredTitle[], favorites: number[
   await page.evaluate(async ({ titles, favorites, assets, dbName, storeName }) => {
     localStorage.setItem("cinebox-titles", JSON.stringify(titles));
     localStorage.setItem("cinebox-favorites", JSON.stringify(favorites));
-    // The first navigation creates an empty default profile. Remove only that
-    // isolated test profile so reload exercises the intended legacy migration.
-    localStorage.removeItem("cinebox-profiles");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(dbName, 1);
       request.onupgradeneeded = () => {
@@ -129,20 +126,12 @@ async function dispatchMediaEvent(page: Page, event: string, currentTime: number
 
 async function readTitles(page: Page): Promise<StoredTitle[]> {
   return page.evaluate(() => {
-    const titles = JSON.parse(localStorage.getItem("cinebox-titles") || "[]") as StoredTitle[];
-    const rawProfiles = localStorage.getItem("cinebox-profiles");
-    if (!rawProfiles) return titles;
-    const store = JSON.parse(rawProfiles) as {
-      activeProfileId?: string;
-      data?: Record<string, {
-        playback?: Record<string, { assetKey?: string; currentTime: number; progress: number; episodes: Record<string, { assetKey?: string; currentTime: number; progress: number }> }>;
-        viewCounts?: Record<string, number>;
-      }>;
-    };
-    const profile = store.activeProfileId ? store.data?.[store.activeProfileId] : undefined;
-    if (!profile) return titles;
+    const library = JSON.parse(localStorage.getItem("__cinebox_e2e_library") || "null");
+    const titles = (library?.titles || JSON.parse(localStorage.getItem("cinebox-titles") || "[]")) as StoredTitle[];
+    const playbackData = library?.playback || {};
+    const viewCounts = library?.viewCounts || {};
     return titles.map((title) => {
-      const playback = profile.playback?.[String(title.id)];
+      const playback = playbackData[String(title.id)];
       const titleAssetKey = String(title.videoAssetKey || `${title.id}:video`);
       const validPlayback = playback && (!playback.assetKey || playback.assetKey === titleAssetKey) ? playback : undefined;
       const seasons = Array.isArray(title.seasons) ? (title.seasons as Array<{ number: number; episodes: Array<Record<string, unknown>> }>).map((season) => ({
@@ -156,23 +145,16 @@ async function readTitles(page: Page): Promise<StoredTitle[]> {
             : { ...episode, currentTime: 0, progress: 0 };
         }),
       })) : [];
-      return {
-        ...title,
-        backdrop: title.backdrop ?? "",
-        seasons,
-        currentTime: validPlayback?.currentTime ?? 0,
-        progress: validPlayback?.progress ?? 0,
-        viewCount: profile.viewCounts?.[String(title.id)] ?? 0,
-      };
+      return { ...title, backdrop: title.backdrop ?? "", seasons, currentTime: validPlayback?.currentTime ?? 0, progress: validPlayback?.progress ?? 0, viewCount: viewCounts[String(title.id)] ?? 0 };
     });
   });
 }
 
-async function readStorageSnapshot(page: Page, includeProfiles = false) {
-  return page.evaluate(async ({ dbName, storeName, includeProfiles }) => {
+async function readStorageSnapshot(page: Page) {
+  return page.evaluate(async ({ dbName, storeName }) => {
     const titles = localStorage.getItem("cinebox-titles");
     const favorites = localStorage.getItem("cinebox-favorites");
-    const profiles = includeProfiles ? localStorage.getItem("cinebox-profiles") : undefined;
+    const accountLibrary = localStorage.getItem("__cinebox_e2e_library");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(dbName, 1);
       request.onsuccess = () => resolve(request.result);
@@ -199,17 +181,14 @@ async function readStorageSnapshot(page: Page, includeProfiles = false) {
       transaction.onerror = () => reject(transaction.error);
     });
     db.close();
-    return includeProfiles ? { titles, favorites, assets, profiles } : { titles, favorites, assets };
-  }, { dbName: DB_NAME, storeName: STORE_NAME, includeProfiles });
+    return { titles, favorites, assets, accountLibrary };
+  }, { dbName: DB_NAME, storeName: STORE_NAME });
 }
 
-async function waitForProfileViewCount(page: Page, titleId: number, count: number) {
+async function waitForAccountViewCount(page: Page, titleId: number, count: number) {
   await expect.poll(() => page.evaluate(({ titleId }) => {
-    const raw = localStorage.getItem("cinebox-profiles");
-    if (!raw) return null;
-    const store = JSON.parse(raw) as { activeProfileId?: string; data?: Record<string, { viewCounts?: Record<string, number> }> };
-    const profileId = store.activeProfileId;
-    return profileId ? store.data?.[profileId]?.viewCounts?.[String(titleId)] ?? 0 : null;
+    const library = JSON.parse(localStorage.getItem("__cinebox_e2e_library") || "null");
+    return library?.viewCounts?.[String(titleId)] ?? 0;
   }, { titleId })).toBe(count);
 }
 
@@ -279,17 +258,17 @@ test("5 — recharge puis reprend le titre au point persistant", async ({ page }
   const favorites = [72005];
   await seedBrowser(page, [title], favorites, [{ key: "72005:video", contents: "synthetic-reload-video" }]);
   await openFilmPlayer(page, title.name);
-  await waitForProfileViewCount(page, title.id, 1);
+  await waitForAccountViewCount(page, title.id, 1);
   await expect.poll(async () => (await readTitles(page))[0]).toMatchObject({
     currentTime: 42,
     progress: 42,
   });
-  const beforeResume = await readStorageSnapshot(page, true);
+  const beforeResume = await readStorageSnapshot(page);
 
   await setMediaState(page, { duration: 100, currentTime: 0, event: "loadedmetadata" });
 
   await expect.poll(() => page.locator("video.detail-video").evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(42);
-  expect(await readStorageSnapshot(page, true)).toEqual(beforeResume);
+  expect(await readStorageSnapshot(page)).toEqual(beforeResume);
 });
 
 test("6 — ferme et rouvre le contexte persistant temporaire en conservant la reprise", async ({}, testInfo) => {
@@ -303,10 +282,10 @@ test("6 — ferme et rouvre le contexte persistant temporaire en conservant la r
     const title = film(72006, "Fermeture propre", { videoAssetKey: "72006:video" });
     await seedBrowser(page, [title], [72006], [{ key: "72006:video", contents: "synthetic-context-video" }]);
     await openFilmPlayer(page, title.name);
-    await waitForProfileViewCount(page, title.id, 1);
+    await waitForAccountViewCount(page, title.id, 1);
     await setMediaState(page, { duration: 100, currentTime: 33, event: "timeupdate" });
     await expect.poll(async () => (await readTitles(page))[0]).toMatchObject({ currentTime: 33, progress: 33 });
-    const beforeClose = await readStorageSnapshot(page, true);
+    const beforeClose = await readStorageSnapshot(page);
     await context.close();
     context = undefined;
 
@@ -315,10 +294,10 @@ test("6 — ferme et rouvre le contexte persistant temporaire en conservant la r
     page = context.pages()[0] || await context.newPage();
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Ouvrir Fermeture propre" })).toBeVisible();
-    expect(await readStorageSnapshot(page, true)).toEqual(beforeClose);
+    expect(await readStorageSnapshot(page)).toEqual(beforeClose);
     await openFilmPlayer(page, "Fermeture propre");
     // Reopening the browser within the 30 s view-dedupe window counts as the same view.
-    await waitForProfileViewCount(page, title.id, 1);
+    await waitForAccountViewCount(page, title.id, 1);
     await expect.poll(async () => (await readTitles(page))[0]).toMatchObject({
       viewCount: 1,
       backdrop: "",
@@ -326,10 +305,10 @@ test("6 — ferme et rouvre le contexte persistant temporaire en conservant la r
       currentTime: 33,
       progress: 33,
     });
-    const beforeResume = await readStorageSnapshot(page, true);
+    const beforeResume = await readStorageSnapshot(page);
     await setMediaState(page, { duration: 100, currentTime: 0, event: "loadedmetadata" });
     await expect.poll(() => page.locator("video.detail-video").evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(33);
-    expect(await readStorageSnapshot(page, true)).toEqual(beforeResume);
+    expect(await readStorageSnapshot(page)).toEqual(beforeResume);
   } finally {
     await context?.close();
     await rm(profileDir, { recursive: true, force: true });
@@ -418,11 +397,11 @@ test("9 — sauvegarder un épisode ne modifie pas la progression de son voisin"
 test("10 — une erreur localStorage ne remplace pas les données persistées", async ({ page }) => {
   const title = film(72010, "Échec de sauvegarde", { videoAssetKey: "72010:video" });
   await seedBrowser(page, [title], [72010], [{ key: "72010:video", contents: "synthetic-storage-error-video" }]);
-  const before = await readStorageSnapshot(page, true);
+  const before = await readStorageSnapshot(page);
   await page.addInitScript(() => {
     const originalSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key: string, value: string) {
-      if (key === "cinebox-profiles") throw new DOMException("Synthetic localStorage failure", "QuotaExceededError");
+      if (key === "__cinebox_e2e_library") throw new DOMException("Synthetic localStorage failure", "QuotaExceededError");
       return originalSetItem.call(this, key, value);
     };
   });
@@ -431,8 +410,8 @@ test("10 — une erreur localStorage ne remplace pas les données persistées", 
   await setMediaState(page, { duration: 100, currentTime: 0 });
   await dispatchMediaEvent(page, "timeupdate", 10);
 
-  await expect(page.getByText(/Le stockage local est plein/)).toBeVisible();
-  expect(await readStorageSnapshot(page, true)).toEqual(before);
+  await expect(page.getByText(/Bibliothèque non synchronisée/)).toBeVisible();
+  expect(await readStorageSnapshot(page)).toEqual(before);
 });
 
 for (const [seconds, shouldResume] of [[3, false], [4, true], [97, false], [98, false]] as const) {

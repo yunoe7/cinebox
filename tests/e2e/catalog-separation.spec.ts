@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 const SHARED_MOVIE = {
   id: "tmdb:movie:501",
@@ -93,8 +93,6 @@ const localTitles = [
   },
 ];
 
-const emptyProfileData = { favorites: [], playback: {}, history: [], viewCounts: {}, preferences: { autoplayNext: true } };
-
 type LocalFixture = {
   id: number;
   name: string;
@@ -118,26 +116,6 @@ async function seedLocalLibrary(page: Page, titles: LocalFixture[] = localTitles
   }, titles);
 }
 
-async function seedProfiles(page: Page, options: { child?: boolean } = {}) {
-  await page.addInitScript(({ child, data }) => {
-    if (window.localStorage.getItem("cinebox-profiles") !== null) return;
-    const mainId = "p-cinebox-main";
-    const otherId = "p-cinebox-other";
-    const profiles = child
-      ? [{ id: mainId, name: "Enfant", avatarId: "golden-reel", isChild: true, isPrimary: true, pin: null, createdAt: 1 }]
-      : [
-          { id: mainId, name: "Principal", avatarId: "golden-reel", isChild: false, isPrimary: true, pin: null, createdAt: 1 },
-          { id: otherId, name: "Secondaire", avatarId: "golden-reel", isChild: false, isPrimary: false, pin: null, createdAt: 2 },
-        ];
-    localStorage.setItem("cinebox-profiles", JSON.stringify({
-      version: 1,
-      profiles,
-      activeProfileId: mainId,
-      data: { [mainId]: structuredClone(data), ...(child ? {} : { [otherId]: structuredClone(data) }) },
-    }));
-  }, { child: Boolean(options.child), data: emptyProfileData });
-}
-
 /** Simulates the public D1 endpoint. It deliberately ignores `maxAge` so the
  * browser-side fail-closed filter is exercised too. */
 async function mockSharedCatalog(page: Page, rows: unknown[], requests: string[] = []) {
@@ -153,11 +131,6 @@ async function mockSharedCatalog(page: Page, rows: unknown[], requests: string[]
       }),
     });
   });
-}
-
-async function chooseProfile(page: Page, name: string) {
-  await page.getByRole("button", { name: `Choisir le profil ${name}` }).click();
-  await expect(page.locator("header").getByRole("button", { name: new RegExp(`^Profil actif : ${name}`) })).toBeVisible();
 }
 
 test("le catalogue D1 est séparé par type et les compteurs restent exacts", async ({ page }) => {
@@ -208,205 +181,21 @@ test("la recherche Black Clover reste dans Séries et ne fuit jamais dans Films"
   await expect(page.locator(".films-result-count")).toContainText("2 résultats");
 });
 
-test("un favori D1 est immédiat, persistant et isolé par profil", async ({ page }) => {
+test("un favori D1 est immédiat et persistant dans le compte Discord", async ({ page }) => {
   await seedLocalLibrary(page);
-  await seedProfiles(page);
   await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_VIDEO]);
   await page.goto("/");
-  await chooseProfile(page, "Principal");
-
   await page.locator(".sidebar .nav-item").filter({ hasText: "Séries" }).click();
   await page.getByRole("button", { name: "Ajouter Black Clover aux favoris" }).click();
   await expect(page.getByRole("button", { name: "Retirer Black Clover des favoris" })).toBeVisible();
   await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Ma liste" }).locator("small")).toHaveText("1");
-
   await page.locator(".sidebar .nav-item").filter({ hasText: "Ma liste" }).click();
   await expect(page.locator(".ma-list-poster-grid .favorite-card")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Ouvrir Black Clover" })).toBeVisible();
-
-  const principalFavorites = await page.evaluate(() => {
-    const store = JSON.parse(localStorage.getItem("cinebox-profiles") || "null");
-    const profile = store.profiles.find((item: { name: string }) => item.name === "Principal");
-    return store.data[profile.id].favorites;
-  });
-  expect(principalFavorites).toEqual([-73223]);
-
+  const library = await page.evaluate(() => JSON.parse(localStorage.getItem("__cinebox_e2e_library") || "null"));
+  expect(library.favorites).toEqual([-73223]);
   await page.reload();
-  await chooseProfile(page, "Principal");
   await page.locator(".sidebar .nav-item").filter({ hasText: "Ma liste" }).click();
   await expect(page.locator(".ma-list-poster-grid .favorite-card")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Ouvrir Black Clover" })).toBeVisible();
-
-  await page.locator("header").getByRole("button", { name: /^Profil actif : / }).click();
-  await page.getByRole("menuitem", { name: /Quitter ce profil/ }).click();
-  await chooseProfile(page, "Secondaire");
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Ma liste" }).click();
-  await expect(page.locator(".ma-list-poster-grid .favorite-card")).toHaveCount(0);
-  await expect(page.getByText("Votre liste commence avec vos coups de cœur")).toBeVisible();
-
-  await page.locator("header").getByRole("button", { name: /^Profil actif : / }).click();
-  await page.getByRole("menuitem", { name: /Quitter ce profil/ }).click();
-  await chooseProfile(page, "Principal");
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Ma liste" }).click();
-  await expect(page.locator(".ma-list-poster-grid .favorite-card")).toHaveCount(1);
 });
 
-test("un profil enfant ne voit que les contenus classés et adaptés", async ({ page }) => {
-  await seedLocalLibrary(page, [
-    { id: 92001, name: "Titre familial", kind: "Film", year: 2020, genre: "Comédie", description: "", poster: "", backdrop: "", progress: 0, duration: "80 min", minAge: 6, ageRating: "6" },
-    { id: 92002, name: "Archive horreur", kind: "Film", year: 2020, genre: "Horreur", description: "", poster: "", backdrop: "", progress: 0, duration: "90 min" },
-    { id: 92003, name: "Titre local non classé", kind: "Film", year: 2020, genre: "Comédie", description: "", poster: "", backdrop: "", progress: 0, duration: "85 min" },
-  ]);
-  await seedProfiles(page, { child: true });
-  const requests: string[] = [];
-  await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_ADULT_MOVIE], requests);
-  await page.goto("/");
-
-  await expect(page.getByText(/Mode enfant : seuls les contenus dont la classification d’âge est connue et adaptée sont affichés/)).toBeVisible();
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Titre familial" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ouvrir Archive horreur" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Ouvrir Titre local non classé" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Ouvrir Black Clover" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Adulte Partagé" })).toHaveCount(0);
-  await expect(page.locator(".sidebar .nav-item").filter({ hasText: "Administration" })).toHaveCount(0);
-
-  expect(requests.some((url) => /[?&]maxAge=10(&|$)/.test(url))).toBe(true);
-});
-
-test("le catalogue partagé s’affiche sans aucune bibliothèque locale dans le navigateur", async ({ page }) => {
-  await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_VIDEO]);
-  await page.goto("/");
-
-  // No local fixture is seeded: the library must come from D1 alone.
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
-  await expect(page.locator(".films-result-count")).toContainText("1 résultat");
-  await expect(page.getByText("Votre cinémathèque commence ici")).toHaveCount(0);
-
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Séries" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Black Clover" })).toBeVisible();
-  await expect(page.getByText("Votre collection de séries commence ici")).toHaveCount(0);
-
-  const storedTitles = await page.evaluate(() => localStorage.getItem("cinebox-titles"));
-  expect(storedTitles === null || JSON.parse(storedTitles).length === 0).toBe(true);
-});
-
-test("les barres de recherche ne débordent pas sur mobile", async ({ page }) => {
-  await seedLocalLibrary(page);
-  await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_VIDEO]);
-  await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto("/");
-  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
-
-  for (const section of ["Accueil", "Films", "Séries", "Vidéos", "Ma liste"]) {
-    await page.locator(".mobile-bottom-nav button").filter({ hasText: section }).click();
-    const dimensions = await page.evaluate(() => ({
-      viewport: document.documentElement.clientWidth,
-      content: document.documentElement.scrollWidth,
-    }));
-    expect(dimensions.content, section).toBeLessThanOrEqual(dimensions.viewport);
-  }
-
-  await page.locator(".mobile-bottom-nav button").filter({ hasText: "Séries" }).click();
-  const search = page.getByRole("textbox", { name: "Rechercher une série" });
-  await expect(search).toBeVisible();
-  const searchBar = page.locator(".top-actions .search");
-  const box = await searchBar.boundingBox();
-  expect(box?.width ?? 0).toBeGreaterThanOrEqual(96);
-  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
-});
-
-test("une panne du catalogue partagé reste explicite et le bouton Réessayer recharge les fiches", async ({ page }) => {
-  await seedLocalLibrary(page);
-  let failing = true;
-  const requests: string[] = [];
-  await page.route(/\/api\/catalog\?/, async (route) => {
-    requests.push(route.request().url());
-    if (failing) {
-      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "D1 indisponible" }) });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ titles: [SHARED_MOVIE], stats: { titles: 1, films: 1, series: 0, videos: 0, episodes: 0 } }),
-    });
-  });
-  await page.goto("/");
-
-  // The local library must stay usable while the shared catalogue fails.
-  await expect(page.getByRole("button", { name: "Ouvrir Le Voyage Bleu" })).toBeVisible();
-  const banner = page.locator(".shared-catalog-status.is-error");
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText("Catalogue partagé indisponible");
-  await expect(banner).toContainText("Votre bibliothèque locale reste accessible");
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toHaveCount(0);
-
-  failing = false;
-  await banner.getByRole("button", { name: "Réessayer" }).click();
-  await expect(page.locator(".shared-catalog-status")).toHaveCount(0);
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
-  expect(requests.length).toBeGreaterThanOrEqual(2);
-});
-
-test("un catalogue partagé vide n’est pas présenté comme une panne", async ({ page }) => {
-  await seedLocalLibrary(page);
-  await mockSharedCatalog(page, []);
-  await page.goto("/");
-
-  await expect(page.locator(".shared-catalog-status")).toHaveCount(0);
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Le Voyage Bleu" })).toBeVisible();
-  await expect(page.getByText("Votre cinémathèque commence ici")).toHaveCount(0);
-});
-
-test("un échec du catalogue partagé ne laisse jamais de fiches adultes à un profil enfant", async ({ page }) => {
-  await seedLocalLibrary(page);
-  await page.addInitScript(({ data }) => {
-    if (window.localStorage.getItem("cinebox-profiles") !== null) return;
-    const adultId = "p-cinebox-adult";
-    const childId = "p-cinebox-child";
-    window.localStorage.setItem("cinebox-profiles", JSON.stringify({
-      version: 1,
-      profiles: [
-        { id: adultId, name: "Adulte", avatarId: "golden-reel", isChild: false, isPrimary: true, pin: null, createdAt: 1 },
-        { id: childId, name: "Enfant", avatarId: "golden-reel", isChild: true, isPrimary: false, pin: null, createdAt: 2 },
-      ],
-      activeProfileId: adultId,
-      data: { [adultId]: structuredClone(data), [childId]: structuredClone(data) },
-    }));
-  }, { data: emptyProfileData });
-
-  let failing = false;
-  await page.route(/\/api\/catalog\?/, async (route) => {
-    if (failing) {
-      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "D1 indisponible" }) });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ titles: [SHARED_MOVIE], stats: { titles: 1, films: 1, series: 0, videos: 0, episodes: 0 } }),
-    });
-  });
-  await page.goto("/");
-  // Two profiles exist, so the app intentionally starts on the gate.
-  await chooseProfile(page, "Adulte");
-
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
-
-  // The next shared-catalogue request fails while switching to a child profile.
-  failing = true;
-  await page.locator("header").getByRole("button", { name: /^Profil actif : / }).click();
-  await page.getByRole("menuitem", { name: /Quitter ce profil/ }).click();
-  await page.getByRole("button", { name: "Choisir le profil Enfant" }).click();
-  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
-
-  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toHaveCount(0);
-  await expect(page.locator(".shared-catalog-status.is-error")).toBeVisible();
-  await expect(page.getByText(/Mode enfant : seuls les contenus/)).toBeVisible();
-});

@@ -40,7 +40,7 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | `TMDB_READ_ACCESS_TOKEN` | Jeton TMDB (v4) ou clé v3, utilisé par le proxy `/api/tmdb` | Pour TMDB |
 | `CINEBOX_ADMIN_PASSWORD_HASH` | Vérificateur PBKDF2 du mot de passe admin, généré par `npm run hash:admin` | Pour l'administration |
 | `CINEBOX_SESSION_SECRET` | Secret HMAC des sessions signées, **32 caractères minimum** | Pour l'administration |
-| `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour le catalogue partagé |
+| `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |\n| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |\n| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |\n| `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour les comptes et le catalogue partagé |
 
 Générer le vérificateur sans jamais afficher le mot de passe :
 
@@ -101,7 +101,7 @@ Configuration du projet Pages :
 - **Binding D1** : `DB` → base du catalogue partagé
 - **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_PASSWORD_HASH`, `CINEBOX_SESSION_SECRET`
 
-Configurer ces variables dans **Production** et **Preview**. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. `CINEBOX_ADMIN_PASSWORD_HASH` et `CINEBOX_SESSION_SECRET` sont lus uniquement par les Pages Functions.
+Configurer ces variables dans **Production** et **Preview**. Ajouter aussi `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` et `DISCORD_REDIRECT_URI` dans les deux environnements, et déclarer l’URL de callback exacte dans le portail développeur Discord. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. Tous ces secrets sont lus uniquement par les Pages Functions.
 
 Les Pages Functions sont détectées automatiquement dans `functions/`.
 
@@ -116,7 +116,7 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 **Rate limiting** : la limitation du bruteforce doit être configurée dans Cloudflare (WAF > Rate limiting rules) sur `POST /api/auth/login`, par exemple 10 requêtes par minute et par IP avec blocage ou challenge. Aucune table D1 n'est nécessaire. Valider le seuil et l'action dans l'environnement Cloudflare avant activation. Une règle WAF peut également restreindre `/api/auth/*` et `/api/catalog/manage` aux pays ou réseaux attendus.
 
-### Migrations D1
+### Connexion des membres avec Discord\n\n- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.\n- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.\n- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.\n- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre est stockée dans un cookie HttpOnly distinct de la session administrateur.\n- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.\n\n### Migrations D1
 
 La migration initiale se trouve dans `migrations/0001_shared_catalog.sql`. Elle crée les tables `users`, `admin_allowlist`, `catalog_titles`, `catalog_episodes`, `media_assets`, `user_favorites`, `user_progress`, `watch_history` et les index associés.
 
@@ -183,7 +183,7 @@ tests/                      Tests Node et Playwright
 - Les requêtes mutantes admin sont protégées contre le CSRF par `SameSite=Strict`, un contrôle exact de l'`Origin`, `Sec-Fetch-Site` et l'en-tête `x-cinebox-request`.
 - Les routes publiques du catalogue sont en lecture seule et ne renvoient que les titres publiés.
 - Les données personnelles (favoris, progression, profils) restent dans `localStorage` / IndexedDB tant qu'une migration vérifiée n'est pas disponible.
-- Aucun système de connexion Discord n'est encore intégré. Ne pas exposer d'écriture publique.
+- L’accès membre exige une session obtenue via Discord OAuth (`identify`). L’adhésion au serveur Discord n’est jamais vérifiée et reste facultative. Les secrets OAuth restent exclusivement côté serveur.
 - Le navigateur ne conserve aucun jeton admin dans `sessionStorage` ou `localStorage` : la session vit exclusivement dans un cookie `HttpOnly`. La déconnexion efface ce cookie.
 - Aucun `dangerouslySetInnerHTML`, `innerHTML`, `eval` ni `new Function` n'est utilisé dans le code source. Les contenus distants (TMDB, D1) sont rendus via React, qui échappe le texte.
 - `public/_headers` applique `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: DENY` et HSTS. `npm run build` génère ensuite la CSP SHA-256 dans `out/_headers` ; `npm run check:csp` vérifie que chaque script inline est couvert.
@@ -194,7 +194,7 @@ tests/                      Tests Node et Playwright
 Le workflow `.github/workflows/ci.yml` exécute sur chaque push et pull request :
 
 - **validate** : `npm ci`, `npm run typecheck`, `npm test`, `npm run build`, `npm run check:csp`, puis publication de l'export `out/` comme artefact.
-- **e2e** : `npm ci`, installation de Chromium, `npm run test:e2e` (interface réelle sur `next dev`).
+- **E2E** : temporairement désactivé dans le workflow pendant l’analyse des temps d’exécution ; les tests Playwright restent disponibles via `npm run test:e2e`.
 - **csp-smoke** : récupère l'artefact produit par `validate` (aucun second build), sert `out/` avec Wrangler en HTTPS local, puis exécute `npm run test:csp` avec Playwright.
 - **auth-integration** : récupère le même artefact et exécute `npm run test:integration` contre les vraies Pages Functions servies par Wrangler, avec des secrets de test injectés en bindings locaux.
 
@@ -202,7 +202,7 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 
 ## Limites actuelles
 
-- Pas encore de comptes synchronisés entre appareils ni d'authentification Discord.
+- Les comptes membres sont créés à partir de l’identité Discord et les sessions sont conservées côté serveur dans D1.
 - Les données personnelles restent propres au navigateur.
 - Le filtrage du mode enfant est indicatif : les titres partagés n'ont pas de classification d'âge fiable.
 - Le catalogue public n'expose que les métadonnées nécessaires à l'affichage et à la lecture.

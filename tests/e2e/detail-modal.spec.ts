@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./fixtures";
 
 const ASSET_DB = "cinebox-assets";
 const ASSET_STORE = "files";
@@ -47,7 +47,6 @@ async function seed(page: Page, titles: FixtureTitle[], assets: FixtureAsset[] =
   await page.goto("/");
   await page.evaluate(async ({ titles, assets, dbName, storeName }) => {
     // The browser context is fresh and isolated by Playwright. Replace only its synthetic library.
-    localStorage.removeItem("cinebox-profiles");
     localStorage.setItem("cinebox-titles", JSON.stringify(titles));
     localStorage.setItem("cinebox-favorites", "[]");
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
