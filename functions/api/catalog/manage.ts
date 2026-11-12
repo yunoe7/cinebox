@@ -30,9 +30,10 @@ export async function onRequestPatch({request,env}:{request:Request;env:Env}){
  const vipExclusive=body.vip_exclusive===undefined?null:body.vip_exclusive===true?1:body.vip_exclusive===false?0:undefined;
  const vipEarlyAccess=body.vip_early_access===undefined?null:body.vip_early_access===true?1:body.vip_early_access===false?0:undefined;
  if(vipExclusive===undefined||vipEarlyAccess===undefined)return json({error:"Les réglages VIP doivent être des booléens."},400);
+ if(vipExclusive===1&&vipEarlyAccess===1)return json({error:"Un titre ne peut pas être exclusif et en avant-première simultanément."},400);
  const publicAt=body.public_at===undefined?undefined:body.public_at===null||body.public_at===""?null:typeof body.public_at==="string"&&Number.isFinite(Date.parse(body.public_at))?new Date(body.public_at).toISOString():undefined;
  if(publicAt===undefined&&body.public_at!==undefined)return json({error:"Date de publication publique invalide."},400);
- if(vipEarlyAccess===1&&!publicAt&&body.public_at!==undefined)return json({error:"Une date publique est nécessaire pour l'avant-première."},400);
+ if(vipEarlyAccess===1&&publicAt===null)return json({error:"Une date publique est nécessaire pour l'avant-première."},400);
  try{
   const current=await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(body.id).all<{id:string}>();
   if(!current.results.length)return json({error:"Titre introuvable."},404);
