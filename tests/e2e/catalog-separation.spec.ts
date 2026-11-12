@@ -275,6 +275,24 @@ test("un profil enfant ne voit que les contenus classés et adaptés", async ({ 
   expect(requests.some((url) => /[?&]maxAge=10(&|$)/.test(url))).toBe(true);
 });
 
+test("le catalogue partagé s’affiche sans aucune bibliothèque locale dans le navigateur", async ({ page }) => {
+  await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_VIDEO]);
+  await page.goto("/");
+
+  // No local fixture is seeded: the library must come from D1 alone.
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Films" }).click();
+  await expect(page.getByRole("button", { name: "Ouvrir Le Film Partagé" })).toBeVisible();
+  await expect(page.locator(".films-result-count")).toContainText("1 résultat");
+  await expect(page.getByText("Votre cinémathèque commence ici")).toHaveCount(0);
+
+  await page.locator(".sidebar .nav-item").filter({ hasText: "Séries" }).click();
+  await expect(page.getByRole("button", { name: "Ouvrir Black Clover" })).toBeVisible();
+  await expect(page.getByText("Votre collection de séries commence ici")).toHaveCount(0);
+
+  const storedTitles = await page.evaluate(() => localStorage.getItem("cinebox-titles"));
+  expect(storedTitles === null || JSON.parse(storedTitles).length === 0).toBe(true);
+});
+
 test("les barres de recherche ne débordent pas sur mobile", async ({ page }) => {
   await seedLocalLibrary(page);
   await mockSharedCatalog(page, [SHARED_MOVIE, SHARED_BLACK_CLOVER, SHARED_VIDEO]);

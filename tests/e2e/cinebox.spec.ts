@@ -255,57 +255,48 @@ test("un nouvel affichage redémarre proprement le délai automatique", async ({
   await expect(firstToast).toBeHidden();
 });
 
-test("l’administration sépare le catalogue D1 de la bibliothèque locale sur les trois pages", async ({ page }) => {
+test("l’administration présente le catalogue D1 et la bibliothèque locale sans les mélanger", async ({ page }) => {
   await page.goto("/");
   await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
   const nav = page.locator(".admin-section-nav");
-  const localGrid = page.locator(".admin-content-grid");
 
+  // The former local settings tab is gone: administration is D1-first.
+  await expect(nav.getByRole("button")).toHaveText(["Vue d’ensemble", "Films", "Séries", "Vidéos", "Médias"]);
+  await expect(nav.getByRole("button", { name: "Paramètres" })).toHaveCount(0);
+
+  await expect(page.getByRole("heading", { name: /Tableau de bord/ })).toBeVisible();
+  await expect(page.locator(".admin-overview .admin-source-badge")).toContainText("D1");
+  await expect(page.locator(".admin-stats")).toContainText("catalogue partagé D1");
+
+  // Local titles are listed apart, never merged into the D1 counters or grids.
+  const legacyRows = page.locator(".admin-legacy-row");
+  await expect(legacyRows).toHaveCount(3);
+  await expect(legacyRows.locator(".admin-legacy-copy strong")).toHaveText([
+    "Les routes du silence",
+    "Signal Rouge",
+    "Le Voyage Bleu",
+  ]);
+  await expect(page.getByRole("button", { name: "Exporter la bibliothèque locale" })).toBeVisible();
+
+  // Each type tab is a D1 manager and no longer renders a local poster grid.
   await nav.getByRole("button", { name: "Films" }).click();
-  await expect(page.locator(".admin-source-card.is-d1 strong")).toHaveText("Catalogue partagé · D1");
-  await expect(page.locator(".admin-source-card.is-local strong")).toHaveText("Bibliothèque locale · cet appareil");
-  await expect(page.getByRole("heading", { name: /Fiches films/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Gérer les films/ })).toBeVisible();
   await expect(page.getByText("Connexion administrateur requise")).toBeVisible();
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
-  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Le Voyage Bleu"]);
-
-  await page.getByRole("combobox", { name: "Filtrer les films administrés par genre" }).selectOption("Aventure");
-  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Le Voyage Bleu"]);
-  await page.getByRole("combobox", { name: "Filtrer les films administrés par année" }).selectOption("2024");
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
-  await page.locator(".admin-filter-reset").click();
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await expect(page.locator(".admin-content-grid")).toHaveCount(0);
 
   await nav.getByRole("button", { name: "Séries" }).click();
-  await expect(page.getByRole("heading", { name: /Fiches séries/ })).toBeVisible();
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
-  await expect(localGrid.locator(".admin-card-details")).toContainText("1 saison · 1 ép.");
-  await expect(localGrid.locator(".admin-card-details")).toContainText("0/1 vidéos");
-  await page.getByRole("combobox", { name: "Filtrer les séries administrés par genre" }).selectOption("Thriller");
-  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Signal Rouge"]);
-  await page.getByRole("combobox", { name: "Trier les contenus administrés" }).selectOption("episodes-desc");
-  await page.getByRole("button", { name: "Actions pour Signal Rouge" }).click();
-  await page.getByRole("button", { name: "Saisons & épisodes" }).click();
-  const seriesDetails = page.getByRole("dialog");
-  await expect(seriesDetails.locator("#detail-modal-title")).toHaveText("Signal Rouge");
-  await seriesDetails.getByRole("button", { name: "Fermer les détails" }).click();
+  await expect(page.getByRole("heading", { name: /Gérer les séries/ })).toBeVisible();
+  await expect(page.getByText("Connexion administrateur requise")).toBeVisible();
 
   await nav.getByRole("button", { name: "Vidéos" }).click();
-  await expect(page.getByRole("heading", { name: /Fiches vidéos/ })).toBeVisible();
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
-  await expect(localGrid.locator(".admin-card-details")).toContainText("18 min");
-  await page.getByRole("combobox", { name: "Filtrer les vidéos administrés par catégorie" }).selectOption("Voyage");
-  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Les routes du silence"]);
-  await page.getByRole("combobox", { name: "Filtrer les vidéos administrées par durée" }).selectOption("10-30");
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
-  await page.getByRole("combobox", { name: "Trier les contenus administrés" }).selectOption("duration-desc");
-  await expect(localGrid.locator(".poster-open > strong")).toHaveText(["Les routes du silence"]);
+  await expect(page.getByRole("heading", { name: /Gérer les vidéos/ })).toBeVisible();
+  await expect(page.getByText("Connexion administrateur requise")).toBeVisible();
 
-  await page.getByRole("textbox", { name: "Rechercher dans la bibliothèque" }).fill("contenu absent");
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(0);
-  await expect(page.getByText("Aucun contenu ne correspond")).toBeVisible();
-  await page.locator(".admin-empty-panel").getByRole("button", { name: "Effacer la recherche" }).click();
-  await expect(localGrid.locator(".admin-content-card")).toHaveCount(1);
+  await nav.getByRole("button", { name: "Médias" }).click();
+  await expect(page.getByRole("heading", { name: /Médias du catalogue/ })).toBeVisible();
+  await expect(page.getByText("Connexion administrateur requise")).toBeVisible();
+  await expect(page.locator(".admin-content-grid")).toHaveCount(0);
+  await expect(page.locator(".admin-shared-media-grid")).toHaveCount(0);
 });
 
 test("la connexion administrateur utilise un cookie HttpOnly puis se déconnecte", async ({ page }) => {

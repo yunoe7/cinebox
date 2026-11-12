@@ -375,9 +375,9 @@ test("la confirmation de suppression ne se ferme pas au clic sur le fond et gard
   await seed(page, [film]);
 
   await page.locator(".sidebar .nav-item").filter({ hasText: "Administration" }).click();
-  await page.locator(".admin-section-nav").getByRole("button", { name: "Films" }).click();
-  await page.getByRole("button", { name: `Actions pour ${film.name}` }).click();
-  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  const legacyRow = page.locator(".admin-legacy-row").filter({ hasText: film.name });
+  const deleteTrigger = legacyRow.getByRole("button", { name: "Supprimer" });
+  await deleteTrigger.click();
 
   const alert = page.getByRole("alertdialog");
   await expect(alert).toBeVisible();
@@ -386,20 +386,17 @@ test("la confirmation de suppression ne se ferme pas au clic sur le fond et gard
 
   await page.locator(".modal-backdrop.app-confirm-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(alert).toBeVisible();
-  await expect(page.getByRole("button", { name: `Ouvrir ${film.name}` })).toBeVisible();
+  await expect(legacyRow).toHaveCount(1);
 
   await page.keyboard.press("Escape");
   await expect(alert).toHaveCount(0);
-  // The menu item that opened the dialog is gone; focus must return to the
-  // stable card-menu trigger, not to body.
-  const cardTrigger = page.getByRole("button", { name: `Actions pour ${film.name}` });
-  await expect(cardTrigger).toBeFocused();
+  // Focus must return to the stable legacy-row trigger, not to body.
+  await expect(deleteTrigger).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
 
-  await cardTrigger.click();
-  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  await deleteTrigger.click();
   await expect(alert).toBeVisible();
   await alert.getByRole("button", { name: "Annuler" }).click();
   await expect(alert).toHaveCount(0);
-  await expect(cardTrigger).toBeFocused();
+  await expect(deleteTrigger).toBeFocused();
 });

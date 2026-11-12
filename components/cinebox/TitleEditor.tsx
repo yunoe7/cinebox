@@ -136,7 +136,7 @@ export default function TitleEditor({ addKind, setAddKind, editingTitle, existin
             <button className="gold-btn full" type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? "Enregistrement…" : (editingTitle ? "Enregistrer les modifications" : "Ajouter à ma collection")} <ChevronRight size={16}/></button>
           </BlurFade>
         </form>
-        <p className="local-note">Les titres, affiches et vidéos sont conservés dans le stockage de ce navigateur. Ils ne sont pas encore synchronisés entre appareils.</p>
+        <p className="local-note">Cette fiche et ses fichiers restent dans le stockage de ce navigateur. La publication vers le catalogue central D1 ne concerne que les métadonnées ; les médias locaux ne sont jamais envoyés. Utilisez l’export depuis l’administration pour les sauvegarder.</p>
       </motion.div>
     </motion.div>
   );
