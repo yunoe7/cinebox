@@ -25,6 +25,25 @@ CREATE TABLE IF NOT EXISTS auth_identities (
   UNIQUE(user_id, provider)
 );
 
+-- Preserve existing Discord associations when moving to the identity model.
+-- The deterministic ID makes the backfill reproducible and traceable.
+INSERT INTO auth_identities (
+  id,
+  user_id,
+  provider,
+  provider_user_id,
+  provider_username
+)
+SELECT
+  'legacy-discord-' || discord_user_id,
+  id,
+  'discord',
+  discord_user_id,
+  display_name
+FROM users
+WHERE discord_user_id IS NOT NULL
+  AND trim(discord_user_id) <> '';
+
 CREATE INDEX IF NOT EXISTS idx_auth_identities_user
   ON auth_identities(user_id);
 
