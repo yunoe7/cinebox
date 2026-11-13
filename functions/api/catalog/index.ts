@@ -1,5 +1,6 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
 import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { buildPlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
 
 interface D1Result<T> { results: T[]; success: boolean; }
 interface D1Statement {
@@ -78,16 +79,14 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     // Playback sources are part of the public catalogue response: without them,
     // an admin can associate a Uqload file but viewers never receive its URL.
     const sourceResult = pageRows.length ? await env.DB.prepare(
-      `SELECT title_id,episode_id,file_code,playback_url FROM catalog_media_sources
-       WHERE provider='uqload' AND title_id IN (${pageRows.map(() => "?").join(",")})`,
-    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; file_code: string; playback_url: string }>() : { results: [], success: true };
+      `SELECT title_id,episode_id,provider,file_code,playback_url FROM catalog_media_sources
+       WHERE title_id IN (${pageRows.map(() => "?").join(",")})`,
+    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; provider: string; file_code: string; playback_url: string }>() : { results: [], success: true };
     if (!sourceResult.success) throw new Error("D1 media source query failed");
     const sourceByTitle = new Map<string, string>();
     const sourceByEpisode = new Map<string, string>();
     for (const source of sourceResult.results) {
-      const playbackUrl = source.file_code && /^[A-Za-z0-9]{6,64}$/.test(source.file_code)
-        ? `https://uqload.vc/embed-${source.file_code}.html`
-        : source.playback_url;
+      const playbackUrl = buildPlaybackUrl(source.file_code, source.provider) || source.playback_url;
       if (!playbackUrl) continue;
       if (source.episode_id) sourceByEpisode.set(source.episode_id, playbackUrl);
       else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, playbackUrl);
