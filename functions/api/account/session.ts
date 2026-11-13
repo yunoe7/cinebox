@@ -1,4 +1,5 @@
 import { json, getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { isAdminAccount } from "../../_lib/admin-auth.ts";
 
 export async function onRequestGet({ request, env }: { request: Request; env: AccountEnv }) {
   try {
@@ -30,6 +31,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
         id: user.id,
         displayName: user.display_name,
         role: user.role,
+        isAdmin: await isAdminAccount(env, user.id),
         vip: vip ? { active: true, expiresAt: vip.expires_at } : { active: false, expiresAt: null },
         discord: identity ? {
           userId: identity.provider_user_id,
