@@ -47,6 +47,23 @@ export async function onRequestDelete({request,env}:{request:Request;env:Env}){
  if(!env.DB)return json({error:"Base de données indisponible."},503);
  let body:any;try{body=await request.json()}catch{return json({error:"JSON invalide."},400)}
  if(typeof body?.id!=="string"||!body.id.trim())return json({error:"Identifiant manquant."},400);
- try{const result=await env.DB.prepare("UPDATE catalog_titles SET published=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(body.id).run();if(!result.success)return json({error:"Retrait du catalogue impossible."},503);return json({unpublished:true,id:body.id});}
- catch{return json({error:"Retrait du catalogue impossible."},503);}
+ try{
+  if(body.permanent===true){
+   const exists=await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(body.id).all<{id:string}>();
+   if(!exists.success)return json({error:"Impossible de vérifier le titre."},503);
+   if(!exists.results.length)return json({error:"Titre introuvable."},404);
+   // Explicit child-first deletion also works when a D1 connection does not
+   // have SQLite foreign-key cascades enabled for the request.
+   for(const table of ["catalog_media_sources","media_assets","user_favorites","user_progress","watch_history","catalog_episodes"]){
+    const result=await env.DB.prepare(`DELETE FROM ${table} WHERE ${table==="catalog_episodes"?"title_id":"title_id"}=?`).bind(body.id).run();
+    if(!result.success)throw new Error("child delete failed");
+   }
+   const deleted=await env.DB.prepare("DELETE FROM catalog_titles WHERE id=?").bind(body.id).run();
+   if(!deleted.success)return json({error:"Suppression définitive impossible."},503);
+   return json({deleted:true,id:body.id});
+  }
+  const result=await env.DB.prepare("UPDATE catalog_titles SET published=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(body.id).run();
+  if(!result.success)return json({error:"Retrait du catalogue impossible."},503);
+  return json({unpublished:true,id:body.id});
+ }catch{return json({error:"Suppression ou retrait impossible. Vérifie les tables de la base D1."},503);}
 }
