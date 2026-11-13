@@ -1168,9 +1168,17 @@ export default function HomePage() {
               </section>
             </BlurFade>)}
           </>}
-          {activePage === "Administration" && <nav className="admin-section-nav" aria-label="Sections d’administration">
-            {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}><Icon size={16}/><span>{label}</span></button>)}
-          </nav>}
+          {activePage === "Administration" && <div className="admin-workspace">
+            <header className="admin-workspace-header">
+              <div className="admin-workspace-brand"><span className="admin-workspace-mark"><ShieldCheck size={19}/></span><div><div className="eyebrow">CINEBOX · ESPACE PRIVÉ</div><h1>Centre de contrôle</h1><p>Tout ton catalogue, tes médias et tes outils au même endroit.</p></div></div>
+              <div className="admin-workspace-live"><span/> Administration sécurisée <b>·</b> Cloudflare D1</div>
+            </header>
+            <nav className="admin-section-nav" aria-label="Sections d’administration">
+              {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}>
+                <span className="admin-nav-icon"><Icon size={17}/></span><span className="admin-nav-copy"><strong>{label}</strong><small>{id === "overview" ? "Activité & statistiques" : id === "films" ? "Bibliothèque cinéma" : id === "series" ? "Saisons & épisodes" : id === "videos" ? "Contenus vidéo" : "Images & hébergeurs"}</small></span><ChevronRight size={14} className="admin-nav-arrow"/>
+              </button>)}
+            </nav>
+          </div>}
 
           {activePage === "Administration" && adminSection === "overview" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-overview-wrap">
             <section className="admin-overview" aria-labelledby="admin-dashboard-title">
