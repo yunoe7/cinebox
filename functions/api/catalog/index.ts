@@ -82,7 +82,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
       `SELECT title_id,episode_id,provider,file_code,playback_url,encoding_status FROM catalog_media_sources
        WHERE title_id IN (${pageRows.map(() => "?").join(",")})
        ORDER BY CASE LOWER(COALESCE(encoding_status,'')) WHEN 'ready' THEN 0 WHEN 'processing' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END,
-                updated_at ASC, id ASC`,
+                updated_at DESC, id DESC`,
     ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; provider: string; file_code: string; playback_url: string | null; encoding_status: string | null }>() : { results: [], success: true };
     if (!sourceResult.success) throw new Error("D1 media source query failed");
     const sourceByTitle = new Map<string, string>();
@@ -96,7 +96,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
       // uqload.vc here, without mutating the database.
       const playbackUrl = normalizePlaybackUrl(source.playback_url) || buildPlaybackUrl(source.file_code, source.provider);
       if (!playbackUrl) continue;
-      // The query orders ready sources first, so the first entry wins.
+      // The query orders playable sources first, then most recently associated/updated, so adding a new provider switches playback to that source.
       if (source.episode_id) { if (!sourceByEpisode.has(source.episode_id)) sourceByEpisode.set(source.episode_id, playbackUrl); }
       else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, playbackUrl);
     }
