@@ -25,8 +25,8 @@ export function UqloadManager() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true); setMessage(""); setError(false);
+  const refresh = useCallback(async (preserveMessage = false) => {
+    setLoading(true); if (!preserveMessage) { setMessage(""); setError(false); }
     try {
       const data = await adminJson("/api/uqload", { cache: "no-store" }) as { configured: boolean; targets: Target[]; sources: Source[]; files: RemoteFile[] };
       setTargets(data.targets || []); setSources(data.sources || []); setRemoteFiles(data.files || []);
@@ -46,7 +46,7 @@ export function UqloadManager() {
       if (running || cancelled) return;
       running = true;
       try {
-        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number };
+        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number; existing?: number };
         if (!cancelled && Number(result.created) > 0) {
           setMessage(`Synchronisation Uqload : ${result.created} nouveau(x) contenu(s) créé(s) en privé.`);
           setError(false);
@@ -57,7 +57,7 @@ export function UqloadManager() {
           setError(true);
         }
       } finally {
-        if (!cancelled) await refresh();
+        if (!cancelled) await refresh(true);
         running = false;
       }
     };
