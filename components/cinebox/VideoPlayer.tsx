@@ -35,14 +35,14 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
     onProgress(second, progress);
   };
 
-  const isUqloadEmbed = /^https?:\/\/(?:www\.)?uqload\.(?:to|vc|com|is|co)\/embed-/i.test(src);
+  const isHostedEmbed = /^https?:\/\/(?:www\.)?(?:uqload\.(?:to|vc|com|is|co)|vidmoly\.(?:to|net|me))\/(?:embed-)?[A-Za-z0-9]{6,64}(?:\.html)?\/?$/i.test(src);
 
-  if (isUqloadEmbed) {
+  if (isHostedEmbed) {
     return <div className="detail-video-embed">
       <iframe
         className="detail-video"
         src={src}
-        title="Lecteur vidéo Uqload"
+        title="Lecteur vidéo hébergé"
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
         referrerPolicy="no-referrer"
@@ -50,7 +50,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
       <div className="uqload-playback-fallback" role="note">
         <strong>Le lecteur intégré peut être bloqué par Uqload ou par votre navigateur.</strong>
         <span>La vidéo reste disponible directement chez l'hébergeur. Ouvrez-la dans un nouvel onglet pour la regarder.</span>
-        <a href={src} target="_blank" rel="noopener noreferrer">Ouvrir la vidéo sur Uqload <span aria-hidden="true">↗</span></a>
+        <a href={src} target="_blank" rel="noopener noreferrer">Ouvrir la vidéo chez l’hébergeur <span aria-hidden="true">↗</span></a>
       </div>
     </div>;
   }
