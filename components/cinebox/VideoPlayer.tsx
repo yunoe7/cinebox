@@ -45,8 +45,13 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
         title="Lecteur vidéo Uqload"
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
+        referrerPolicy="no-referrer"
       />
-      <a href={src} target="_blank" rel="noopener noreferrer">Si le lecteur est bloqué, ouvrir la vidéo directement sur Uqload</a>
+      <div className="uqload-playback-fallback" role="note">
+        <strong>Le lecteur intégré peut être bloqué par Uqload ou par votre navigateur.</strong>
+        <span>La vidéo reste disponible directement chez l'hébergeur. Ouvrez-la dans un nouvel onglet pour la regarder.</span>
+        <a href={src} target="_blank" rel="noopener noreferrer">Ouvrir la vidéo sur Uqload <span aria-hidden="true">↗</span></a>
+      </div>
     </div>;
   }
 
