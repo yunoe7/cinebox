@@ -167,11 +167,13 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   let deleted = 0;
   // Reconcile only after reading the complete remote inventory.
   if (inventoryComplete) {
-    const liveCodes = [...new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)))];
-    const result = liveCodes.length
-      ? await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code NOT IN (" + liveCodes.map(() => "?").join(",") + ")").bind(...liveCodes).run()
-      : await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload'").run();
-    deleted = Number(result.meta?.changes || 0);
+    const liveCodes = new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)));
+    const stored = await db.prepare("SELECT file_code FROM catalog_media_sources WHERE provider='uqload'").all<{file_code:string}>();
+    for (const source of stored.results || []) {
+      if (liveCodes.has(source.file_code)) continue;
+      const result = await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(source.file_code).run();
+      deleted += Number(result.meta?.changes || 0);
+    }
   }
   let created = 0, existing = 0, skipped = 0;
   const details: Array<{file:string;status:string;reason?:string}> = [];
