@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { onRequestPost as login } from "../../functions/api/auth/login.ts";
 import { onRequestPost as logout } from "../../functions/api/auth/logout.ts";
 import { onRequestGet as session } from "../../functions/api/auth/session.ts";
+import { onRequestGet as discordCallback } from "../../functions/api/auth/discord/callback.ts";
 
 const LOGIN_URL = "https://cinebox.test/api/auth/login";
 const LOGOUT_URL = "https://cinebox.test/api/auth/logout";
@@ -73,4 +74,35 @@ test("legacy logout endpoint remains harmless for cross-origin requests", async 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { authenticated: false });
   assert.equal(response.headers.get("set-cookie"), null);
+});
+
+
+test("Discord OAuth callback clears temporary cookies when the state is invalid", async () => {
+  const response = await discordCallback({
+    request: new Request("https://cinebox.test/api/auth/discord/callback?code=test-code&state=wrong-state", {
+      headers: { cookie: "cinebox_discord_state=expected-state; cinebox_discord_mode=admin" },
+    }),
+    env: {},
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("location"), /erreur=discord-state/);
+  const cookies = response.headers.get("set-cookie") || "";
+  assert.match(cookies, /cinebox_discord_state=/);
+  assert.match(cookies, /cinebox_discord_mode=/);
+  assert.match(cookies, /Max-Age=0/);
+});
+
+test("Discord OAuth callback clears temporary cookies when server OAuth config is missing", async () => {
+  const response = await discordCallback({
+    request: new Request("https://cinebox.test/api/auth/discord/callback?code=test-code&state=expected-state", {
+      headers: { cookie: "cinebox_discord_state=expected-state; cinebox_discord_mode=admin" },
+    }),
+    env: {},
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("location"), /erreur=discord-config/);
+  const cookies = response.headers.get("set-cookie") || "";
+  assert.match(cookies, /cinebox_discord_state=/);
+  assert.match(cookies, /cinebox_discord_mode=/);
+  assert.match(cookies, /Max-Age=0/);
 });
