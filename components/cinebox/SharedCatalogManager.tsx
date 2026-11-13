@@ -351,7 +351,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
         authState={authState}
         onLogin={login}
         onLogout={() => void logout()}
-        description={isMediaMode ? "L’inventaire des médias D1 est protégé côté serveur. Saisis le mot de passe administrateur pour le charger." : "Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1."}
+        description={isMediaMode ? "L’inventaire des médias D1 est protégé côté serveur. Connecte-toi avec ton compte Discord administrateur pour le charger." : "Le catalogue partagé est protégé côté serveur. Connecte-toi avec ton compte Discord administrateur pour charger et gérer les fiches D1."}
         status={
           isMediaMode
             ? <>{mediaEntries.length} média{mediaEntries.length === 1 ? "" : "s"} · {items.length} fiche{items.length === 1 ? "" : "s"}</>
