@@ -35,6 +35,19 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
     onProgress(second, progress);
   };
 
+  const isUqloadEmbed = /^https?:\\/\\/(?:www\\.)?uqload\\.(?:to|vc|com|is|co)\\/embed-/i.test(src);
+
+  if (isUqloadEmbed) {
+    return <iframe
+      className="detail-video"
+      src={src}
+      title="Lecteur vidéo Uqload"
+      allow="autoplay; fullscreen; picture-in-picture"
+      allowFullScreen
+      referrerPolicy="no-referrer"
+    />;
+  }
+
   return (
     <video
       className="detail-video"
