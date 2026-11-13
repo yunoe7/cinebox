@@ -1,4 +1,5 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { buildPlaybackUrl, encodingStatusFromCanplay } from "../../../lib/cinebox/media-sources.mjs";
 
 interface Statement {
   bind(...values: (string | number | null)[]): Statement;
@@ -16,6 +17,9 @@ const UQLOAD_API = "https://uqload.vc/api";
 const TMDB_API = "https://api.themoviedb.org/3";
 const MAX_FILES_PER_SYNC = 100;
 const MAX_SYNC_PAGES = 20;
+// Reconciliation is destructive by nature: never remove more than this many
+// rows in one run without a human confirming the remote account state.
+const MAX_SYNC_DELETIONS = 100;
 
 function isObj(v: unknown): v is Obj { return !!v && typeof v === "object" && !Array.isArray(v); }
 function clean(v: unknown, max = 300): string { return typeof v === "string" ? v.trim().slice(0, max) : ""; }
@@ -81,7 +85,17 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
   const filename = clean(file.file_title || file.title || file.name, 300);
   if (!/^[A-Za-z0-9]{6,64}$/.test(fileCode) || !filename) return {status:"skipped",reason:"Le fichier Uqload ne contient pas de code ou de nom exploitable."};
   const already = await db.prepare("SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(fileCode).all<{id:string}>();
-  if (already.results?.length) return {status:"existing"};
+  const encodingStatus = encodingStatusFromCanplay(file.canplay);
+  const quality = clean(file.file_quality ?? file.quality, 40) || null;
+  const uploadedAt = clean(file.uploaded || file.uploaded_at || file.created, 40) || null;
+  if (already.results?.length) {
+    // The file is already associated: refresh its real state instead of
+    // returning early, otherwise a file stuck in "processing" would never
+    // become playable after Uqload finishes encoding it.
+    await db.prepare("UPDATE catalog_media_sources SET encoding_status=?, quality=COALESCE(?, quality), uploaded_at=COALESCE(?, uploaded_at), updated_at=CURRENT_TIMESTAMP WHERE provider='uqload' AND file_code=?")
+      .bind(encodingStatus, quality, uploadedAt, fileCode).run();
+    return {status:"existing"};
+  }
   const parsed = parseFilename(filename);
   if (!parsed) return {status:"skipped",reason:`Nom non reconnu : ${filename}`};
 
@@ -130,11 +144,11 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
         clean(remoteEpisode?.overview, 8000), Number.isFinite(Number(remoteEpisode?.runtime)) ? Number(remoteEpisode?.runtime) * 60 : null,
         clean(remoteEpisode?.still_path, 180) || null, JSON.stringify({ tmdbId: remoteEpisode?.id ?? null, airDate: clean(remoteEpisode?.air_date, 20) })).run();
   }
-  const playbackUrl = `https://uqload.vc/embed-${fileCode}.html`;
+  const playbackUrl = buildPlaybackUrl(fileCode, "uqload");
   await db.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
-    .bind(crypto.randomUUID(), id, episodeId, "uqload", fileCode, fileCode, playbackUrl, clean(file.file_quality, 40) || null, "ready",
-      clean(file.uploaded_at || file.created, 40) || null).run();
+    .bind(crypto.randomUUID(), id, episodeId, "uqload", fileCode, fileCode, playbackUrl, quality, encodingStatus,
+      uploadedAt).run();
   return {status:"created"};
 }
 
@@ -165,14 +179,27 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     page++;
   }
   let deleted = 0;
-  // Reconcile only after reading the complete remote inventory.
-  if (inventoryComplete) {
-    const liveCodes = new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)));
+  let deletionSkipped: string | null = null;
+  // Reconcile only after reading the complete remote inventory. An empty or
+  // suspicious inventory is never trusted: an account/key mismatch or an API
+  // change must not wipe the catalogue's media sources.
+  const liveCodes = new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)));
+  if (!inventoryComplete) {
+    deletionSkipped = "Inventaire distant incomplet : aucune suppression effectuée.";
+  } else if (files.length === 0) {
+    deletionSkipped = "Inventaire distant vide : aucune suppression effectuée.";
+  } else if (liveCodes.size === 0) {
+    deletionSkipped = "Inventaire distant sans fichier exploitable : aucune suppression effectuée.";
+  } else {
     const stored = await db.prepare("SELECT file_code FROM catalog_media_sources WHERE provider='uqload'").all<{file_code:string}>();
-    for (const source of stored.results || []) {
-      if (liveCodes.has(source.file_code)) continue;
-      const result = await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(source.file_code).run();
-      deleted += Number(result.meta?.changes || 0);
+    const stale = (stored.results || []).filter(source => !liveCodes.has(source.file_code));
+    if (stale.length > MAX_SYNC_DELETIONS) {
+      deletionSkipped = `${stale.length} sources absentes du compte dépassent le plafond de ${MAX_SYNC_DELETIONS} : vérifie le compte Uqload avant de relancer.`;
+    } else {
+      for (const source of stale) {
+        const result = await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(source.file_code).run();
+        deleted += Number(result.meta?.changes || 0);
+      }
     }
   }
   let created = 0, existing = 0, skipped = 0;
@@ -189,5 +216,5 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
       details.push({file:filename,status:"erreur",reason:error instanceof Error ? error.message : "Erreur inconnue"});
     }
   }
-  return json({ synced: true, scanned: files.length, created, existing, skipped, deleted, inventoryComplete, details, publishedAutomatically: false });
+  return json({ synced: true, scanned: files.length, created, existing, skipped, deleted, inventoryComplete, deletionSkipped, details, publishedAutomatically: false });
 }

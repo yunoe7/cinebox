@@ -65,9 +65,16 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     .filter(ep => ep.videoUrl || (selected.tmdbId && selected.kind === "Série"))
     .map(ep => ({ season: season.number, episode: ep.number, url: ep.videoUrl || "" }))) || [];
   const chosen = selectedEpisode ? episodes.find(ep => ep.season === selectedEpisode.season && ep.episode === selectedEpisode.episode) : undefined;
+  const firstEpisode = episodes[0];
+  const firstPlayableEpisode = episodes.find(ep => ep.url);
+  // A selected episode must never fall back to the title-level URL: that URL
+  // belongs to the whole series and would play the wrong video. For a series
+  // without a selected episode, the first available episode is used instead.
   const playbackUrl = selectedEpisode
     ? selectedEpisodeUrl || chosen?.url || null
-    : selectedEpisodeUrl || selected.videoUrl || episodes[0]?.url || null;
+    : selected.kind === "Série"
+      ? selectedEpisodeUrl || firstPlayableEpisode?.url || (episodes.length ? null : selected.videoUrl) || null
+      : selectedEpisodeUrl || selected.videoUrl || firstEpisode?.url || null;
   const canUseVidsrc = Boolean(selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"));
   const playbackProgress = selectedEpisode
     ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.progress ?? 0
@@ -77,7 +84,9 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
       ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
       : selected.currentTime ?? 0)
     : 0;
-  const canPlay = Boolean(selected.videoUrl || episodes.length || canUseVidsrc);
+  const canPlay = canUseVidsrc || Boolean(selectedEpisode
+    ? selectedEpisodeUrl || chosen?.url
+    : playbackUrl);
   const resumableEpisode = selected.seasons?.flatMap(season => season.episodes
     .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
     .map(episode => ({ season: season.number, episode })))
@@ -96,8 +105,9 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     if (!playbackUrl && !canUseVidsrc) return;
     if (resume && resumableEpisode) {
       onSelectEpisode(resumableEpisode.season, resumableEpisode.episode.number, resumableEpisode.episode.videoUrl || "");
-    } else if (!selected.videoUrl && !selectedEpisode && episodes[0]) {
-      onSelectEpisode(episodes[0].season, episodes[0].episode, episodes[0].url);
+    } else if (selected.kind === "Série" && !selectedEpisode && firstEpisode) {
+      const target = firstPlayableEpisode || firstEpisode;
+      onSelectEpisode(target.season, target.episode, target.url);
     }
     setPlaying(true); onView(selected.id);
   };

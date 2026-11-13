@@ -1,6 +1,6 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
 import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
-import { buildPlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
+import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
 
 interface D1Result<T> { results: T[]; success: boolean; }
 interface D1Statement {
@@ -79,16 +79,25 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     // Playback sources are part of the public catalogue response: without them,
     // an admin can associate a Uqload file but viewers never receive its URL.
     const sourceResult = pageRows.length ? await env.DB.prepare(
-      `SELECT title_id,episode_id,provider,file_code,playback_url FROM catalog_media_sources
-       WHERE title_id IN (${pageRows.map(() => "?").join(",")})`,
-    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; provider: string; file_code: string; playback_url: string }>() : { results: [], success: true };
+      `SELECT title_id,episode_id,provider,file_code,playback_url,encoding_status FROM catalog_media_sources
+       WHERE title_id IN (${pageRows.map(() => "?").join(",")})
+       ORDER BY CASE LOWER(COALESCE(encoding_status,'')) WHEN 'ready' THEN 0 WHEN 'processing' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END,
+                updated_at ASC, id ASC`,
+    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; provider: string; file_code: string; playback_url: string | null; encoding_status: string | null }>() : { results: [], success: true };
     if (!sourceResult.success) throw new Error("D1 media source query failed");
     const sourceByTitle = new Map<string, string>();
     const sourceByEpisode = new Map<string, string>();
     for (const source of sourceResult.results) {
-      const playbackUrl = buildPlaybackUrl(source.file_code, source.provider) || source.playback_url;
+      // A source explicitly marked as failed must never be served to viewers:
+      // the title falls back to Vidsrc or simply shows no embedded player.
+      if (String(source.encoding_status || "").trim().toLowerCase() === "failed") continue;
+      // Prefer the URL stored in D1, canonicalised at read time. Legacy rows
+      // still point to uqload.to/.com/.is/.co; they are rewritten to
+      // uqload.vc here, without mutating the database.
+      const playbackUrl = normalizePlaybackUrl(source.playback_url) || buildPlaybackUrl(source.file_code, source.provider);
       if (!playbackUrl) continue;
-      if (source.episode_id) sourceByEpisode.set(source.episode_id, playbackUrl);
+      // The query orders ready sources first, so the first entry wins.
+      if (source.episode_id) { if (!sourceByEpisode.has(source.episode_id)) sourceByEpisode.set(source.episode_id, playbackUrl); }
       else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, playbackUrl);
     }
     const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();

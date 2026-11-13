@@ -3,13 +3,36 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { RefreshCw, Link2, LoaderCircle, Search } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
+import { buildPlaybackUrl } from "../../lib/cinebox/media-sources.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
 type Target = { id: string; kind: "movie" | "series" | "video"; title: string; published: number; episodes?: Array<{ id: string; title: string; season_number: number; episode_number: number }> };
-type Source = { id: string; title_id: string; episode_id: string | null; provider?: "uqload" | "vidmoly"; file_code: string; playback_url: string; encoding_status: string; uploaded_at: string | null; title?: string; episode_title?: string | null };
-type RemoteFile = { file_code: string; file_title?: string; title?: string; status?: string; size?: string | number };
+type Source = { id: string; title_id: string; episode_id: string | null; provider?: "uqload" | "vidmoly"; file_code: string; playback_url: string; canonical_playback_url?: string | null; legacy_playback_url?: boolean; encoding_status: string; uploaded_at: string | null; title?: string; episode_title?: string | null };
+type RemoteFile = { file_code: string; file_title?: string; title?: string; status?: string; canplay?: number | null; size?: string | number };
 type FileSelection = { titleId: string; episodeId: string };
 type TmdbResult = { id: number; kind: "movie" | "series"; title: string; originalTitle: string; year: string; overview: string; posterPath: string | null };
+
+const ENCODING_LABELS: Record<string, string> = {
+  ready: "prête",
+  processing: "encodage en cours",
+  pending: "à vérifier",
+  failed: "en échec",
+};
+
+function encodingLabel(value: string) {
+  return ENCODING_LABELS[String(value || "").toLowerCase()] || String(value || "statut inconnu");
+}
+
+function remoteFileStatus(file: RemoteFile) {
+  if (typeof file.canplay === "number") return file.canplay > 0 ? "prêt à lire" : "encodage en cours";
+  return file.status || "statut inconnu";
+}
+
+function draftNotice(target: Target | undefined) {
+  return !target || Number(target.published) !== 1
+    ? " La fiche est en brouillon : publie-la pour la rendre visible dans le catalogue."
+    : "";
+}
 
 export function UqloadManager() {
   const [auth, setAuth] = useState<AdminAuthState>("checking");
@@ -24,6 +47,7 @@ export function UqloadManager() {
   const [busy, setBusy] = useState(false);
   const [busyFile, setBusyFile] = useState("");
   const [loading, setLoading] = useState(false);
+  const [configured, setConfigured] = useState<boolean | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
   const [tmdbFile, setTmdbFile] = useState<RemoteFile | null>(null);
@@ -35,28 +59,40 @@ export function UqloadManager() {
   const refresh = useCallback(async (preserveMessage = false) => {
     setLoading(true); if (!preserveMessage) { setMessage(""); setError(false); }
     try {
-      const data = await adminJson("/api/uqload", { cache: "no-store" }) as { configured: boolean; targets: Target[]; sources: Source[]; files: RemoteFile[] };
+      const data = await adminJson("/api/uqload", { cache: "no-store" }) as { configured: boolean; targets: Target[]; sources: Source[]; files: RemoteFile[]; upstreamError?: string | null };
+      setConfigured(data.configured === true);
       setTargets(data.targets || []); setSources(data.sources || []); setRemoteFiles(data.files || []);
-      if (!data.configured) { setMessage("La clé Uqload n’est pas disponible côté serveur. Vérifie le secret UQLOAD_API_KEY dans Cloudflare Pages."); setError(true); }
+      if (data.upstreamError) { setMessage(`Uqload est momentanément indisponible (${data.upstreamError}) : les sources déjà associées restent disponibles.`); setError(true); }
+      else if (!data.configured) { setMessage("Uqload n’est pas configuré côté serveur : la détection automatique et l’import Uqload sont désactivés. Ajoute le secret UQLOAD_API_KEY dans Cloudflare Pages, puis recharge cette page. Les sources déjà associées et l’ajout Vidmoly restent disponibles."); setError(true); }
+      return data;
     } catch (e) {
       if (isAdminAuthError(e) && e.status === 401) setAuth("anonymous");
       setMessage(e instanceof Error ? e.message : "Chargement Uqload impossible."); setError(true);
+      return null;
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { let cancelled = false; void getAdminSession().then(s => { if (!cancelled) setAuth(s.authenticated ? "authenticated" : "anonymous"); }); return () => { cancelled = true; }; }, []);
+  // Load the catalogue and the server configuration first. The automatic
+  // Uqload sync is only started once the API key is known to exist, otherwise
+  // every visit would trigger a 503 and display a misleading error.
   useEffect(() => {
     if (auth !== "authenticated") return;
+    void refresh();
+  }, [auth, refresh]);
+  useEffect(() => {
+    if (auth !== "authenticated" || configured !== true) return;
     let cancelled = false;
     let running = false;
     const synchronize = async () => {
       if (running || cancelled) return;
       running = true;
       try {
-        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number; existing?: number; details?: Array<{file:string;status:string;reason?:string}>; deleted?: number; inventoryComplete?: boolean };
+        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number; existing?: number; details?: Array<{file:string;status:string;reason?:string}>; deleted?: number; inventoryComplete?: boolean; deletionSkipped?: string | null };
         if (!cancelled) {
           const details = (result.details || []).slice(0, 3).map(item => `${item.file} : ${item.reason || item.status}`).join(" · ");
-          setMessage(`Synchronisation Uqload : ${Number(result.created || 0)} ajouté(s), ${Number(result.existing || 0)} déjà lié(s), ${Number(result.deleted || 0)} supprimé(s) du catalogue car absents d’Uqload, ${Number(result.skipped || 0)} ignoré(s).${details ? ` Détails : ${details}` : ""}`);
+          const guard = result.deletionSkipped ? ` · ${result.deletionSkipped}` : "";
+          setMessage(`Synchronisation Uqload : ${Number(result.created || 0)} ajouté(s), ${Number(result.existing || 0)} déjà lié(s), ${Number(result.deleted || 0)} supprimé(s) du catalogue car absents d’Uqload, ${Number(result.skipped || 0)} ignoré(s).${guard} Les fiches créées restent en brouillon jusqu’à publication.${details ? ` Détails : ${details}` : ""}`);
           setError(Number(result.skipped || 0) > 0 && Number(result.created || 0) === 0 && Number(result.deleted || 0) === 0);
         }
       } catch (e) {
@@ -72,13 +108,14 @@ export function UqloadManager() {
     void synchronize();
     const timer = window.setInterval(() => { void synchronize(); }, 5 * 60 * 1000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [auth, refresh]);
+  }, [auth, configured, refresh]);
 
   const login = () => { void loginAdmin(); };
 
   const logout = async () => {
     await logoutAdmin();
     setAuth("anonymous"); setSources([]); setTargets([]); setRemoteFiles([]);
+    setConfigured(null);
     setUqloadUrl(""); setVidmolyUrl(""); setTitleId(""); setEpisodeId(""); setFileSelections({}); setMessage(""); setError(false);
   };
 
@@ -86,13 +123,14 @@ export function UqloadManager() {
     event.preventDefault();
     const sourceUrl = provider === "uqload" ? uqloadUrl.trim() : vidmolyUrl.trim();
     if (!sourceUrl || !titleId || busy) return;
-    const expectedHost = provider === "uqload" ? /https?:\/\/(?:www\.)?uqload\.(?:to|com|is|co)\//i : /https?:\/\/(?:www\.)?vidmoly\.(?:to|net|me)\//i;
+    const expectedHost = provider === "uqload" ? /https?:\/\/(?:www\.)?uqload\.(?:vc|to|com|is|co)\//i : /https?:\/\/(?:www\.)?vidmoly\.(?:to|org|biz|net|me|com)\//i;
     if (!expectedHost.test(sourceUrl)) { setMessage(`Cette URL ne semble pas appartenir à ${provider === "uqload" ? "Uqload" : "Vidmoly"}. Vérifie le lecteur choisi.`); setError(true); return; }
     setBusy(true); setMessage(""); setError(false);
     try {
       await adminJson("/api/uqload/import", { method: "POST", body: JSON.stringify({ url: sourceUrl, titleId, episodeId: episodeId || null }) });
       if (provider === "uqload") setUqloadUrl(""); else setVidmolyUrl("");
-      setEpisodeId(""); setMessage(`Source ${provider === "uqload" ? "Uqload" : "Vidmoly"} associée au catalogue.`); await refresh();
+      const target = targets.find(t => t.id === titleId);
+      setEpisodeId(""); setMessage(`Source ${provider === "uqload" ? "Uqload" : "Vidmoly"} associée au catalogue.${draftNotice(target)}`); await refresh();
     } catch (e) { setMessage(e instanceof Error ? e.message : `Import ${provider} impossible.`); setError(true); }
     finally { setBusy(false); }
   };
@@ -100,13 +138,17 @@ export function UqloadManager() {
   const associateDetectedFile = async (file: RemoteFile) => {
     const selection = fileSelections[file.file_code];
     if (!selection?.titleId || busyFile) return;
+    // The API only accepts a full provider URL: build it from the detected code.
+    const sourceUrl = buildPlaybackUrl(file.file_code, "uqload");
+    if (!sourceUrl) { setMessage("Ce fichier Uqload ne contient pas de code exploitable."); setError(true); return; }
     setBusyFile(file.file_code); setMessage(""); setError(false);
     try {
       await adminJson("/api/uqload/import", {
         method: "POST",
-        body: JSON.stringify({ url: file.file_code, titleId: selection.titleId, episodeId: selection.episodeId || null }),
+        body: JSON.stringify({ url: sourceUrl, titleId: selection.titleId, episodeId: selection.episodeId || null }),
       });
-      setMessage(`« ${file.file_title || file.title || file.file_code} » a été associée au catalogue.`);
+      const target = targets.find(t => t.id === selection.titleId);
+      setMessage(`« ${file.file_title || file.title || file.file_code} » a été associée au catalogue.${draftNotice(target)}`);
       await refresh();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Association du fichier Uqload impossible.");
@@ -135,8 +177,8 @@ export function UqloadManager() {
     try {
       const filename = tmdbFile.file_title || tmdbFile.title || "";
       const ep = filename.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i);
-      await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, fileTitle: filename, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null, episode: ep ? Number(ep[2].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null }) });
-      setMessage(`« ${tmdbFile.file_title || tmdbFile.title || tmdbFile.file_code} » associé à ${result.title}.`);
+      await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, fileTitle: filename, canplay: tmdbFile.canplay ?? null, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null, episode: ep ? Number(ep[2].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null }) });
+      setMessage(`« ${tmdbFile.file_title || tmdbFile.title || tmdbFile.file_code} » associé à ${result.title}. Si la fiche est nouvelle, elle reste en brouillon jusqu’à publication.`);
       setTmdbFile(null); setTmdbResults([]); await refresh(true);
     } catch (e) { setMessage(e instanceof Error ? e.message : "Association TMDB impossible."); setError(true); }
     finally { setBusyFile(""); }
@@ -157,6 +199,7 @@ export function UqloadManager() {
       <div className="admin-provider-grid">
         {(["uqload", "vidmoly"] as const).map(provider => {
           const isUqload = provider === "uqload";
+          const uqloadUnavailable = isUqload && configured === false;
           const providerSources = sources.filter(source => (source.provider || "uqload") === provider);
           return <section className={`admin-provider-card ${isUqload ? "is-uqload" : "is-vidmoly"}`} key={provider}>
             <header className="admin-provider-heading">
@@ -164,12 +207,28 @@ export function UqloadManager() {
               <span className="admin-provider-count">{providerSources.length} source(s)</span>
             </header>
             <form onSubmit={event => void importUrl(event, provider)} className="admin-provider-form">
-              <label><span>URL {isUqload ? "UQLOAD" : "VIDMOLY"}</span><input type="url" required value={isUqload ? uqloadUrl : vidmolyUrl} onChange={e=>isUqload ? setUqloadUrl(e.target.value) : setVidmolyUrl(e.target.value)} placeholder={isUqload ? "https://uqload.to/…" : "https://vidmoly.me/…"}/></label>
+              <label><span>URL {isUqload ? "UQLOAD" : "VIDMOLY"}</span><input type="url" required value={isUqload ? uqloadUrl : vidmolyUrl} onChange={e=>isUqload ? setUqloadUrl(e.target.value) : setVidmolyUrl(e.target.value)} disabled={uqloadUnavailable} placeholder={isUqload ? "https://uqload.vc/…" : "https://vidmoly.org/embed-…"}/></label>
               <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
               <label><span>Épisode</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
-              <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Ajouter à {isUqload ? "Uqload" : "Vidmoly"}</button>
+              <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId || uqloadUnavailable}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Ajouter à {isUqload ? "Uqload" : "Vidmoly"}</button>
             </form>
-            <div className="admin-provider-sources">{providerSources.map(source=><article key={source.id} className="admin-provider-source"><div><strong>{source.title || source.title_id}</strong><p>{source.episode_title || "Vidéo principale"} · Code {source.file_code} · {source.encoding_status}</p></div><a href={source.playback_url} target="_blank" rel="noreferrer">Tester le lecteur</a></article>)}{!providerSources.length && <p className="admin-provider-empty">Aucune source {isUqload ? "Uqload" : "Vidmoly"} associée.</p>}</div>
+            {uqloadUnavailable && <p className="admin-provider-empty" role="note">Détection automatique désactivée : le secret <strong>UQLOAD_API_KEY</strong> n’est pas défini dans Cloudflare Pages. Ajoute-le dans <em>Settings → Variables and Secrets</em> (type <em>Secret</em>), puis redéploie. Les sources déjà associées restent lisibles et Vidmoly reste disponible.</p>}
+            <div className="admin-provider-sources">{providerSources.map(source => {
+              const target = targets.find(item => item.id === source.title_id);
+              const isDraft = !target || Number(target.published) !== 1;
+              const playbackHref = source.canonical_playback_url || source.playback_url;
+              return <article key={source.id} className="admin-provider-source">
+                <div>
+                  <strong>{source.title || source.title_id}</strong>
+                  <p>{source.episode_title || "Vidéo principale"} · Code {source.file_code} · {encodingLabel(source.encoding_status)}</p>
+                  {(isDraft || source.legacy_playback_url) && <p className="admin-source-flags">
+                    {isDraft && <span className="admin-source-flag is-draft">Brouillon non publié</span>}
+                    {source.legacy_playback_url && <span className="admin-source-flag is-legacy">Ancien domaine normalisé</span>}
+                  </p>}
+                </div>
+                <a href={playbackHref} target="_blank" rel="noreferrer">Tester le lecteur</a>
+              </article>;
+            })}{!providerSources.length && <p className="admin-provider-empty">Aucune source {isUqload ? "Uqload" : "Vidmoly"} associée.</p>}</div>
           </section>;
         })}
       </div>
@@ -180,7 +239,7 @@ export function UqloadManager() {
           const target = targets.find(item => item.id === selection.titleId);
           const fileBusy = busyFile === file.file_code;
           return <article key={file.file_code} className="admin-shared-row admin-remote-file">
-            <div className="admin-remote-file-info"><strong>{file.file_title || file.title || "Fichier sans titre"}</strong><p>Code {file.file_code} · {file.status || "statut inconnu"}{file.size ? ` · ${file.size}` : ""}</p></div>
+            <div className="admin-remote-file-info"><strong>{file.file_title || file.title || "Fichier sans titre"}</strong><p>Code {file.file_code} · {remoteFileStatus(file)}{file.size ? ` · ${file.size}` : ""}</p></div>
             <div className="admin-remote-file-actions">
               <label><span>Film ou série</span><select value={selection.titleId} onChange={e=>updateFileSelection(file.file_code,{titleId:e.target.value,episodeId:""})}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
               <label><span>Épisode</span><select value={selection.episodeId} onChange={e=>updateFileSelection(file.file_code,{episodeId:e.target.value})} disabled={!target || target.kind!=="series"}><option value="">Film / vidéo entière</option>{(target?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
