@@ -107,6 +107,18 @@ async function main() {
   expectDirective(directives, "base-uri", (values) => values.includes("'self'"), "be 'self'");
   expectDirective(directives, "form-action", (values) => values.includes("'self'"), "be 'self'");
   expectDirective(directives, "frame-ancestors", (values) => values.includes("'none'"), "be 'none'");
+  expectDirective(
+    directives,
+    "frame-src",
+    (values) => ["https://vidsrc.sh", "https://uqload.vc", "https://vidmoly.to", "https://vidmoly.org", "https://vidmoly.biz"].every((origin) => values.includes(origin)),
+    "allow the Vidsrc, Uqload and Vidmoly player origins",
+  );
+  expectDirective(
+    directives,
+    "frame-src",
+    (values) => !values.includes("*") && !values.includes("https:") && !values.includes("http:"),
+    "not use a wildcard or a scheme-wide source",
+  );
   expectDirective(directives, "upgrade-insecure-requests", (values) => values.length === 0, "be present");
 
   const allowedHashes = new Set(

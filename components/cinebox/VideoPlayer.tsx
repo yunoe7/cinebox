@@ -35,7 +35,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
     onProgress(second, progress);
   };
 
-  const isHostedEmbed = /^https?:\/\/(?:www\.)?(?:uqload\.(?:to|vc|com|is|co)|vidmoly\.(?:to|net|me))\/(?:embed-)?[A-Za-z0-9]{6,64}(?:\.html)?\/?$/i.test(src);
+  const isHostedEmbed = /^https?:\/\/(?:www\.)?(?:uqload\.(?:to|vc|com|is|co)|vidmoly\.(?:to|org|biz|net|me|com))\/(?:embed-)?[A-Za-z0-9]{6,64}(?:\.html)?\/?$/i.test(src);
 
   if (isHostedEmbed) {
     return <div className="detail-video-embed">
@@ -45,7 +45,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
         title="Lecteur vidéo hébergé"
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
-        referrerPolicy="no-referrer"
+        referrerPolicy="strict-origin-when-cross-origin"
       />
       <div className="uqload-playback-fallback" role="note">
         <strong>Le lecteur intégré peut être bloqué par Uqload ou par votre navigateur.</strong>

@@ -38,6 +38,7 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | Variable | Rôle | Obligatoire |
 | --- | --- | --- |
 | `TMDB_READ_ACCESS_TOKEN` | Jeton TMDB (v4) ou clé v3, utilisé par le proxy `/api/tmdb` | Pour TMDB |
+| `UQLOAD_API_KEY` | Clé API du compte Uqload, utilisée uniquement côté serveur par `/api/uqload` | Pour la détection Uqload |
 | `CINEBOX_ADMIN_DISCORD_USER_ID` | Identifiant Discord de secours autorisé explicitement | Optionnel |
 | `CINEBOX_DISCORD_BOT_TOKEN` | Token du bot Discord, conservé uniquement côté serveur | Pour les rôles automatiques |
 | `CINEBOX_DISCORD_GUILD_ID` | Identifiant du serveur Discord CinéBox | Pour les rôles automatiques |
@@ -47,6 +48,16 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |\n| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |\n| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |\n| `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour les comptes et le catalogue partagé |
 
 Pour activer l'autorisation automatique, configurer le token du bot, l'identifiant du serveur et les trois identifiants de rôles Fondateur/Admin/Modérateur dans Cloudflare Pages Production et Preview. Le bot doit appartenir au serveur et l'intent privilégié **Server Members Intent** doit être activé dans le portail Discord. Les identifiants de rôles sont vérifiés côté serveur via l'API Discord à chaque contrôle d'accès (cache court de 30 secondes). L'identifiant `CINEBOX_ADMIN_DISCORD_USER_ID`, le rôle D1 `admin` et `admin_allowlist` restent des accès explicites de secours. La session est celle du compte Discord déjà connecté : aucun mot de passe administrateur ni secret de session séparé n’est nécessaire.
+
+### Configurer `UQLOAD_API_KEY` dans Cloudflare Pages
+
+1. Ouvrir le projet Pages CinéBox dans le tableau de bord Cloudflare.
+2. Aller dans **Settings → Variables and Secrets** (ou **Variables and Secrets → Production / Preview** selon l'interface).
+3. Ajouter une variable nommée exactement `UQLOAD_API_KEY`, de type **Secret**, avec la clé API du compte Uqload.
+4. Appliquer la valeur aux environnements **Production** et **Preview** si les deux doivent détecter les fichiers Uqload.
+5. Relancer un déploiement (ou redéployer la branche) pour que la Function `/api/uqload` reçoive le secret.
+
+Sans cette clé, l'administration reste utilisable : le catalogue, les sources déjà associées et l'ajout Vidmoly continuent de fonctionner, la détection automatique et l'import Uqload sont désactivés et un message explicite est affiché. La synchronisation automatique ne démarre jamais sans clé, afin d'éviter des erreurs 503 répétées.
 
 ## Développement
 
@@ -91,7 +102,7 @@ Configuration du projet Pages :
 - **Répertoire de sortie** : `out`
 - **Version de Node** : 22
 - **Binding D1** : `DB` → base du catalogue partagé
-- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_DISCORD_USER_ID`, `CINEBOX_DISCORD_BOT_TOKEN`, `CINEBOX_DISCORD_GUILD_ID`, `CINEBOX_DISCORD_ROLE_FONDA_ID`, `CINEBOX_DISCORD_ROLE_ADMIN_ID`, `CINEBOX_DISCORD_ROLE_MODO_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`
+- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `UQLOAD_API_KEY`, `CINEBOX_ADMIN_DISCORD_USER_ID`, `CINEBOX_DISCORD_BOT_TOKEN`, `CINEBOX_DISCORD_GUILD_ID`, `CINEBOX_DISCORD_ROLE_FONDA_ID`, `CINEBOX_DISCORD_ROLE_ADMIN_ID`, `CINEBOX_DISCORD_ROLE_MODO_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`
 
 Configurer ces variables dans **Production** et **Preview**. Ajouter aussi `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` et `DISCORD_REDIRECT_URI` dans les deux environnements, et déclarer l’URL de callback exacte dans le portail développeur Discord. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. Tous ces secrets sont lus uniquement par les Pages Functions.
 
@@ -139,8 +150,9 @@ Ne jamais lancer de migration ni d'écriture sur la base de production sans vali
 ## Lecture vidéo
 
 - Les films et séries identifiés par un `tmdbId` sont lus via Vidsrc, dans une iframe autorisée par la CSP (`frame-src https://vidsrc.sh`).
+- Les fichiers Uqload et les liens Vidmoly sont lus dans une iframe hébergée, autorisée par la CSP pour `https://uqload.vc` (et les domaines historiques `.com/.is/.co`) ainsi que `https://vidmoly.to`, `.org`, `.biz`, `.net`, `.me` et `.com`. L'URL de lecture Uqload est reconstruite sur `https://uqload.vc` ; les anciennes lignes D1 pointant vers `.to/.com/.is/.co` sont normalisées à la lecture, sans migration ni modification des données. Pour Vidmoly, un lien `.org`, `.biz`, `.to` ou `.net` est conservé tel quel afin de lire exactement l'hôte fourni ; `.me` et `.com` sont réécrits vers `https://vidmoly.to` car leur redirection d'embed duplique le préfixe `embed-`.
 - Les vidéos importées ou liées à un fichier local/direct utilisent le lecteur vidéo générique (`components/cinebox/VideoPlayer.tsx`).
-- La progression, la reprise de lecture, la navigation entre épisodes et la lecture automatique de l'épisode suivant restent disponibles dans les deux modes.
+- La progression, la reprise de lecture, la navigation entre épisodes et la lecture automatique restent disponibles pour les vidéos servies par le lecteur générique. Un lecteur tiers en iframe (Vidsrc, Uqload, Vidmoly) ne peut pas remonter sa progression à CinéBox.
 
 ## TMDB
 

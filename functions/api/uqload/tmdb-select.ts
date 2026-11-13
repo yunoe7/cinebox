@@ -1,4 +1,5 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { buildPlaybackUrl, encodingStatusFromCanplay } from "../../../lib/cinebox/media-sources.mjs";
 interface Statement{bind(...values:(string|number|null)[]):Statement;all<T>():Promise<{success:boolean;results:T[]}>;run():Promise<{success:boolean}>;}
 interface DB{prepare(sql:string):Statement;}
 interface Env extends AdminEnv{DB?:DB;TMDB_READ_ACCESS_TOKEN?:string;}
@@ -21,6 +22,9 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  const detail=await tmdb(kind==="series"?`/tv/${tmdbId}`:`/movie/${tmdbId}`,env.TMDB_READ_ACCESS_TOKEN);
  const title=clean(detail.title||detail.name,300);if(!title)return json({error:"Titre absent de la fiche TMDB."},502);
  const fileTitle=clean(body.fileTitle,300);
+ // The detected file carries Uqload's real encoding state; an unknown value
+ // stays `pending` instead of pretending the file is ready.
+ const encodingStatus=encodingStatusFromCanplay(body.canplay);
  const marker=fileTitle.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i);
  const digits=(value:string)=>value.replace(/[OQ]/gi,"0").replace(/[Il]/g,"1");
  const parsedSeason=marker?Number(digits(marker[1])):NaN;
@@ -51,7 +55,8 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
   }
  }
  await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
- VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,encoding_status=excluded.encoding_status,updated_at=CURRENT_TIMESTAMP`)
- .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,`https://uqload.vc/embed-${code}.html`,null,"ready",null).run();
- return json({associated:true,title,kind,titleId:id,episodeId,published:false,episodeDetected:Boolean(episodeId)});
+ VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,
+ encoding_status=CASE WHEN excluded.encoding_status='pending' THEN catalog_media_sources.encoding_status ELSE excluded.encoding_status END,updated_at=CURRENT_TIMESTAMP`)
+ .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,buildPlaybackUrl(code,"uqload"),null,encodingStatus,null).run();
+ return json({associated:true,title,kind,titleId:id,episodeId,encodingStatus,published:false,episodeDetected:Boolean(episodeId)});
 }

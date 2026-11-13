@@ -47,7 +47,7 @@ export function buildPolicy(hashes) {
     "img-src 'self' data: blob: https://image.tmdb.org https://cdn.discordapp.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "media-src 'self' blob: data:",
-    "frame-src https://vidsrc.sh",
+    "frame-src https://vidsrc.sh https://uqload.vc https://uqload.com https://uqload.is https://uqload.co https://vidmoly.to https://vidmoly.org https://vidmoly.biz https://vidmoly.net https://vidmoly.me https://vidmoly.com",
     "connect-src 'self'",
     "worker-src 'self' blob:",
     "object-src 'none'",
