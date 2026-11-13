@@ -35,7 +35,7 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
     onProgress(second, progress);
   };
 
-  const isUqloadEmbed = /^https?:\\/\\/(?:www\\.)?uqload\\.(?:to|vc|com|is|co)\\/embed-/i.test(src);
+  const isUqloadEmbed = /^https?:\/\/(?:www\.)?uqload\.(?:to|vc|com|is|co)\/embed-/i.test(src);
 
   if (isUqloadEmbed) {
     return <iframe
