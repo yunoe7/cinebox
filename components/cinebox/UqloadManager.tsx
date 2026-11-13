@@ -86,7 +86,7 @@ export function UqloadManager() {
     event.preventDefault();
     const sourceUrl = provider === "uqload" ? uqloadUrl.trim() : vidmolyUrl.trim();
     if (!sourceUrl || !titleId || busy) return;
-    const expectedHost = provider === "uqload" ? /https?:\/\/(?:www\\.)?uqload\\.(?:to|com|is|co)\//i : /https?:\/\/(?:www\\.)?vidmoly\\.(?:to|net|me)\//i;
+    const expectedHost = provider === "uqload" ? /https?:\/\/(?:www\.)?uqload\.(?:to|com|is|co)\//i : /https?:\/\/(?:www\.)?vidmoly\.(?:to|net|me)\//i;
     if (!expectedHost.test(sourceUrl)) { setMessage(`Cette URL ne semble pas appartenir à ${provider === "uqload" ? "Uqload" : "Vidmoly"}. Vérifie le lecteur choisi.`); setError(true); return; }
     setBusy(true); setMessage(""); setError(false);
     try {
