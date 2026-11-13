@@ -23,7 +23,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  const detail=await tmdb(kind==="series"?`/tv/${tmdbId}`:`/movie/${tmdbId}`,env.TMDB_READ_ACCESS_TOKEN);
  const title=clean(detail.title||detail.name,300);if(!title)return json({error:"Titre absent de la fiche TMDB."},502);
  const fileTitle=clean(body.fileTitle,300);
- const marker=fileTitle.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?:[^0-9]|$)/i);
+ const marker=fileTitle.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i);
  const digits=(value:string)=>value.replace(/[OQ]/gi,"0").replace(/[Il]/g,"1");
  const parsedSeason=marker?Number(digits(marker[1])):NaN;
  const parsedEpisode=marker?Number(digits(marker[2])):NaN;
