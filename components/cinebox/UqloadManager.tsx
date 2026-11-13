@@ -16,7 +16,8 @@ export function UqloadManager() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
-  const [url, setUrl] = useState("");
+  const [uqloadUrl, setUqloadUrl] = useState("");
+  const [vidmolyUrl, setVidmolyUrl] = useState("");
   const [titleId, setTitleId] = useState("");
   const [episodeId, setEpisodeId] = useState("");
   const [fileSelections, setFileSelections] = useState<Record<string, FileSelection>>({});
@@ -78,17 +79,21 @@ export function UqloadManager() {
   const logout = async () => {
     await logoutAdmin();
     setAuth("anonymous"); setSources([]); setTargets([]); setRemoteFiles([]);
-    setUrl(""); setTitleId(""); setEpisodeId(""); setFileSelections({}); setMessage(""); setError(false);
+    setUqloadUrl(""); setVidmolyUrl(""); setTitleId(""); setEpisodeId(""); setFileSelections({}); setMessage(""); setError(false);
   };
 
-  const importUrl = async (event: FormEvent<HTMLFormElement>) => {
+  const importUrl = async (event: FormEvent<HTMLFormElement>, provider: "uqload" | "vidmoly") => {
     event.preventDefault();
-    if (!url.trim() || !titleId || busy) return;
+    const sourceUrl = provider === "uqload" ? uqloadUrl.trim() : vidmolyUrl.trim();
+    if (!sourceUrl || !titleId || busy) return;
+    const expectedHost = provider === "uqload" ? /https?:\\/\\/(?:www\\.)?uqload\\.(?:to|com|is|co)\\//i : /https?:\\/\\/(?:www\\.)?vidmoly\\.(?:to|net|me)\\//i;
+    if (!expectedHost.test(sourceUrl)) { setMessage(`Cette URL ne semble pas appartenir à ${provider === "uqload" ? "Uqload" : "Vidmoly"}. Vérifie le lecteur choisi.`); setError(true); return; }
     setBusy(true); setMessage(""); setError(false);
     try {
-      await adminJson("/api/uqload/import", { method: "POST", body: JSON.stringify({ url: url.trim(), titleId, episodeId: episodeId || null }) });
-      setUrl(""); setEpisodeId(""); setMessage("Vidéo importée et associée au catalogue."); await refresh();
-    } catch (e) { setMessage(e instanceof Error ? e.message : "Import Uqload impossible."); setError(true); }
+      await adminJson("/api/uqload/import", { method: "POST", body: JSON.stringify({ url: sourceUrl, titleId, episodeId: episodeId || null }) });
+      if (provider === "uqload") setUqloadUrl(""); else setVidmolyUrl("");
+      setEpisodeId(""); setMessage(`Source ${provider === "uqload" ? "Uqload" : "Vidmoly"} associée au catalogue.`); await refresh();
+    } catch (e) { setMessage(e instanceof Error ? e.message : `Import ${provider} impossible.`); setError(true); }
     finally { setBusy(false); }
   };
 
@@ -142,20 +147,32 @@ export function UqloadManager() {
   };
 
   const selectedTarget = targets.find(t => t.id === titleId);
-  return <section className="admin-shared-catalog" aria-label="Gestion Uqload">
-    <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">HÉBERGEMENT VIDÉO · UQLOAD & VIDMOLY</div><h3>Sources vidéo · Uqload & Vidmoly</h3><p>Associe une vidéo détectée dans ton compte Uqload ou colle directement une URL Uqload / Vidmoly à un film, une série ou un épisode du catalogue.</p></div>
+  return <section className="admin-shared-catalog admin-media-manager" aria-label="Gestion des lecteurs vidéo">
+    <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div><h3>Gérer les hébergeurs</h3><p>Deux lecteurs indépendants : Uqload pour tes fichiers synchronisés, Vidmoly pour tes liens ajoutés manuellement.</p></div>
       {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
     </header>
-    <AdminSessionPanel authState={auth} onLogin={login} onLogout={() => void logout()} description="La gestion Uqload est protégée par la session administrateur." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
+    <AdminSessionPanel authState={auth} onLogin={login} onLogout={() => void logout()} description="Les deux espaces sont protégés par ta session administrateur Discord." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
     {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
     {auth === "authenticated" && <>
-      <form onSubmit={importUrl} className="admin-shared-toolbar">
-        <label><span>URL Uqload / Vidmoly</span><input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://vidmoly.me/… ou https://uqload.to/…"/></label>
-        <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
-        <label><span>Épisode (facultatif)</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
-        <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Associer l’URL</button>
-      </form>
-      <div className="admin-shared-list">{sources.map(source=><article key={source.id} className="admin-shared-row"><div><strong>{source.title || source.title_id}</strong><p>{source.episode_title || "Vidéo principale"} · {source.provider === "vidmoly" ? "Vidmoly" : "Uqload"} · Code {source.file_code} · {source.encoding_status}</p></div><a href={source.playback_url} target="_blank" rel="noreferrer">Ouvrir la vidéo</a></article>)}{!sources.length&&!loading&&<p className="admin-shared-state">Aucune source vidéo associée pour le moment.</p>}</div>
+      <div className="admin-provider-grid">
+        {(["uqload", "vidmoly"] as const).map(provider => {
+          const isUqload = provider === "uqload";
+          const providerSources = sources.filter(source => (source.provider || "uqload") === provider);
+          return <section className={`admin-provider-card ${isUqload ? "is-uqload" : "is-vidmoly"}`} key={provider}>
+            <header className="admin-provider-heading">
+              <div><span className="admin-provider-kicker">{isUqload ? "LECTEUR 01 · DÉTECTION AUTOMATIQUE" : "LECTEUR 02 · AJOUT MANUEL"}</span><h4>{isUqload ? "Uqload" : "Vidmoly"}</h4><p>{isUqload ? "Fichiers de ton compte Uqload et association au catalogue." : "Ajoute tes liens Vidmoly séparément, sans dépendre de l’API Uqload."}</p></div>
+              <span className="admin-provider-count">{providerSources.length} source(s)</span>
+            </header>
+            <form onSubmit={event => void importUrl(event, provider)} className="admin-provider-form">
+              <label><span>URL {isUqload ? "UQLOAD" : "VIDMOLY"}</span><input type="url" required value={isUqload ? uqloadUrl : vidmolyUrl} onChange={e=>isUqload ? setUqloadUrl(e.target.value) : setVidmolyUrl(e.target.value)} placeholder={isUqload ? "https://uqload.to/…" : "https://vidmoly.me/…"}/></label>
+              <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
+              <label><span>Épisode</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
+              <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Ajouter à {isUqload ? "Uqload" : "Vidmoly"}</button>
+            </form>
+            <div className="admin-provider-sources">{providerSources.map(source=><article key={source.id} className="admin-provider-source"><div><strong>{source.title || source.title_id}</strong><p>{source.episode_title || "Vidéo principale"} · Code {source.file_code} · {source.encoding_status}</p></div><a href={source.playback_url} target="_blank" rel="noreferrer">Tester le lecteur</a></article>)}{!providerSources.length && <p className="admin-provider-empty">Aucune source {isUqload ? "Uqload" : "Vidmoly"} associée.</p>}</div>
+          </section>;
+        })}
+      </div>
       {remoteFiles.length>0 && <details className="admin-shared-list" open>
         <summary>Fichiers détectés dans le compte Uqload ({remoteFiles.length})</summary>
         <div className="admin-remote-files">{remoteFiles.map(file => {
