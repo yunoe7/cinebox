@@ -131,19 +131,25 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
 export async function onRequestPost({ request, env }: { request: Request; env: Env }): Promise<Response> {
   const denied = await requireAdmin(request, env);
   if (denied) return denied;
+  const db = env.DB;
+  const uqloadApiKey = env.UQLOAD_API_KEY;
+  const tmdbReadAccessToken = env.TMDB_READ_ACCESS_TOKEN;
   const missing: string[] = [];
-  if (!env.DB) missing.push("DB (liaison D1)");
-  if (!env.UQLOAD_API_KEY) missing.push("UQLOAD_API_KEY");
-  if (!env.TMDB_READ_ACCESS_TOKEN) missing.push("TMDB_READ_ACCESS_TOKEN");
+  if (!db) missing.push("DB (liaison D1)");
+  if (!uqloadApiKey) missing.push("UQLOAD_API_KEY");
+  if (!tmdbReadAccessToken) missing.push("TMDB_READ_ACCESS_TOKEN");
   if (missing.length) {
     return json({ error: "Configuration serveur incomplète.", missing }, 503);
   }
-  const payload = await uqload("/file/list", env.UQLOAD_API_KEY, { per_page: String(MAX_FILES_PER_SYNC), page: "1" });
+  if (!db || !uqloadApiKey || !tmdbReadAccessToken) {
+    return json({ error: "Configuration serveur incomplète." }, 503);
+  }
+  const payload = await uqload("/file/list", uqloadApiKey, { per_page: String(MAX_FILES_PER_SYNC), page: "1" });
   const files = rows(payload).slice(0, MAX_FILES_PER_SYNC);
   let created = 0, existing = 0, skipped = 0;
   for (const file of files) {
     try {
-      const result = await createDraftAndAssociate(env.DB, file, env.UQLOAD_API_KEY, env.TMDB_READ_ACCESS_TOKEN);
+      const result = await createDraftAndAssociate(db, file, uqloadApiKey, tmdbReadAccessToken);
       if (result === "created") created++;
       else if (result === "existing") existing++;
       else skipped++;
