@@ -27,7 +27,8 @@ export async function onRequestGet({request,env}:{request:Request;env:Env}){
  if(!env.UQLOAD_API_KEY)return json({configured:false,targets:[],sources:[],files:[]});
  try{
   const [titles,episodes,sources]=await Promise.all([
-   env.DB.prepare("SELECT id,kind,title FROM catalog_titles WHERE published=1 ORDER BY title COLLATE NOCASE").all<{id:string;kind:"movie"|"series"|"video";title:string}>(),
+   // Admins must be able to attach media before publishing a catalogue title.
+   env.DB.prepare("SELECT id,kind,title,published FROM catalog_titles ORDER BY title COLLATE NOCASE").all<{id:string;kind:"movie"|"series"|"video";title:string;published:number}>(),
    env.DB.prepare("SELECT id,title_id,title,season_number,episode_number FROM catalog_episodes ORDER BY title_id,season_number,episode_number").all<{id:string;title_id:string;title:string;season_number:number;episode_number:number}>(),
    env.DB.prepare("SELECT s.id,s.title_id,s.episode_id,s.file_code,s.playback_url,s.encoding_status,s.uploaded_at,t.title,e.title AS episode_title FROM catalog_media_sources s JOIN catalog_titles t ON t.id=s.title_id LEFT JOIN catalog_episodes e ON e.id=s.episode_id WHERE s.provider='uqload' ORDER BY s.updated_at DESC").all<Record<string,unknown>>()
   ]);
@@ -43,8 +44,9 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}){
  let body:unknown;try{body=await request.json();}catch{return json({error:"JSON invalide."},400);}
  if(!record(body)||typeof body.url!=="string"||typeof body.titleId!=="string")return json({error:"URL ou contenu manquant."},400);
  const fileCode=codeFrom(body.url);if(!fileCode)return json({error:"Cette URL ne semble pas être une URL Uqload valide."},400);
- const title=await env.DB.prepare("SELECT id,kind FROM catalog_titles WHERE id=? AND published=1").bind(body.titleId).all<{id:string;kind:string}>();
- if(!title.results?.length)return json({error:"Contenu introuvable ou non publié."},404);
+ // Publication is not required for admin media association; the admin route remains protected by requireAdmin.
+ const title=await env.DB.prepare("SELECT id,kind FROM catalog_titles WHERE id=?").bind(body.titleId).all<{id:string;kind:string}>();
+ if(!title.results?.length)return json({error:"Contenu introuvable."},404);
  const episodeId=typeof body.episodeId==="string"&&body.episodeId?body.episodeId:null;
  if(episodeId){const ep=await env.DB.prepare("SELECT id FROM catalog_episodes WHERE id=? AND title_id=?").bind(episodeId,body.titleId).all<{id:string}>();if(!ep.results?.length||title.results[0].kind!=="series")return json({error:"Épisode invalide pour cette série."},400);}
  try{
