@@ -41,8 +41,12 @@ export function UqloadManager() {
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
   const [uqloadUrl, setUqloadUrl] = useState("");
   const [vidmolyUrl, setVidmolyUrl] = useState("");
-  const [titleId, setTitleId] = useState("");
-  const [episodeId, setEpisodeId] = useState("");
+  // Each provider owns its own catalogue/episode selection. Sharing these
+  // values made changing the Vidmoly form silently change the Uqload form.
+  const [providerSelections, setProviderSelections] = useState<Record<"uqload" | "vidmoly", FileSelection>>({
+    uqload: { titleId: "", episodeId: "" },
+    vidmoly: { titleId: "", episodeId: "" },
+  });
   const [fileSelections, setFileSelections] = useState<Record<string, FileSelection>>({});
   const [busy, setBusy] = useState(false);
   const [busyFile, setBusyFile] = useState("");
@@ -116,21 +120,22 @@ export function UqloadManager() {
     await logoutAdmin();
     setAuth("anonymous"); setSources([]); setTargets([]); setRemoteFiles([]);
     setConfigured(null);
-    setUqloadUrl(""); setVidmolyUrl(""); setTitleId(""); setEpisodeId(""); setFileSelections({}); setMessage(""); setError(false);
+    setUqloadUrl(""); setVidmolyUrl(""); setProviderSelections({ uqload: { titleId: "", episodeId: "" }, vidmoly: { titleId: "", episodeId: "" } }); setFileSelections({}); setMessage(""); setError(false);
   };
 
   const importUrl = async (event: FormEvent<HTMLFormElement>, provider: "uqload" | "vidmoly") => {
     event.preventDefault();
     const sourceUrl = provider === "uqload" ? uqloadUrl.trim() : vidmolyUrl.trim();
-    if (!sourceUrl || !titleId || busy) return;
+    const selection = providerSelections[provider];
+    if (!sourceUrl || !selection.titleId || busy) return;
     const expectedHost = provider === "uqload" ? /https?:\/\/(?:www\.)?uqload\.(?:vc|to|com|is|co)\//i : /https?:\/\/(?:www\.)?vidmoly\.(?:to|org|biz|net|me|com)\//i;
     if (!expectedHost.test(sourceUrl)) { setMessage(`Cette URL ne semble pas appartenir à ${provider === "uqload" ? "Uqload" : "Vidmoly"}. Vérifie le lecteur choisi.`); setError(true); return; }
     setBusy(true); setMessage(""); setError(false);
     try {
-      await adminJson("/api/uqload/import", { method: "POST", body: JSON.stringify({ url: sourceUrl, titleId, episodeId: episodeId || null }) });
+      await adminJson("/api/uqload/import", { method: "POST", body: JSON.stringify({ url: sourceUrl, titleId: selection.titleId, episodeId: selection.episodeId || null }) });
       if (provider === "uqload") setUqloadUrl(""); else setVidmolyUrl("");
-      const target = targets.find(t => t.id === titleId);
-      setEpisodeId(""); setMessage(`Source ${provider === "uqload" ? "Uqload" : "Vidmoly"} associée au catalogue.${draftNotice(target)}`); await refresh();
+      const target = targets.find(t => t.id === selection.titleId);
+      setProviderSelections(current => ({ ...current, [provider]: { ...current[provider], episodeId: "" } })); setMessage(`Source ${provider === "uqload" ? "Uqload" : "Vidmoly"} associée au catalogue.${draftNotice(target)}`); await refresh();
     } catch (e) { setMessage(e instanceof Error ? e.message : `Import ${provider} impossible.`); setError(true); }
     finally { setBusy(false); }
   };
@@ -188,7 +193,7 @@ export function UqloadManager() {
     setFileSelections(current => ({ ...current, [code]: { titleId: current[code]?.titleId || "", episodeId: current[code]?.episodeId || "", ...patch } }));
   };
 
-  const selectedTarget = targets.find(t => t.id === titleId);
+  
   return <section className="admin-shared-catalog admin-media-manager" aria-label="Gestion des lecteurs vidéo">
     <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div><h3>Gérer les hébergeurs</h3><p>Deux lecteurs indépendants : Uqload pour tes fichiers synchronisés, Vidmoly pour tes liens ajoutés manuellement.</p></div>
       {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
@@ -201,6 +206,8 @@ export function UqloadManager() {
           const isUqload = provider === "uqload";
           const uqloadUnavailable = isUqload && configured === false;
           const providerSources = sources.filter(source => (source.provider || "uqload") === provider);
+          const selection = providerSelections[provider];
+          const selectedTarget = targets.find(t => t.id === selection.titleId);
           return <section className={`admin-provider-card ${isUqload ? "is-uqload" : "is-vidmoly"}`} key={provider}>
             <header className="admin-provider-heading">
               <div><span className="admin-provider-kicker">{isUqload ? "LECTEUR 01 · DÉTECTION AUTOMATIQUE" : "LECTEUR 02 · AJOUT MANUEL"}</span><h4>{isUqload ? "Uqload" : "Vidmoly"}</h4><p>{isUqload ? "Fichiers de ton compte Uqload et association au catalogue." : "Ajoute tes liens Vidmoly séparément, sans dépendre de l’API Uqload."}</p></div>
@@ -208,9 +215,9 @@ export function UqloadManager() {
             </header>
             <form onSubmit={event => void importUrl(event, provider)} className="admin-provider-form">
               <label><span>URL {isUqload ? "UQLOAD" : "VIDMOLY"}</span><input type="url" required value={isUqload ? uqloadUrl : vidmolyUrl} onChange={e=>isUqload ? setUqloadUrl(e.target.value) : setVidmolyUrl(e.target.value)} disabled={uqloadUnavailable} placeholder={isUqload ? "https://uqload.vc/…" : "https://vidmoly.org/embed-…"}/></label>
-              <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
-              <label><span>Épisode</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
-              <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId || uqloadUnavailable}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Ajouter à {isUqload ? "Uqload" : "Vidmoly"}</button>
+              <label><span>Film ou série</span><select required value={selection.titleId} onChange={e=>setProviderSelections(current=>({...current,[provider]:{titleId:e.target.value,episodeId:""}}))}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
+              <label><span>Épisode</span><select value={selection.episodeId} onChange={e=>setProviderSelections(current=>({...current,[provider]:{...current[provider],episodeId:e.target.value}}))} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
+              <button type="submit" className="admin-shared-refresh" disabled={busy || !selection.titleId || uqloadUnavailable}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Ajouter à {isUqload ? "Uqload" : "Vidmoly"}</button>
             </form>
             {uqloadUnavailable && <p className="admin-provider-empty" role="note">Détection automatique désactivée : le secret <strong>UQLOAD_API_KEY</strong> n’est pas défini dans Cloudflare Pages. Ajoute-le dans <em>Settings → Variables and Secrets</em> (type <em>Secret</em>), puis redéploie. Les sources déjà associées restent lisibles et Vidmoly reste disponible.</p>}
             <div className="admin-provider-sources">{providerSources.map(source => {
