@@ -5,7 +5,7 @@ import { RefreshCw, Link2, LoaderCircle } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
-type Target = { id: string; kind: "movie" | "series" | "video"; title: string; episodes?: Array<{ id: string; title: string; season_number: number; episode_number: number }> };
+type Target = { id: string; kind: "movie" | "series" | "video"; title: string; published: number; episodes?: Array<{ id: string; title: string; season_number: number; episode_number: number }> };
 type Source = { id: string; title_id: string; episode_id: string | null; file_code: string; playback_url: string; encoding_status: string; uploaded_at: string | null; title?: string; episode_title?: string | null };
 type RemoteFile = { file_code: string; file_title?: string; title?: string; status?: string; size?: string | number };
 type FileSelection = { titleId: string; episodeId: string };
@@ -90,7 +90,7 @@ export function UqloadManager() {
     {auth === "authenticated" && <>
       <form onSubmit={importUrl} className="admin-shared-toolbar">
         <label><span>URL Uqload</span><input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://uqload.to/…"/></label>
-        <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}</option>)}</select></label>
+        <label><span>Film ou série</span><select required value={titleId} onChange={e=>{setTitleId(e.target.value);setEpisodeId("");}}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
         <label><span>Épisode (facultatif)</span><select value={episodeId} onChange={e=>setEpisodeId(e.target.value)} disabled={!selectedTarget || selectedTarget.kind!=="series"}><option value="">Film / vidéo entière</option>{(selectedTarget?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
         <button type="submit" className="admin-shared-refresh" disabled={busy || !titleId}>{busy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Associer l’URL</button>
       </form>
