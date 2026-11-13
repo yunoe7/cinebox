@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Save,
+  Trash2,
   Search,
   ShieldAlert,
   Tv,
@@ -331,6 +332,24 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
     }
   };
 
+  const deletePermanently = async (item: Item) => {
+    const confirmed = window.confirm(`SUPPRESSION DÉFINITIVE\n\n« ${item.title} » sera supprimé du catalogue, avec ses épisodes, ses vidéos associées, ses favoris et son historique. Cette action est irréversible.\n\nContinuer ?`);
+    if (!confirmed) return;
+    setBusy(item.id);
+    setActionError(false);
+    setActionMessage("");
+    try {
+      await request("/api/catalog/manage", { method: "DELETE", body: JSON.stringify({ id: item.id, permanent: true }) });
+      setEditing(null);
+      if (await refresh()) setActionMessage(`« ${item.title} » et ses données associées ont été supprimés définitivement.`);
+    } catch (reason) {
+      setActionError(true);
+      setActionMessage(reason instanceof Error ? reason.message : "Suppression définitive impossible.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   return (
     <section className={`admin-shared-catalog ${kindFilter === "video" ? "is-video-library" : ""} ${isMediaMode ? "is-media-inventory" : ""}`.trim()} aria-labelledby={headingId}>
       <header className="admin-shared-header">
@@ -526,6 +545,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                     {isPublished
                       ? <button type="button" onClick={() => void unpublish(item)} disabled={busy === item.id}><EyeOff size={13} /> Retirer</button>
                       : <button type="button" onClick={() => void republish(item)} disabled={busy === item.id}><Check size={13} /> Republier</button>}
+                    <button type="button" className="admin-shared-delete" onClick={() => void deletePermanently(item)} disabled={busy === item.id} title="Supprimer définitivement ce titre et ses données associées"><Trash2 size={13} /> Supprimer définitivement</button>
                     <span className="admin-shared-source"><HardDrive size={12} aria-hidden="true" /> D1 · {item.id.slice(0, 14)}{item.id.length > 14 ? "…" : ""}</span>
                   </div>
 
