@@ -18,6 +18,8 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  if(!isObj(body)||typeof body.fileCode!=="string"||typeof body.tmdbId!=="number"||(body.kind!=="movie"&&body.kind!=="series"))return json({error:"Sélection TMDB invalide."},400);
  const code=body.fileCode.trim(),tmdbId=body.tmdbId,kind=body.kind;
  if(!/^[A-Za-z0-9]{6,64}$/.test(code)||!Number.isSafeInteger(tmdbId)||tmdbId<=0)return json({error:"Code Uqload ou identifiant TMDB invalide."},400);
+ const currentSource=await env.DB.prepare("SELECT t.published FROM catalog_media_sources s JOIN catalog_titles t ON t.id=s.title_id WHERE s.provider='uqload' AND s.file_code=?").bind(code).all<{published:number}>();
+ const keepPublished=currentSource.results?.some(row=>Number(row.published)===1)??false;
  const detail=await tmdb(kind==="series"?`/tv/${tmdbId}`:`/movie/${tmdbId}`,env.TMDB_READ_ACCESS_TOKEN);
  const title=clean(detail.title||detail.name,300);if(!title)return json({error:"Titre absent de la fiche TMDB."},502);
  const fileTitle=clean(body.fileTitle,300);
@@ -36,7 +38,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,release_date=excluded.release_date,
  poster_path=COALESCE(catalog_titles.poster_path,excluded.poster_path),backdrop_path=COALESCE(catalog_titles.backdrop_path,excluded.backdrop_path),
  genres_json=excluded.genres_json,metadata_json=json_patch(CASE WHEN json_valid(catalog_titles.metadata_json) THEN catalog_titles.metadata_json ELSE '{}' END,excluded.metadata_json),updated_at=CURRENT_TIMESTAMP`)
- .bind(id,kind,title,clean(detail.overview),releaseDate,clean(detail.poster_path,180)||null,clean(detail.backdrop_path,180)||null,JSON.stringify(genres),metadata).run();
+ .bind(id,kind,title,clean(detail.overview),releaseDate,clean(detail.poster_path,180)||null,clean(detail.backdrop_path,180)||null,JSON.stringify(genres),metadata,keepPublished?1:0).run();
  let episodeId:string|null=null;
  if(kind==="series"){
   const season=seasonNumber,episode=episodeNumber;
