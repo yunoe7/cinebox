@@ -52,7 +52,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}){
  try{
   const info=await upstream("/file/info",env.UQLOAD_API_KEY,{file_code:fileCode});
   const data=record(info.result)?info.result:{};
-  const playbackUrl=`https://uqload.to/embed-${fileCode}.html`;
+  const playbackUrl=`https://uqload.vc/embed-${fileCode}.html`;
   await env.DB.prepare("INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,quality=excluded.quality,encoding_status=excluded.encoding_status,uploaded_at=excluded.uploaded_at,updated_at=CURRENT_TIMESTAMP")
    .bind(crypto.randomUUID(),body.titleId,episodeId,"uqload",fileCode,fileCode,playbackUrl,typeof data.file_quality==="string"?data.file_quality:null,"ready",typeof data.created==="string"?new Date(data.created).toISOString():null).run();
   return json({associated:true,fileCode,titleId:body.titleId,episodeId,playbackUrl});
