@@ -131,8 +131,12 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
 export async function onRequestPost({ request, env }: { request: Request; env: Env }): Promise<Response> {
   const denied = await requireAdmin(request, env);
   if (denied) return denied;
-  if (!env.DB || !env.UQLOAD_API_KEY || !env.TMDB_READ_ACCESS_TOKEN) {
-    return json({ error: "La synchronisation automatique nécessite DB, UQLOAD_API_KEY et TMDB_READ_ACCESS_TOKEN dans Cloudflare Pages." }, 503);
+  const missing: string[] = [];
+  if (!env.DB) missing.push("DB (liaison D1)");
+  if (!env.UQLOAD_API_KEY) missing.push("UQLOAD_API_KEY");
+  if (!env.TMDB_READ_ACCESS_TOKEN) missing.push("TMDB_READ_ACCESS_TOKEN");
+  if (missing.length) {
+    return json({ error: "Configuration serveur incomplète.", missing }, 503);
   }
   const payload = await uqload("/file/list", env.UQLOAD_API_KEY, { per_page: String(MAX_FILES_PER_SYNC), page: "1" });
   const files = rows(payload).slice(0, MAX_FILES_PER_SYNC);
