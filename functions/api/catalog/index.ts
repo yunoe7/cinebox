@@ -85,9 +85,12 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     const sourceByTitle = new Map<string, string>();
     const sourceByEpisode = new Map<string, string>();
     for (const source of sourceResult.results) {
-      if (!source.playback_url) continue;
-      if (source.episode_id) sourceByEpisode.set(source.episode_id, source.playback_url);
-      else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, source.playback_url);
+      const playbackUrl = source.file_code && /^[A-Za-z0-9]{6,64}$/.test(source.file_code)
+        ? `https://uqload.vc/embed-${source.file_code}.html`
+        : source.playback_url;
+      if (!playbackUrl) continue;
+      if (source.episode_id) sourceByEpisode.set(source.episode_id, playbackUrl);
+      else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, playbackUrl);
     }
     const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();
     for (const episode of episodeResult.results) {
