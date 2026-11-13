@@ -1,9 +1,11 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
-import { TEST_ADMIN_PASSWORD, TEST_ORIGIN } from "./test-config.mjs";
+import { expect, test } from "@playwright/test";
+import { TEST_ORIGIN } from "./test-config.mjs";
 
-const LOGIN = "/api/auth/login";
-const LOGOUT = "/api/auth/logout";
-const SESSION = "/api/auth/session";
+const LEGACY_LOGIN = "/api/auth/login";
+const LEGACY_LOGOUT = "/api/auth/logout";
+const LEGACY_SESSION = "/api/auth/session";
+const ACCOUNT_SESSION = "/api/account/session";
+const ACCOUNT_LOGOUT = "/api/account/logout";
 const ADMIN_ROUTE = "/api/catalog/manage";
 const CSRF = { "x-cinebox-request": "1" };
 
@@ -17,131 +19,70 @@ function mutationHeaders(overrides: Record<string, string> = {}) {
 }
 
 function setCookieHeaders(response: { headersArray(): { name: string; value: string }[] }) {
-  return response
-    .headersArray()
+  return response.headersArray()
     .filter((header) => header.name.toLowerCase() === "set-cookie")
     .map((header) => header.value);
 }
 
-async function login(request: APIRequestContext) {
-  return request.post(LOGIN, {
-    headers: mutationHeaders(),
-    data: { password: TEST_ADMIN_PASSWORD },
-  });
-}
+test("l'API réelle refuse les anciens cookies et jetons admin sans session Discord", async ({ request }) => {
+  const legacySession = await request.get(LEGACY_SESSION);
+  expect(legacySession.status()).toBe(200);
+  expect(await legacySession.json()).toEqual({ authenticated: false, configured: false });
 
-test("l'API réelle refuse les anonymes et l'ancien jeton Bearer", async ({ request }) => {
-  const anonymous = await request.get(SESSION);
-  expect(anonymous.status()).toBe(200);
-  expect(await anonymous.json()).toEqual({ authenticated: false, configured: true });
+  // Une requête anonyme sans cookie est une réponse normale, pas une erreur serveur.
+  const accountSession = await request.get(ACCOUNT_SESSION);
+  expect(accountSession.status()).toBe(200);
+  expect(await accountSession.json()).toEqual({ authenticated: false, user: null });
 
+  // Sans D1, la route admin doit échouer de façon fermée, même avec un ancien Bearer.
   const denied = await request.get(ADMIN_ROUTE);
-  expect(denied.status()).toBe(401);
-  expect(await denied.json()).toEqual({ error: "Authentification administrateur requise." });
+  expect(denied.status()).toBe(503);
+  expect(await denied.json()).toEqual({ error: "Base de données indisponible." });
 
   const legacyBearer = await request.get(ADMIN_ROUTE, {
     headers: { authorization: "Bearer legacy-admin-token-that-is-long-enough" },
   });
-  expect(legacyBearer.status()).toBe(401);
-  expect(await legacyBearer.json()).toEqual({ error: "Authentification administrateur requise." });
-
-  const wrongPassword = await request.post(LOGIN, {
-    headers: mutationHeaders(),
-    data: { password: "this is not the admin password" },
-  });
-  expect(wrongPassword.status()).toBe(401);
-  expect(await wrongPassword.json()).toEqual({ error: "Mot de passe administrateur incorrect." });
-  expect(setCookieHeaders(wrongPassword)).toEqual([]);
+  expect(legacyBearer.status()).toBe(503);
+  expect(await legacyBearer.json()).toEqual({ error: "Base de données indisponible." });
 });
 
-test("l'API réelle bloque les requêtes sans en-tête CSRF ou d'origine étrangère", async ({ request }) => {
-  const withoutCsrf = await request.post(LOGIN, {
+test("l'ancienne connexion par mot de passe est désactivée sans émettre de cookie", async ({ request }) => {
+  for (const options of [
+    { headers: mutationHeaders(), data: { password: "legacy-password" } },
+    { headers: { origin: TEST_ORIGIN }, data: { password: "legacy-password" } },
+    { headers: mutationHeaders({ origin: "https://evil.test" }), data: { password: "legacy-password" } },
+    { headers: mutationHeaders(), data: {} },
+  ]) {
+    const response = await request.post(LEGACY_LOGIN, options);
+    expect(response.status()).toBe(410);
+    expect(await response.json()).toEqual({
+      error: "La connexion par mot de passe est désactivée. Utilise Discord OAuth.",
+    });
+    expect(setCookieHeaders(response)).toEqual([]);
+  }
+});
+
+test("la déconnexion du compte Discord exige une origine et un en-tête CSRF valides", async ({ request }) => {
+  const withoutCsrf = await request.post(ACCOUNT_LOGOUT, {
     headers: { origin: TEST_ORIGIN, "sec-fetch-site": "same-origin" },
-    data: { password: TEST_ADMIN_PASSWORD },
   });
   expect(withoutCsrf.status()).toBe(403);
-  expect(await withoutCsrf.json()).toEqual({ error: "Requête refusée : origine invalide." });
+  expect(await withoutCsrf.json()).toEqual({ error: "Requête refusée." });
+  expect(setCookieHeaders(withoutCsrf)).toEqual([]);
 
-  const foreignOrigin = await request.post(LOGIN, {
+  const foreignOrigin = await request.post(ACCOUNT_LOGOUT, {
     headers: mutationHeaders({ origin: "https://evil.test" }),
-    data: { password: TEST_ADMIN_PASSWORD },
   });
   expect(foreignOrigin.status()).toBe(403);
+  expect(await foreignOrigin.json()).toEqual({ error: "Requête refusée." });
   expect(setCookieHeaders(foreignOrigin)).toEqual([]);
 });
 
-test("la connexion pose un cookie __Host- durci et la session est consultable", async ({ request }) => {
-  const response = await login(request);
+test("l'ancienne déconnexion admin est un no-op et ne touche pas au cookie Discord", async ({ request }) => {
+  const response = await request.post(LEGACY_LOGOUT, {
+    headers: mutationHeaders(),
+  });
   expect(response.status()).toBe(200);
-
-  const body = await response.json();
-  expect(body.authenticated).toBe(true);
-  expect(typeof body.expiresAt).toBe("number");
-  expect(body.expiresAt).toBeGreaterThan(Date.now());
-  const serialized = JSON.stringify(body);
-  expect(serialized).not.toContain(TEST_ADMIN_PASSWORD);
-  expect(serialized).not.toContain("pbkdf2");
-
-  const cookies = setCookieHeaders(response);
-  expect(cookies).toHaveLength(1);
-  const cookie = cookies[0];
-  expect(cookie.startsWith("__Host-cinebox_admin=")).toBe(true);
-  expect(cookie).toMatch(/; Path=\//);
-  expect(cookie).toMatch(/; HttpOnly/);
-  expect(cookie).toMatch(/; SameSite=Strict/);
-  expect(cookie).toMatch(/; Secure/);
-  expect(cookie).toMatch(/; Max-Age=43200/);
-  expect(cookie).not.toContain("Domain=");
-
-  const state = await request.storageState();
-  const stored = state.cookies.find((entry) => entry.name === "__Host-cinebox_admin");
-  expect(stored).toBeDefined();
-  expect(stored?.httpOnly).toBe(true);
-  expect(stored?.secure).toBe(true);
-  expect(stored?.sameSite).toBe("Strict");
-  expect(stored?.path).toBe("/");
-
-  const session = await request.get(SESSION);
-  expect(session.status()).toBe(200);
-  const sessionBody = await session.json();
-  expect(sessionBody.authenticated).toBe(true);
-  expect(sessionBody.configured).toBe(true);
-  expect(sessionBody.expiresAt).toBeGreaterThan(Date.now());
-
-  // The real Functions runtime accepts the cookie. D1 is intentionally not
-  // bound here, so reaching the 503 proves the auth guard was passed.
-  const adminRoute = await request.get(ADMIN_ROUTE);
-  expect(adminRoute.status()).toBe(503);
-  expect(await adminRoute.json()).toEqual({
-    error: "Base de données indisponible.",
-  });
-});
-
-test("la déconnexion efface le cookie et coupe l'accès", async ({ request }) => {
-  expect((await login(request)).status()).toBe(200);
-
-  const withoutCsrf = await request.post(LOGOUT, {
-    headers: { origin: TEST_ORIGIN, "sec-fetch-site": "same-origin" },
-  });
-  expect(withoutCsrf.status()).toBe(403);
-  expect((await request.get(ADMIN_ROUTE)).status()).toBe(503);
-
-  const logout = await request.post(LOGOUT, { headers: mutationHeaders() });
-  expect(logout.status()).toBe(200);
-  expect(await logout.json()).toEqual({ authenticated: false });
-
-  const cleared = setCookieHeaders(logout);
-  expect(cleared).toHaveLength(1);
-  expect(cleared[0].startsWith("__Host-cinebox_admin=;")).toBe(true);
-  expect(cleared[0]).toMatch(/Max-Age=0/);
-  expect(cleared[0]).toMatch(/HttpOnly/);
-  expect(cleared[0]).toMatch(/SameSite=Strict/);
-  expect(cleared[0]).toMatch(/Secure/);
-
-  const state = await request.storageState();
-  expect(state.cookies.find((entry) => entry.name === "__Host-cinebox_admin")).toBeUndefined();
-
-  const session = await request.get(SESSION);
-  expect(await session.json()).toEqual({ authenticated: false, configured: true });
-  expect((await request.get(ADMIN_ROUTE)).status()).toBe(401);
+  expect(await response.json()).toEqual({ authenticated: false });
+  expect(setCookieHeaders(response)).toEqual([]);
 });

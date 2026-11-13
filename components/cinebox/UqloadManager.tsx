@@ -11,8 +11,6 @@ type RemoteFile = { file_code: string; file_title?: string; title?: string; stat
 
 export function UqloadManager() {
   const [auth, setAuth] = useState<AdminAuthState>("checking");
-  const [password, setPassword] = useState("");
-  const [loggingIn, setLoggingIn] = useState(false);
   const [targets, setTargets] = useState<Target[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
@@ -39,18 +37,11 @@ export function UqloadManager() {
   useEffect(() => { let cancelled = false; void getAdminSession().then(s => { if (!cancelled) setAuth(s.authenticated ? "authenticated" : "anonymous"); }); return () => { cancelled = true; }; }, []);
   useEffect(() => { if (auth === "authenticated") void refresh(); }, [auth, refresh]);
 
-  const login = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); if (!password || loggingIn) return;
-    setLoggingIn(true); setMessage(""); setError(false);
-    try {
-      await loginAdmin(password); setPassword(""); setAuth("authenticated");
-    } catch (e) { setMessage(e instanceof Error ? e.message : "Connexion impossible."); setError(true); }
-    finally { setLoggingIn(false); }
-  };
+  const login = () => { void loginAdmin(); };
 
   const logout = async () => {
     await logoutAdmin();
-    setAuth("anonymous"); setPassword(""); setSources([]); setTargets([]); setRemoteFiles([]);
+    setAuth("anonymous"); setSources([]); setTargets([]); setRemoteFiles([]);
     setUrl(""); setTitleId(""); setEpisodeId(""); setMessage(""); setError(false);
   };
 
@@ -70,7 +61,7 @@ export function UqloadManager() {
     <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">HÉBERGEMENT VIDÉO · UQLOAD</div><h3>Sources vidéo Uqload</h3><p>Importe une URL hébergée sur Uqload puis associe-la à un film ou à un épisode du catalogue D1.</p></div>
       {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
     </header>
-    <AdminSessionPanel authState={auth} password={password} loggingIn={loggingIn} onPasswordChange={setPassword} onLogin={login} onLogout={() => void logout()} description="La gestion Uqload est protégée par la session administrateur." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
+    <AdminSessionPanel authState={auth} onLogin={login} onLogout={() => void logout()} description="La gestion Uqload est protégée par la session administrateur." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
     {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
     {auth === "authenticated" && <>
       <form onSubmit={importUrl} className="admin-shared-toolbar">

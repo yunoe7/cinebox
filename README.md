@@ -38,23 +38,15 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | Variable | Rôle | Obligatoire |
 | --- | --- | --- |
 | `TMDB_READ_ACCESS_TOKEN` | Jeton TMDB (v4) ou clé v3, utilisé par le proxy `/api/tmdb` | Pour TMDB |
-| `CINEBOX_ADMIN_PASSWORD_HASH` | Vérificateur PBKDF2 du mot de passe admin, généré par `npm run hash:admin` | Pour l'administration |
-| `CINEBOX_SESSION_SECRET` | Secret HMAC des sessions signées, **32 caractères minimum** | Pour l'administration |
+| `CINEBOX_ADMIN_DISCORD_USER_ID` | Identifiant Discord de secours autorisé explicitement | Optionnel |
+| `CINEBOX_DISCORD_BOT_TOKEN` | Token du bot Discord, conservé uniquement côté serveur | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_GUILD_ID` | Identifiant du serveur Discord CinéBox | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_FONDA_ID` | Identifiant du rôle Fondateur | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_ADMIN_ID` | Identifiant du rôle Admin | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_MODO_ID` | Identifiant du rôle Modérateur | Pour les rôles automatiques |
 | `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |\n| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |\n| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |\n| `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour les comptes et le catalogue partagé |
 
-Générer le vérificateur sans jamais afficher le mot de passe :
-
-```bash
-npm run hash:admin
-# ou, pour un script non interactif :
-CINEBOX_ADMIN_PASSWORD='...' npm run hash:admin
-```
-
-Générer le secret de session :
-
-```bash
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
-```
+Pour activer l'autorisation automatique, configurer le token du bot, l'identifiant du serveur et les trois identifiants de rôles Fondateur/Admin/Modérateur dans Cloudflare Pages Production et Preview. Le bot doit appartenir au serveur et l'intent privilégié **Server Members Intent** doit être activé dans le portail Discord. Les identifiants de rôles sont vérifiés côté serveur via l'API Discord à chaque contrôle d'accès (cache court de 30 secondes). L'identifiant `CINEBOX_ADMIN_DISCORD_USER_ID`, le rôle D1 `admin` et `admin_allowlist` restent des accès explicites de secours. La session est celle du compte Discord déjà connecté : aucun mot de passe administrateur ni secret de session séparé n’est nécessaire.
 
 ## Développement
 
@@ -99,7 +91,7 @@ Configuration du projet Pages :
 - **Répertoire de sortie** : `out`
 - **Version de Node** : 22
 - **Binding D1** : `DB` → base du catalogue partagé
-- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_PASSWORD_HASH`, `CINEBOX_SESSION_SECRET`
+- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_DISCORD_USER_ID`, `CINEBOX_DISCORD_BOT_TOKEN`, `CINEBOX_DISCORD_GUILD_ID`, `CINEBOX_DISCORD_ROLE_FONDA_ID`, `CINEBOX_DISCORD_ROLE_ADMIN_ID`, `CINEBOX_DISCORD_ROLE_MODO_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`
 
 Configurer ces variables dans **Production** et **Preview**. Ajouter aussi `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` et `DISCORD_REDIRECT_URI` dans les deux environnements, et déclarer l’URL de callback exacte dans le portail développeur Discord. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. Tous ces secrets sont lus uniquement par les Pages Functions.
 
@@ -107,16 +99,15 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 ### Authentification administrateur
 
-- `POST /api/auth/login` vérifie le mot de passe avec PBKDF2-SHA256 (100 000 itérations, plafond imposé par Cloudflare Workers) puis émet un cookie `__Host-cinebox_admin` : `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, `Max-Age=43200`.
-- Un mot de passe incorrect renvoie `401`. Une erreur cryptographique ou interne renvoie `500` avec un message générique, sans jamais journaliser le mot de passe, le vérificateur ni le sel.
-- La session est signée en HMAC-SHA256 et expire au bout de 12 heures maximum. Aucun jeton n'est stocké dans `sessionStorage` ni lisible par JavaScript.
-- `POST /api/auth/logout` efface le cookie. `GET /api/auth/session` renvoie l'état de la session sans jamais exposer sa valeur.
-- Les requêtes mutantes exigent une `Origin` exacte, `Sec-Fetch-Site: same-origin` lorsqu'il est présent, et l'en-tête `x-cinebox-request: 1`. Les anciens jetons Bearer sont refusés.
-- Si `CINEBOX_ADMIN_PASSWORD_HASH` ou `CINEBOX_SESSION_SECRET` manque, les routes admin répondent `503` et n'écrivent rien.
+- Toute l’administration utilise la session Discord existante (`__Host-cinebox_session`) : le bouton admin déclenche OAuth Discord et aucun mot de passe distinct n’est demandé.
+- Les rôles Discord Fondateur, Admin et Modérateur accordent tous l'accès à l'ensemble des panneaux et API d'administration. Les rôles sont relus côté serveur auprès de Discord avec un cache de 30 secondes ; un retrait de rôle retire donc rapidement les droits.
+- Les accès explicites `CINEBOX_ADMIN_DISCORD_USER_ID`, `users.role = 'admin'` et `admin_allowlist` sont conservés comme mécanismes de secours. Un membre sans rôle privilégié ni autorisation explicite reste refusé.
+- VIP reste indépendant de l'administration et conserve uniquement ses avantages VIP.
+- Les requêtes mutantes exigent une `Origin` exacte, `Sec-Fetch-Site: same-origin` lorsqu’il est présent, et l’en-tête `x-cinebox-request: 1`.
 
-**Rate limiting** : la limitation du bruteforce doit être configurée dans Cloudflare (WAF > Rate limiting rules) sur `POST /api/auth/login`, par exemple 10 requêtes par minute et par IP avec blocage ou challenge. Aucune table D1 n'est nécessaire. Valider le seuil et l'action dans l'environnement Cloudflare avant activation. Une règle WAF peut également restreindre `/api/auth/*` et `/api/catalog/manage` aux pays ou réseaux attendus.
+**Rate limiting** : le démarrage OAuth Discord (`GET /api/auth/discord/start`) est limité côté serveur à 12 tentatives par adresse IP sur 15 minutes via la table D1 `account_rate_limits` (migration `0005_account_rate_limits.sql`). Une règle Cloudflare WAF complémentaire peut aussi protéger les routes `/api/auth/*` et `/api/catalog/manage`.
 
-### Connexion des membres avec Discord\n\n- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.\n- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.\n- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.\n- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre est stockée dans un cookie HttpOnly distinct de la session administrateur.\n- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.\n\n### Migrations D1
+### Connexion des membres avec Discord\n\n- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.\n- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.\n- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.\n- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre et administrateur est partagée dans le même cookie HttpOnly ; l’accès admin dépend d’une autorisation Discord vérifiée côté serveur.\n- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.\n\n### Migrations D1
 
 La migration initiale se trouve dans `migrations/0001_shared_catalog.sql`. Elle crée les tables `users`, `admin_allowlist`, `catalog_titles`, `catalog_episodes`, `media_assets`, `user_favorites`, `user_progress`, `watch_history` et les index associés.
 
@@ -178,8 +169,8 @@ tests/                      Tests Node et Playwright
 ## Sécurité
 
 - Les jetons restent côté serveur ; seules les variables `NEXT_PUBLIC_*` seraient exposées, et il n'y en a pas.
-- Les routes d'écriture admin vérifient un cookie `HttpOnly` signé en HMAC-SHA256, avec une durée de vie de 12 heures maximum. Aucun ancien jeton Bearer n'est accepté.
-- Le mot de passe administrateur n'est jamais stocké : seul un vérificateur PBKDF2-SHA256 salé est conservé dans `CINEBOX_ADMIN_PASSWORD_HASH`.
+- Les routes d’écriture admin vérifient le cookie de session Discord `HttpOnly`, stocké sous forme de hash dans D1 et révocable à la déconnexion (durée maximale : 12 heures).
+- L’administration est autorisée par l’identité Discord du compte, via `CINEBOX_ADMIN_DISCORD_USER_ID`, `users.role = 'admin'` ou `admin_allowlist`.
 - Les requêtes mutantes admin sont protégées contre le CSRF par `SameSite=Strict`, un contrôle exact de l'`Origin`, `Sec-Fetch-Site` et l'en-tête `x-cinebox-request`.
 - Les routes publiques du catalogue sont en lecture seule et ne renvoient que les titres publiés.
 - Les données personnelles (favoris, progression, profils) restent dans `localStorage` / IndexedDB tant qu'une migration vérifiée n'est pas disponible.
@@ -187,7 +178,6 @@ tests/                      Tests Node et Playwright
 - Le navigateur ne conserve aucun jeton admin dans `sessionStorage` ou `localStorage` : la session vit exclusivement dans un cookie `HttpOnly`. La déconnexion efface ce cookie.
 - Aucun `dangerouslySetInnerHTML`, `innerHTML`, `eval` ni `new Function` n'est utilisé dans le code source. Les contenus distants (TMDB, D1) sont rendus via React, qui échappe le texte.
 - `public/_headers` applique `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options: DENY` et HSTS. `npm run build` génère ensuite la CSP SHA-256 dans `out/_headers` ; `npm run check:csp` vérifie que chaque script inline est couvert.
-- Le bruteforce du mot de passe doit être limité par une règle Cloudflare WAF / Rate Limiting sur `/api/auth/login` (voir la section Authentification administrateur).
 
 ## Intégration continue
 
@@ -206,7 +196,7 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 - Les données personnelles restent propres au navigateur.
 - Le filtrage du mode enfant est indicatif : les titres partagés n'ont pas de classification d'âge fiable.
 - Le catalogue public n'expose que les métadonnées nécessaires à l'affichage et à la lecture.
-- La session admin est stateless : la déconnexion efface le cookie du navigateur, mais un cookie copié avant expiration reste valide jusqu'à son `exp`. La durée est plafonnée à 12 heures ; une révocation immédiate nécessiterait un stockage serveur supplémentaire, à valider avant mise en place.
+- La session Discord est stockée sous forme de hash dans D1 (`account_sessions`), expire après 12 heures et est révoquée côté serveur à la déconnexion. Les cookies temporaires OAuth `state` et `mode` expirent après 10 minutes.
 - Le rate limiting du login dépend d'une règle Cloudflare WAF / Rate Limiting à configurer et à valider dans le compte Cloudflare ; aucun contournement applicatif n'est fourni.
 - Les styles hérités morts ont été retirés ; deux avertissements Autoprefixer historiques subsistent dans le CSS minifié.
 
@@ -224,4 +214,4 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 | `npm run test:integration` | Tests Playwright contre les vraies Pages Functions via Wrangler (après `npm run build`) |
 | `npm run check:csp` | Vérifie que `out/_headers` couvre tous les scripts inline |
 | `npm run test:csp` | Smoke test Playwright de la CSP sur l'export statique (nécessite `npm run build`) |
-| `npm run hash:admin` | Génère `CINEBOX_ADMIN_PASSWORD_HASH` sans afficher le mot de passe |
+| `npm run hash:admin` | Ancien utilitaire de migration du mot de passe admin (non utilisé par l'authentification actuelle) |

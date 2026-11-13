@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { onRequestPost } from "../../functions/api/catalog/publish.ts";
-import { ADMIN_ENV, adminHeaders } from "./helpers/admin-auth.mjs";
+import { ADMIN_ENV, discordAdminHeaders, withDiscordAdminDb } from "./helpers/admin-auth.mjs";
 import { createPublishD1 } from "./helpers/publish-d1.mjs";
 
 function makeEnv(options = {}) {
   const db = createPublishD1(options);
-  const env = { ...ADMIN_ENV, DB: db };
+  const env = { ...ADMIN_ENV, DB: withDiscordAdminDb(db) };
   return { env, calls: db.calls, reads: db.reads, state: db.state, batches: db.batches };
 }
 
@@ -34,7 +34,7 @@ function seedSeries({ id = "tmdb:series:42", seasons = [1, 2] } = {}) {
 function request(body, { authenticated = true, extra = {} } = {}) {
   return new Request("https://cinebox.test/api/catalog/publish", {
     method: "POST",
-    headers: { "content-type": "application/json", ...adminHeaders({ authenticated, extra }) },
+    headers: { "content-type": "application/json", ...discordAdminHeaders({ authenticated, extra }) },
     body: JSON.stringify(body),
   });
 }
@@ -59,12 +59,13 @@ test("shared publishing rejects a legacy Bearer token", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("shared publishing reports a server configuration error without admin secrets", async () => {
+test("shared publishing does not require a separate admin password", async () => {
   const { env, calls } = makeEnv();
   env.CINEBOX_ADMIN_PASSWORD_HASH = undefined;
+  env.CINEBOX_SESSION_SECRET = undefined;
   const response = await onRequestPost({ request: request({ tmdbId: 1, kind: "movie", title: "Film" }), env });
-  assert.equal(response.status, 503);
-  assert.equal(calls.length, 0);
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1);
 });
 
 test("shared publishing validates input before writing", async () => {

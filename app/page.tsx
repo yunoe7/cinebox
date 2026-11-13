@@ -294,6 +294,16 @@ export default function HomePage() {
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
   const [activePage, setActivePage] = useState("Accueil");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("admin") !== "1") return;
+    setActivePage("Administration");
+    setAdminSection("overview");
+    params.delete("admin");
+    const queryString = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (queryString ? `?${queryString}` : "") + window.location.hash);
+  }, []);
   const [filter, setFilter] = useState("Tout");
   const [genreFilter, setGenreFilter] = useState("Tous les genres");
   const [heroIndex, setHeroIndex] = useState(0);
