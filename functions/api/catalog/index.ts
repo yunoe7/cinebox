@@ -78,9 +78,9 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     // Playback sources are part of the public catalogue response: without them,
     // an admin can associate a Uqload file but viewers never receive its URL.
     const sourceResult = pageRows.length ? await env.DB.prepare(
-      `SELECT title_id,episode_id,playback_url FROM catalog_media_sources
+      `SELECT title_id,episode_id,file_code,playback_url FROM catalog_media_sources
        WHERE provider='uqload' AND title_id IN (${pageRows.map(() => "?").join(",")})`,
-    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; playback_url: string }>() : { results: [], success: true };
+    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; file_code: string; playback_url: string }>() : { results: [], success: true };
     if (!sourceResult.success) throw new Error("D1 media source query failed");
     const sourceByTitle = new Map<string, string>();
     const sourceByEpisode = new Map<string, string>();
