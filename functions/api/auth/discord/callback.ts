@@ -1,10 +1,18 @@
-import { json, cookie, clearCookie, cookieHeader, getAccount, createAccountSession, type AccountEnv } from "../../../_lib/account-auth.ts";
+import { cookie, clearCookie, cookieHeader, getAccount, createAccountSession, type AccountEnv } from "../../../_lib/account-auth.ts";
 const STATE_COOKIE="cinebox_discord_state";
+
 export async function onRequestGet({request,env}:{request:Request;env:AccountEnv}) {
   const url=new URL(request.url), state=url.searchParams.get("state")||"", code=url.searchParams.get("code")||"";
   const stateCookie=cookie(request,STATE_COOKIE), mode=cookie(request,"cinebox_discord_mode");
-  const clear=[clearCookie(request,STATE_COOKIE),clearCookie(request,"cinebox_discord_mode")].join(", ");
-  const fail=(reason:string)=>Response.redirect(new URL("/connexion?erreur="+encodeURIComponent(reason),request.url),302);
+  const fail=(reason:string)=>{
+    const headers=new Headers({
+      location:new URL("/connexion?erreur="+encodeURIComponent(reason),request.url).toString(),
+      "cache-control":"no-store",
+    });
+    headers.append("set-cookie",clearCookie(request,STATE_COOKIE));
+    headers.append("set-cookie",clearCookie(request,"cinebox_discord_mode"));
+    return new Response(null,{status:302,headers});
+  };
   if(!state || !stateCookie || state!==stateCookie || !code) return fail("discord-state");
   if(!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.DISCORD_REDIRECT_URI) return fail("discord-config");
   try {
@@ -28,8 +36,6 @@ export async function onRequestGet({request,env}:{request:Request;env:AccountEnv
       const linked=await env.DB.prepare("SELECT user_id FROM auth_identities WHERE provider='discord' AND provider_user_id=?").bind(profile.id).first<{user_id:string}>();
       if(linked) {
         userId=linked.user_id;
-        // Refresh Discord profile data on every login so avatar changes and
-        // previously missing avatar hashes are reflected in the account UI.
         await env.DB.prepare(
           "UPDATE auth_identities SET provider_username=?,provider_global_name=?,provider_avatar=? WHERE provider='discord' AND provider_user_id=?",
         ).bind(profile.username,profile.global_name||null,profile.avatar||null,profile.id).run();
