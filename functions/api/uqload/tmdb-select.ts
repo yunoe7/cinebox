@@ -54,6 +54,6 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  }
  await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
- .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,`https://uqload.to/embed-${code}.html`,null,"ready",null).run();
+ .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,`https://uqload.vc/embed-${code}.html`,null,"ready",null).run();
  return json({associated:true,title,kind,titleId:id,episodeId,published:false,episodeDetected:Boolean(episodeId)});
 }
