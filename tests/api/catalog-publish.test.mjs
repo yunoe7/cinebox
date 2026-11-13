@@ -62,6 +62,7 @@ test("shared publishing rejects a legacy Bearer token", async () => {
 test("shared publishing does not require a separate admin password", async () => {
   const { env, calls } = makeEnv();
   env.CINEBOX_ADMIN_PASSWORD_HASH = undefined;
+  env.CINEBOX_SESSION_SECRET = undefined;
   const response = await onRequestPost({ request: request({ tmdbId: 1, kind: "movie", title: "Film" }), env });
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
