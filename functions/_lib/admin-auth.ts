@@ -75,23 +75,19 @@ async function hasPrivilegedDiscordRole(env: AdminEnv, discordUserId: string): P
 export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boolean> {
   if (!env.DB) return false;
   try {
-    const row = await env.DB.prepare(
-      "SELECT 1 AS allowed, u.role AS account_role, i.provider_user_id AS discord_user_id, EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id) AS allowlisted FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
-    ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{
-      allowed: number;
-      account_role?: string;
-      discord_user_id?: string;
-      allowlisted?: number;
-    }>();
-    if (!row?.allowed) return false;
+    // Keep existing explicit grants (owner ID, database admin role, allowlist).
+    const explicit = await env.DB.prepare(
+      "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
+    ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
+    if (explicit?.allowed) return true;
 
-    // Preserve existing explicit owner/admin grants.
-    if (row.account_role === "admin" || row.allowlisted === 1 ||
-        (row.discord_user_id && row.discord_user_id === env.CINEBOX_ADMIN_DISCORD_USER_ID)) return true;
-
-    // A regular member is elevated only by a live Discord Fonda/Admin/Modo role.
-    if (!row.discord_user_id) return false;
-    return await hasPrivilegedDiscordRole(env, row.discord_user_id);
+    // Otherwise inspect the linked Discord identity and resolve its current guild roles.
+    if (!env.CINEBOX_DISCORD_BOT_TOKEN || !env.CINEBOX_DISCORD_GUILD_ID) return false;
+    const identity = await env.DB.prepare(
+      "SELECT provider_user_id FROM auth_identities WHERE user_id=? AND provider='discord' LIMIT 1",
+    ).bind(userId).first<{ provider_user_id: string }>();
+    if (!identity?.provider_user_id) return false;
+    return await hasPrivilegedDiscordRole(env, identity.provider_user_id);
   } catch {
     return false;
   }
