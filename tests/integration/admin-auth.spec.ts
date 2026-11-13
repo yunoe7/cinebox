@@ -24,16 +24,17 @@ function setCookieHeaders(response: { headersArray(): { name: string; value: str
     .map((header) => header.value);
 }
 
-test("l'API réelle refuse les anciens cookies et jetons admin sans session Discord ni D1", async ({ request }) => {
+test("l'API réelle refuse les anciens cookies et jetons admin sans session Discord", async ({ request }) => {
   const legacySession = await request.get(LEGACY_SESSION);
   expect(legacySession.status()).toBe(200);
   expect(await legacySession.json()).toEqual({ authenticated: false, configured: false });
 
+  // Une requête anonyme sans cookie est une réponse normale, pas une erreur serveur.
   const accountSession = await request.get(ACCOUNT_SESSION);
-  // D1 is intentionally not bound in this integration environment.
-  expect(accountSession.status()).toBe(503);
+  expect(accountSession.status()).toBe(200);
   expect(await accountSession.json()).toEqual({ authenticated: false, user: null });
 
+  // Sans D1, la route admin doit échouer de façon fermée, même avec un ancien Bearer.
   const denied = await request.get(ADMIN_ROUTE);
   expect(denied.status()).toBe(503);
   expect(await denied.json()).toEqual({ error: "Base de données indisponible." });
