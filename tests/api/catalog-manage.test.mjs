@@ -40,7 +40,7 @@ test("shared catalog management does not require a separate admin password", asy
   const db = createFakeD1();
   const response = await onRequestPatch({
     request: request({ id: "tmdb:movie:42" }),
-    env: makeEnv(db),
+    env: { ...makeEnv(db), CINEBOX_ADMIN_PASSWORD_HASH: undefined, CINEBOX_SESSION_SECRET: undefined },
   });
   assert.equal(response.status, 200);
 });
