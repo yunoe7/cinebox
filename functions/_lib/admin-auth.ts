@@ -1,7 +1,19 @@
+import {
+  ADMIN_SESSION_TTL_SECONDS,
+  buildClearSessionCookie,
+  buildSessionCookie,
+  parsePasswordHash,
+  readCookie,
+  sessionCookieName,
+  verifyAdminSession,
+  verifyRequestOrigin,
+} from "../../lib/cinebox/admin-auth.mjs";
 import { getAccount, validOrigin, type AccountEnv } from "./account-auth.ts";
 
 export interface AdminEnv extends Partial<AccountEnv> {
   CINEBOX_ADMIN_DISCORD_USER_ID?: string;
+  CINEBOX_ADMIN_PASSWORD_HASH?: string;
+  CINEBOX_SESSION_SECRET?: string;
 }
 
 export const ADMIN_AUTH_ERROR = "Authentification administrateur requise.";
@@ -20,6 +32,17 @@ export function json(body: unknown, status = 200, extraHeaders: Record<string, s
       ...extraHeaders,
     },
   });
+}
+
+export function isAdminConfigured(env: AdminEnv): boolean {
+  return parsePasswordHash(env.CINEBOX_ADMIN_PASSWORD_HASH) !== null &&
+    typeof env.CINEBOX_SESSION_SECRET === "string" && env.CINEBOX_SESSION_SECRET.length >= 32;
+}
+export function readAdminCookie(request: Request): string {
+  return readCookie(request.headers.get("cookie"), sessionCookieName({ secure: new URL(request.url).protocol === "https:" }));
+}
+export function buildClearedAdminCookie(request: Request): string {
+  return buildClearSessionCookie({ secure: new URL(request.url).protocol === "https:" });
 }
 
 /** True only for a signed-in Discord account explicitly authorized as admin. */
