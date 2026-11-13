@@ -82,7 +82,7 @@ export function rejectInvalidOrigin(): Response {
  * Checks configuration first, then CSRF, then the signed HttpOnly cookie.
  */
 export async function requireAdmin(request: Request, env: AdminEnv): Promise<Response | null> {
-  if (!env.DB) return adminConfigurationError();
+  if (!env.DB) return json({ error: "Base de données indisponible." }, 503);
   if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase()) && !validOrigin(request)) {
     return rejectInvalidOrigin();
   }
