@@ -46,10 +46,11 @@ export function UqloadManager() {
       if (running || cancelled) return;
       running = true;
       try {
-        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number; existing?: number };
-        if (!cancelled && Number(result.created) > 0) {
-          setMessage(`Synchronisation Uqload : ${result.created} nouveau(x) contenu(s) créé(s) en privé.`);
-          setError(false);
+        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number; existing?: number; details?: Array<{file:string;status:string;reason?:string}> };
+        if (!cancelled) {
+          const details = (result.details || []).slice(0, 3).map(item => `${item.file} : ${item.reason || item.status}`).join(" · ");
+          setMessage(`Synchronisation Uqload : ${Number(result.created || 0)} créé(s), ${Number(result.existing || 0)} déjà associé(s), ${Number(result.skipped || 0)} ignoré(s) sur ${Number(result.scanned || 0)} fichier(s).${details ? ` Détails : ${details}` : ""}`);
+          setError(Number(result.skipped || 0) > 0 && Number(result.created || 0) === 0);
         }
       } catch (e) {
         if (!cancelled) {
