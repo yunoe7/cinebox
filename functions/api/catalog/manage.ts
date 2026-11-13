@@ -47,23 +47,36 @@ export async function onRequestDelete({request,env}:{request:Request;env:Env}){
  if(!env.DB)return json({error:"Base de données indisponible."},503);
  let body:any;try{body=await request.json()}catch{return json({error:"JSON invalide."},400)}
  if(typeof body?.id!=="string"||!body.id.trim())return json({error:"Identifiant manquant."},400);
+ const id=body.id.trim();
  try{
+  const exists=await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(id).all<{id:string}>();
+  if(!exists.success)return json({error:"Impossible de vérifier le titre dans D1."},503);
+  if(!exists.results.length)return json({deleted:true,id,alreadyDeleted:true});
   if(body.permanent===true){
-   const exists=await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(body.id).all<{id:string}>();
-   if(!exists.success)return json({error:"Impossible de vérifier le titre."},503);
-   if(!exists.results.length)return json({error:"Titre introuvable."},404);
-   // Explicit child-first deletion also works when a D1 connection does not
-   // have SQLite foreign-key cascades enabled for the request.
-   for(const table of ["catalog_media_sources","media_assets","user_favorites","user_progress","watch_history","catalog_episodes"]){
-    const result=await env.DB.prepare(`DELETE FROM ${table} WHERE ${table==="catalog_episodes"?"title_id":"title_id"}=?`).bind(body.id).run();
-    if(!result.success)throw new Error("child delete failed");
+   // Delete every dependent record explicitly, then verify the parent row is gone.
+   const cleanup=[
+    ["catalog_media_sources","DELETE FROM catalog_media_sources WHERE title_id=?"],
+    ["media_assets","DELETE FROM media_assets WHERE title_id=? OR episode_id IN (SELECT id FROM catalog_episodes WHERE title_id=?)"],
+    ["user_favorites","DELETE FROM user_favorites WHERE title_id=?"],
+    ["user_progress","DELETE FROM user_progress WHERE title_id=?"],
+    ["watch_history","DELETE FROM watch_history WHERE title_id=?"],
+    ["catalog_episodes","DELETE FROM catalog_episodes WHERE title_id=?"]
+   ] as const;
+   for(const [table,sql] of cleanup){
+    const statement=table==="media_assets"
+      ? env.DB.prepare(sql).bind(id,id)
+      : env.DB.prepare(sql).bind(id);
+    const result=await statement.run();
+    if(!result.success)return json({error:"Suppression interrompue pendant le nettoyage de "+table+"."},503);
    }
-   const deleted=await env.DB.prepare("DELETE FROM catalog_titles WHERE id=?").bind(body.id).run();
-   if(!deleted.success)return json({error:"Suppression définitive impossible."},503);
-   return json({deleted:true,id:body.id});
+   const deleted=await env.DB.prepare("DELETE FROM catalog_titles WHERE id=?").bind(id).run();
+   if(!deleted.success)return json({error:"D1 a refusé la suppression de la fiche."},503);
+   const remaining=await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(id).all<{id:string}>();
+   if(!remaining.success||remaining.results.length)return json({error:"La fiche existe encore dans D1 après la suppression. Vérifie les contraintes de la base."},503);
+   return json({deleted:true,id,verified:true});
   }
-  const result=await env.DB.prepare("UPDATE catalog_titles SET published=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(body.id).run();
+  const result=await env.DB.prepare("UPDATE catalog_titles SET published=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
   if(!result.success)return json({error:"Retrait du catalogue impossible."},503);
-  return json({unpublished:true,id:body.id});
- }catch{return json({error:"Suppression ou retrait impossible. Vérifie les tables de la base D1."},503);}
+  return json({unpublished:true,id});
+ }catch{return json({error:"Erreur D1 pendant la suppression. Aucune confirmation de réussite n'a été envoyée."},503);}
 }
