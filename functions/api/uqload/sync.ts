@@ -129,7 +129,7 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
         clean(remoteEpisode?.overview, 8000), Number.isFinite(Number(remoteEpisode?.runtime)) ? Number(remoteEpisode?.runtime) * 60 : null,
         clean(remoteEpisode?.still_path, 180) || null, JSON.stringify({ tmdbId: remoteEpisode?.id ?? null, airDate: clean(remoteEpisode?.air_date, 20) })).run();
   }
-  const playbackUrl = `https://uqload.to/embed-${fileCode}.html`;
+  const playbackUrl = `https://uqload.vc/embed-${fileCode}.html`;
   await db.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
     .bind(crypto.randomUUID(), id, episodeId, "uqload", fileCode, fileCode, playbackUrl, clean(file.file_quality, 40) || null, "ready",
