@@ -38,10 +38,15 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | Variable | Rôle | Obligatoire |
 | --- | --- | --- |
 | `TMDB_READ_ACCESS_TOKEN` | Jeton TMDB (v4) ou clé v3, utilisé par le proxy `/api/tmdb` | Pour TMDB |
-| `CINEBOX_ADMIN_DISCORD_USER_ID` | Identifiant Discord autorisé à administrer CinéBox (les rôles `admin` et la table `admin_allowlist` sont également reconnus) | Pour l'administration |
+| `CINEBOX_ADMIN_DISCORD_USER_ID` | Identifiant Discord de secours autorisé explicitement | Optionnel |
+| `CINEBOX_DISCORD_BOT_TOKEN` | Token du bot Discord, conservé uniquement côté serveur | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_GUILD_ID` | Identifiant du serveur Discord CinéBox | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_FONDA_ID` | Identifiant du rôle Fondateur | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_ADMIN_ID` | Identifiant du rôle Admin | Pour les rôles automatiques |
+| `CINEBOX_DISCORD_ROLE_MODO_ID` | Identifiant du rôle Modérateur | Pour les rôles automatiques |
 | `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |\n| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |\n| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |\n| `DB` | Binding D1 Cloudflare (configuré dans Pages, pas dans `.env`) | Pour les comptes et le catalogue partagé |
 
-Pour autoriser le compte administrateur, renseigner `CINEBOX_ADMIN_DISCORD_USER_ID` avec ton identifiant utilisateur Discord. La session est ensuite celle du compte Discord déjà connecté : aucun mot de passe administrateur ni secret de session séparé n’est nécessaire.
+Pour activer l'autorisation automatique, configurer le token du bot, l'identifiant du serveur et les trois identifiants de rôles Fondateur/Admin/Modérateur dans Cloudflare Pages Production et Preview. Le bot doit appartenir au serveur et l'intent privilégié **Server Members Intent** doit être activé dans le portail Discord. Les identifiants de rôles sont vérifiés côté serveur via l'API Discord à chaque contrôle d'accès (cache court de 30 secondes). L'identifiant `CINEBOX_ADMIN_DISCORD_USER_ID`, le rôle D1 `admin` et `admin_allowlist` restent des accès explicites de secours. La session est celle du compte Discord déjà connecté : aucun mot de passe administrateur ni secret de session séparé n’est nécessaire.
 
 ## Développement
 
@@ -95,7 +100,9 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 ### Authentification administrateur
 
 - Toute l’administration utilise la session Discord existante (`__Host-cinebox_session`) : le bouton admin déclenche OAuth Discord et aucun mot de passe distinct n’est demandé.
-- Les API admin vérifient côté serveur que le compte est autorisé par `CINEBOX_ADMIN_DISCORD_USER_ID`, par `users.role = 'admin'` ou par la table D1 `admin_allowlist`. Un compte Discord ordinaire reste refusé.
+- Les rôles Discord Fondateur, Admin et Modérateur accordent tous l'accès à l'ensemble des panneaux et API d'administration. Les rôles sont relus côté serveur auprès de Discord avec un cache de 30 secondes ; un retrait de rôle retire donc rapidement les droits.
+- Les accès explicites `CINEBOX_ADMIN_DISCORD_USER_ID`, `users.role = 'admin'` et `admin_allowlist` sont conservés comme mécanismes de secours. Un membre sans rôle privilégié ni autorisation explicite reste refusé.
+- VIP reste indépendant de l'administration et conserve uniquement ses avantages VIP.
 - Les requêtes mutantes exigent une `Origin` exacte, `Sec-Fetch-Site: same-origin` lorsqu’il est présent, et l’en-tête `x-cinebox-request: 1`.
 
 **Rate limiting** : la limitation du bruteforce doit être configurée dans Cloudflare (WAF > Rate limiting rules) sur `POST /api/auth/login`, par exemple 10 requêtes par minute et par IP avec blocage ou challenge. Aucune table D1 n'est nécessaire. Valider le seuil et l'action dans l'environnement Cloudflare avant activation. Une règle WAF peut également restreindre `/api/auth/*` et `/api/catalog/manage` aux pays ou réseaux attendus.
