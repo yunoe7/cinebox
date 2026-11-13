@@ -111,7 +111,7 @@ export function UqloadManager() {
 
   const openTmdbPicker = (file: RemoteFile) => {
     const raw = file.file_title || file.title || "";
-    const ep = raw.match(/^(.*?)\s*[._ -]+S(\d{1,2})\s*[._ -]*E(\d{1,3})/i);
+    const ep = raw.match(/^(.*?)\s*[._ -]+S([0-9OQIl]{1,2})\s*[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i);
     setTmdbFile(file); setTmdbQuery((ep ? ep[1] : raw.replace(/[._-]+/g, " ")).trim()); setTmdbKind(ep ? "series" : "movie"); setTmdbResults([]);
   };
   const searchTmdb = async () => {
@@ -129,7 +129,7 @@ export function UqloadManager() {
     setBusyFile(tmdbFile.file_code);
     try {
       const filename = tmdbFile.file_title || tmdbFile.title || "";
-      const ep = filename.match(/\bS(\d{1,2})\s*[._ -]*E(\d{1,3})\b/i);
+      const ep = filename.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i);
       await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, fileTitle: filename, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null, episode: ep ? Number(ep[2].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null }) });
       setMessage(`« ${tmdbFile.file_title || tmdbFile.title || tmdbFile.file_code} » associé à ${result.title}.`);
       setTmdbFile(null); setTmdbResults([]); await refresh(true);
