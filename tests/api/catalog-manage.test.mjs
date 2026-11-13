@@ -2,18 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { onRequestGet, onRequestPatch } from "../../functions/api/catalog/manage.ts";
 import { createFakeD1 } from "./helpers/fake-d1.mjs";
-import { ADMIN_ENV, adminHeaders } from "./helpers/admin-auth.mjs";
+import { ADMIN_ENV, discordAdminHeaders, withDiscordAdminDb } from "./helpers/admin-auth.mjs";
 
 function request(body, { authenticated = true, extra = {} } = {}) {
   return new Request("https://cinebox.test/api/catalog/manage", {
     method: "PATCH",
-    headers: { "content-type": "application/json", ...adminHeaders({ authenticated, extra }) },
+    headers: { "content-type": "application/json", ...discordAdminHeaders({ authenticated, extra }) },
     body: JSON.stringify(body),
   });
 }
 
 function makeEnv(db) {
-  return { ...ADMIN_ENV, DB: db };
+  return { ...ADMIN_ENV, DB: withDiscordAdminDb(db) };
 }
 
 test("shared catalog management rejects unauthenticated requests", async () => {
@@ -36,14 +36,13 @@ test("shared catalog management rejects a legacy Bearer token", async () => {
   assert.equal(db.calls.length, 0);
 });
 
-test("shared catalog management reports a server configuration error without admin secrets", async () => {
+test("shared catalog management does not require a separate admin password", async () => {
   const db = createFakeD1();
   const response = await onRequestPatch({
     request: request({ id: "tmdb:movie:42" }),
-    env: { ...makeEnv(db), CINEBOX_SESSION_SECRET: undefined },
+    env: makeEnv(db),
   });
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "L'administration n'est pas configurée côté serveur." });
+  assert.equal(response.status, 200);
 });
 
 test("shared catalog management requires D1", async () => {
@@ -66,7 +65,7 @@ test("listing the shared catalogue requires authentication", async () => {
   const db = createFakeD1();
   const response = await onRequestGet({
     request: new Request("https://cinebox.test/api/catalog/manage", {
-      headers: adminHeaders({ authenticated: false }),
+      headers: discordAdminHeaders({ authenticated: false }),
     }),
     env: makeEnv(db),
   });
@@ -87,7 +86,7 @@ test("listing the shared catalogue returns titles with their episodes", async ()
     }],
   });
   const response = await onRequestGet({
-    request: new Request("https://cinebox.test/api/catalog/manage", { headers: adminHeaders() }),
+    request: new Request("https://cinebox.test/api/catalog/manage", { headers: discordAdminHeaders() }),
     env: makeEnv(db),
   });
   assert.equal(response.status, 200);
