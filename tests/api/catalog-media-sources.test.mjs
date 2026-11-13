@@ -64,7 +64,7 @@ test("une ancienne URL uqload.to est servie en uqload.vc sans modifier D1", asyn
   assert.ok(sourceQuery, "a media source query must run");
   assert.match(sourceQuery.sql, /encoding_status/);
   assert.match(sourceQuery.sql, /ORDER BY CASE LOWER\(COALESCE\(encoding_status,''\)\)/);
-  assert.match(sourceQuery.sql, /updated_at ASC, id ASC/);
+  assert.match(sourceQuery.sql, /updated_at DESC, id DESC/);
 });
 
 test("une source en échec est ignorée au profit de la source prête", async () => {
