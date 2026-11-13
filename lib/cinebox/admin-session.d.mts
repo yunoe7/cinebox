@@ -16,7 +16,7 @@ export class AdminAuthError extends Error {
 
 export function isAdminAuthError(reason: unknown): reason is AdminAuthError;
 export function getAdminSession(): Promise<AdminSessionState>;
-export function loginAdmin(password: string): Promise<AdminSessionState>;
+export function loginAdmin(): Promise<void>;
 export function logoutAdmin(): Promise<void>;
 export function adminFetch(path: string, init?: RequestInit): Promise<Response>;
 export function adminJson<T = unknown>(path: string, init?: RequestInit): Promise<T>;
