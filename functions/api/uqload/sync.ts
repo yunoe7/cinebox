@@ -66,14 +66,14 @@ function rows(payload: Obj): Obj[] {
   if (isObj(payload.result)) for (const k of ["files", "results", "list"]) if (Array.isArray(payload.result[k])) return (payload.result[k] as unknown[]).filter(isObj);
   return [];
 }
-async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbToken: string): Promise<"created" | "skipped" | "existing"> {
+async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbToken: string): Promise<{status:"created"|"skipped"|"existing";reason?:string}> {
   const fileCode = clean(file.file_code || file.code, 64);
   const filename = clean(file.file_title || file.title || file.name, 300);
-  if (!/^[A-Za-z0-9]{6,64}$/.test(fileCode) || !filename) return "skipped";
+  if (!/^[A-Za-z0-9]{6,64}$/.test(fileCode) || !filename) return {status:"skipped",reason:"Le fichier Uqload ne contient pas de code ou de nom exploitable."};
   const already = await db.prepare("SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(fileCode).all<{id:string}>();
-  if (already.results?.length) return "existing";
+  if (already.results?.length) return {status:"existing"};
   const parsed = parseFilename(filename);
-  if (!parsed) return "skipped";
+  if (!parsed) return {status:"skipped",reason:`Nom non reconnu : ${filename}`};
 
   const searchPath = parsed.kind === "series" ? "/search/tv" : "/search/movie";
   const search = await tmdb(searchPath, tmdbToken, { query: parsed.title, include_adult: "false", language: "fr-FR", page: "1", ...(parsed.year ? { year: parsed.year } : {}) });
@@ -84,16 +84,16 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
   })).sort((a,b) => b.score-a.score);
   const best = ranked[0];
   // Never guess between unrelated titles. A confident match is required for automatic creation.
-  if (!best || best.score < 0.82 || (ranked[1] && best.score - ranked[1].score < 0.08)) return "skipped";
+  if (!best || best.score < 0.82 || (ranked[1] && best.score - ranked[1].score < 0.08)) return {status:"skipped",reason:`Correspondance TMDB insuffisante pour « ${parsed.title} » (meilleur score : ${best ? best.score.toFixed(2) : "aucun résultat"}).`};
   const tmdbId = Number(best.candidate.id);
-  if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return "skipped";
+  if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return {status:"skipped",reason:"TMDB a renvoyé un identifiant invalide."};
 
   const kind = parsed.kind;
   const id = `tmdb:${kind}:${tmdbId}`;
   const detailPath = kind === "series" ? `/tv/${tmdbId}` : `/movie/${tmdbId}`;
   const detail = await tmdb(detailPath, tmdbToken, { language: "fr-FR" });
   const title = clean(detail.title || detail.name, 300);
-  if (!title) return "skipped";
+  if (!title) return {status:"skipped",reason:"TMDB n’a pas fourni de titre."};
   const genres = Array.isArray(detail.genres) ? detail.genres.filter(isObj).map(g => clean(g.name, 80)).filter(Boolean) : [];
   const releaseDate = clean(detail.release_date || detail.first_air_date, 20) || null;
   const poster = clean(detail.poster_path, 180) || null;
@@ -125,7 +125,7 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
     VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
     .bind(crypto.randomUUID(), id, episodeId, "uqload", fileCode, fileCode, playbackUrl, clean(file.file_quality, 40) || null, "ready",
       clean(file.uploaded_at || file.created, 40) || null).run();
-  return "created";
+  return {status:"created"};
 }
 
 export async function onRequestPost({ request, env }: { request: Request; env: Env }): Promise<Response> {
@@ -147,13 +147,18 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   const payload = await uqload("/file/list", uqloadApiKey, { per_page: String(MAX_FILES_PER_SYNC), page: "1" });
   const files = rows(payload).slice(0, MAX_FILES_PER_SYNC);
   let created = 0, existing = 0, skipped = 0;
+  const details: Array<{file:string;status:string;reason?:string}> = [];
   for (const file of files) {
+    const filename = clean(file.file_title || file.title || file.name, 300) || "Fichier sans nom";
     try {
       const result = await createDraftAndAssociate(db, file, uqloadApiKey, tmdbReadAccessToken);
-      if (result === "created") created++;
-      else if (result === "existing") existing++;
-      else skipped++;
-    } catch { skipped++; }
+      if (result.status === "created") created++;
+      else if (result.status === "existing") existing++;
+      else { skipped++; details.push({file:filename,status:"ignoré",reason:result.reason}); }
+    } catch (error) {
+      skipped++;
+      details.push({file:filename,status:"erreur",reason:error instanceof Error ? error.message : "Erreur inconnue"});
+    }
   }
-  return json({ synced: true, scanned: files.length, created, existing, skipped, publishedAutomatically: false });
+  return json({ synced: true, scanned: files.length, created, existing, skipped, details, publishedAutomatically: false });
 }
