@@ -38,14 +38,16 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
   const isUqloadEmbed = /^https?:\/\/(?:www\.)?uqload\.(?:to|vc|com|is|co)\/embed-/i.test(src);
 
   if (isUqloadEmbed) {
-    return <iframe
-      className="detail-video"
-      src={src}
-      title="Lecteur vidéo Uqload"
-      allow="autoplay; fullscreen; picture-in-picture"
-      allowFullScreen
-      referrerPolicy="no-referrer"
-    />;
+    return <div className="detail-video-embed">
+      <iframe
+        className="detail-video"
+        src={src}
+        title="Lecteur vidéo Uqload"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+      />
+      <a href={src} target="_blank" rel="noopener noreferrer">Si le lecteur est bloqué, ouvrir la vidéo directement sur Uqload</a>
+    </div>;
   }
 
   return (
