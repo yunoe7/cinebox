@@ -70,7 +70,7 @@ export function adminHeaders({
 export function withDiscordAdminDb(db) {
   return {
     prepare(sql) {
-      if (/SELECT u\\.id,u\\.display_name,u\\.role,u\\.email,s\\.expires_at FROM account_sessions/.test(sql)) {
+      if (/SELECT u\.id,u\.display_name,u\.role,u\.email,s\.expires_at FROM account_sessions/.test(sql)) {
         return { bind() { return this; }, first: async () => ({
           id: "test-admin-user", display_name: "Test Admin", role: "user", email: null,
           expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
