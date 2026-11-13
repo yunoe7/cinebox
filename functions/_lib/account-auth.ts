@@ -8,6 +8,7 @@ export interface AccountEnv {
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;
   CINEBOX_BOT_API_SECRET?: string;
+  CINEBOX_ADMIN_DISCORD_USER_ID?: string;
 }
 export const ACCOUNT_TTL = 12 * 60 * 60;
 export const ACCOUNT_COOKIE = "__Host-cinebox_session";
