@@ -38,7 +38,33 @@ export function UqloadManager() {
   }, []);
 
   useEffect(() => { let cancelled = false; void getAdminSession().then(s => { if (!cancelled) setAuth(s.authenticated ? "authenticated" : "anonymous"); }); return () => { cancelled = true; }; }, []);
-  useEffect(() => { if (auth === "authenticated") void refresh(); }, [auth, refresh]);
+  useEffect(() => {
+    if (auth !== "authenticated") return;
+    let cancelled = false;
+    let running = false;
+    const synchronize = async () => {
+      if (running || cancelled) return;
+      running = true;
+      try {
+        const result = await adminJson("/api/uqload/sync", { method: "POST" }) as { scanned?: number; created?: number; skipped?: number };
+        if (!cancelled && Number(result.created) > 0) {
+          setMessage(`Synchronisation Uqload : ${result.created} nouveau(x) contenu(s) créé(s) en privé.`);
+          setError(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setMessage(e instanceof Error ? e.message : "Synchronisation automatique Uqload impossible.");
+          setError(true);
+        }
+      } finally {
+        if (!cancelled) await refresh();
+        running = false;
+      }
+    };
+    void synchronize();
+    const timer = window.setInterval(() => { void synchronize(); }, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [auth, refresh]);
 
   const login = () => { void loginAdmin(); };
 
