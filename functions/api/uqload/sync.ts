@@ -15,6 +15,7 @@ type Obj = Record<string, unknown>;
 const UQLOAD_API = "https://uqload.vc/api";
 const TMDB_API = "https://api.themoviedb.org/3";
 const MAX_FILES_PER_SYNC = 100;
+const MAX_SYNC_PAGES = 20;
 
 function isObj(v: unknown): v is Obj { return !!v && typeof v === "object" && !Array.isArray(v); }
 function clean(v: unknown, max = 300): string { return typeof v === "string" ? v.trim().slice(0, max) : ""; }
@@ -153,8 +154,25 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   if (!db || !uqloadApiKey || !tmdbReadAccessToken) {
     return json({ error: "Configuration serveur incomplète." }, 503);
   }
-  const payload = await uqload("/file/list", uqloadApiKey, { per_page: String(MAX_FILES_PER_SYNC), page: "1" });
-  const files = rows(payload).slice(0, MAX_FILES_PER_SYNC);
+  const files: Obj[] = [];
+  let page = 1;
+  let inventoryComplete = false;
+  while (page <= MAX_SYNC_PAGES) {
+    const payload = await uqload("/file/list", uqloadApiKey, { per_page: String(MAX_FILES_PER_SYNC), page: String(page) });
+    const batch = rows(payload).slice(0, MAX_FILES_PER_SYNC);
+    files.push(...batch);
+    if (batch.length < MAX_FILES_PER_SYNC) { inventoryComplete = true; break; }
+    page++;
+  }
+  let deleted = 0;
+  // Reconcile only after reading the complete remote inventory.
+  if (inventoryComplete) {
+    const liveCodes = [...new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)))];
+    const result = liveCodes.length
+      ? await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code NOT IN (" + liveCodes.map(() => "?").join(",") + ")").bind(...liveCodes).run()
+      : await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload'").run();
+    deleted = Number(result.meta?.changes || 0);
+  }
   let created = 0, existing = 0, skipped = 0;
   const details: Array<{file:string;status:string;reason?:string}> = [];
   for (const file of files) {
@@ -169,5 +187,5 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
       details.push({file:filename,status:"erreur",reason:error instanceof Error ? error.message : "Erreur inconnue"});
     }
   }
-  return json({ synced: true, scanned: files.length, created, existing, skipped, details, publishedAutomatically: false });
+  return json({ synced: true, scanned: files.length, created, existing, skipped, deleted, inventoryComplete, details, publishedAutomatically: false });
 }
