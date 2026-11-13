@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -151,8 +151,6 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const isMediaMode = mode === "media";
   const headingId = useId();
   const [authState, setAuthState] = useState<AdminAuthState>("checking");
-  const [password, setPassword] = useState("");
-  const [loggingIn, setLoggingIn] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -181,7 +179,6 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const logout = async () => {
     await logoutAdmin();
     setAuthState("anonymous");
-    setPassword("");
     setItems([]);
     setLoadedOnce(false);
     setLoadError("");
@@ -189,23 +186,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
     setActionError(false);
   };
 
-  const login = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (loggingIn || password.length === 0) return;
-    setLoggingIn(true);
-    setActionError(false);
-    setActionMessage("");
-    try {
-      await loginAdmin(password);
-      setPassword("");
-      setAuthState("authenticated");
-    } catch (reason) {
-      setActionError(true);
-      setActionMessage(reason instanceof Error ? reason.message : "Connexion administrateur impossible.");
-    } finally {
-      setLoggingIn(false);
-    }
-  };
+  const login = () => { void loginAdmin(); };
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     try {
@@ -368,9 +349,6 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
 
       <AdminSessionPanel
         authState={authState}
-        password={password}
-        loggingIn={loggingIn}
-        onPasswordChange={setPassword}
         onLogin={login}
         onLogout={() => void logout()}
         description={isMediaMode ? "L’inventaire des médias D1 est protégé côté serveur. Saisis le mot de passe administrateur pour le charger." : "Le catalogue partagé est protégé côté serveur. Saisis le mot de passe administrateur pour charger et gérer les fiches D1."}
