@@ -130,7 +130,7 @@ export function UqloadManager() {
     try {
       const filename = tmdbFile.file_title || tmdbFile.title || "";
       const ep = filename.match(/\bS(\d{1,2})\s*[._ -]*E(\d{1,3})\b/i);
-      await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1]) : null, episode: ep ? Number(ep[2]) : null }) });
+      await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, fileTitle: filename, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null, episode: ep ? Number(ep[2].replace(/[OQ]/gi,"0").replace(/[Il]/g,"1")) : null }) });
       setMessage(`« ${tmdbFile.file_title || tmdbFile.title || tmdbFile.file_code} » associé à ${result.title}.`);
       setTmdbFile(null); setTmdbResults([]); await refresh(true);
     } catch (e) { setMessage(e instanceof Error ? e.message : "Association TMDB impossible."); setError(true); }
