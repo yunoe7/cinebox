@@ -1197,12 +1197,14 @@ export default function HomePage() {
           {activePage === "Administration" && adminSection === "media" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-type-wrap">
             <section className="admin-type-page" aria-labelledby="admin-media-title">
               <AnimatedGridPattern className="admin-type-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
-              <div className="admin-page-heading">
-                <div>
-                  <div className="eyebrow">CATALOGUE PARTAGÉ · D1</div>
-                  <h2 id="admin-media-title">Médias du catalogue <span className="admin-source-badge is-d1">D1</span></h2>
-                  <p>Affiches, fonds et miniatures d’épisodes enregistrés dans D1. Les fichiers de ce navigateur ne sont pas listés ici.</p>
+              <div className="admin-page-heading admin-section-hero">
+                <span className="admin-section-hero-icon"><ImageIcon size={21}/></span>
+                <div className="admin-section-hero-copy">
+                  <div className="eyebrow">ESPACE MÉDIATHÈQUE · CATALOGUE CENTRAL</div>
+                  <h2 id="admin-media-title">Gérer les médias <span className="admin-source-badge is-d1">D1</span></h2>
+                  <p>Affiches, fonds et miniatures de tes contenus, puis tes deux lecteurs vidéo indépendants.</p>
                 </div>
+                <span className="admin-section-hero-status"><Database size={13}/> Stockage partagé</span>
               </div>
               <SharedCatalogManager mode="media" />
               <UqloadManager />
@@ -1212,13 +1214,14 @@ export default function HomePage() {
           {activePage === "Administration" && (adminSection === "films" || adminSection === "series" || adminSection === "videos") && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-type-wrap">
             <section className="admin-type-page" aria-labelledby="admin-type-title">
               <AnimatedGridPattern className="admin-type-grid-bg" numSquares={8} maxOpacity={0.05} duration={6} />
-              <div className="admin-page-heading">
-                <div>
-                  <div className="eyebrow">CATALOGUE PARTAGÉ · D1</div>
+              <div className="admin-page-heading admin-section-hero">
+                <span className="admin-section-hero-icon">{adminSection === "films" ? <Film size={21}/> : adminSection === "series" ? <Tv size={21}/> : <Clapperboard size={21}/>}</span>
+                <div className="admin-section-hero-copy">
+                  <div className="eyebrow">{adminSection === "films" ? "BIBLIOTHÈQUE CINÉMA" : adminSection === "series" ? "UNIVERS SÉRIES" : "COLLECTION VIDÉO"} · CATALOGUE CENTRAL</div>
                   <h2 id="admin-type-title">{adminSection === "films" ? "Gérer les films" : adminSection === "series" ? "Gérer les séries" : "Gérer les vidéos"} <span className="admin-source-badge is-d1">D1</span></h2>
-                  <p>{adminSection === "films" ? "Fiches films publiées ou masquées dans le catalogue partagé. Les droits sont vérifiés côté serveur." : adminSection === "series" ? "Fiches séries, saisons et épisodes du catalogue partagé. Les droits sont vérifiés côté serveur." : "Fiches vidéos du catalogue partagé. Les droits sont vérifiés côté serveur."}</p>
+                  <p>{adminSection === "films" ? "Retrouve, modifie et organise toutes les fiches de ta bibliothèque cinéma." : adminSection === "series" ? "Pilote tes séries, leurs saisons, leurs épisodes et leur visibilité." : "Centralise tes contenus vidéo, leur statut de publication et leurs informations."}</p>
                 </div>
-
+                <span className="admin-section-hero-status"><Database size={13}/> {adminSection === "films" ? `${sharedAdminStats.films} films` : adminSection === "series" ? `${sharedAdminStats.series} séries` : `${sharedAdminStats.videos} vidéos`}</span>
               </div>
               <SharedCatalogManager kindFilter={adminSection === "films" ? "movie" : adminSection === "series" ? "series" : "video"} />
             </section>
