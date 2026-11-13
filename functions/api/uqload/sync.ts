@@ -35,8 +35,8 @@ function similarity(a: string, b: string): number {
 function parseFilename(raw: string): { kind: "movie" | "series"; title: string; year?: string; season?: number; episode?: number } | null {
   const name = raw.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/\[[^\]]*\]/g, " ");
   // Uqload filenames sometimes contain OCR-like O/I characters in SxxEyy markers.
-  const ep = name.match(/^(.*?)\s*[._ -]+S([0-9OQIl]{1,2})\s*[._ -]*E([0-9OQIl]{1,3})\b/i)
-    || name.match(/^(.*?)\b([0-9OQIl]{1,2})x([0-9OQIl]{1,3})\b/i);
+  const ep = name.match(/^(.*?)\s*[._ -]+S([0-9OQIl]{1,2})\s*[._ -]*E([0-9OQIl]{1,3})(?=$|[^0-9])/i)
+    || name.match(/^(.*?)\b([0-9OQIl]{1,2})x([0-9OQIl]{1,3})(?=$|[^0-9])/i);
   if (ep && clean(ep[1])) {
     const digits = (value: string) => value.replace(/[OQ]/gi, "0").replace(/[Il]/g, "1");
     const season = Number(digits(ep[2])), episode = Number(digits(ep[3]));
