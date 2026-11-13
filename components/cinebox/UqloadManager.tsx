@@ -8,7 +8,8 @@ import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 type Target = { id: string; kind: "movie" | "series" | "video"; title: string; published: number; episodes?: Array<{ id: string; title: string; season_number: number; episode_number: number }> };
 type Source = { id: string; title_id: string; episode_id: string | null; file_code: string; playback_url: string; encoding_status: string; uploaded_at: string | null; title?: string; episode_title?: string | null };
 type RemoteFile = { file_code: string; file_title?: string; title?: string; status?: string; size?: string | number };
-type FileSelection = { titleId: string; episodeId: string };\ntype TmdbResult = { id: number; kind: "movie" | "series"; title: string; originalTitle: string; year: string; overview: string; posterPath: string | null };
+type FileSelection = { titleId: string; episodeId: string };
+type TmdbResult = { id: number; kind: "movie" | "series"; title: string; originalTitle: string; year: string; overview: string; posterPath: string | null };
 
 export function UqloadManager() {
   const [auth, setAuth] = useState<AdminAuthState>("checking");
@@ -23,7 +24,12 @@ export function UqloadManager() {
   const [busyFile, setBusyFile] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState(false);\n  const [tmdbFile, setTmdbFile] = useState<RemoteFile | null>(null);\n  const [tmdbQuery, setTmdbQuery] = useState("");\n  const [tmdbKind, setTmdbKind] = useState<"movie" | "series">("series");\n  const [tmdbResults, setTmdbResults] = useState<TmdbResult[]>([]);\n  const [tmdbBusy, setTmdbBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const [tmdbFile, setTmdbFile] = useState<RemoteFile | null>(null);
+  const [tmdbQuery, setTmdbQuery] = useState("");
+  const [tmdbKind, setTmdbKind] = useState<"movie" | "series">("series");
+  const [tmdbResults, setTmdbResults] = useState<TmdbResult[]>([]);
+  const [tmdbBusy, setTmdbBusy] = useState(false);
 
   const refresh = useCallback(async (preserveMessage = false) => {
     setLoading(true); if (!preserveMessage) { setMessage(""); setError(false); }
@@ -105,7 +111,7 @@ export function UqloadManager() {
 
   const openTmdbPicker = (file: RemoteFile) => {
     const raw = file.file_title || file.title || "";
-    const ep = raw.match(/^(.*?)\\s*[._ -]+S(\\d{1,2})\\s*[._ -]*E(\\d{1,3})/i);
+    const ep = raw.match(/^(.*?)\s*[._ -]+S(\d{1,2})\s*[._ -]*E(\d{1,3})/i);
     setTmdbFile(file); setTmdbQuery((ep ? ep[1] : raw.replace(/[._-]+/g, " ")).trim()); setTmdbKind(ep ? "series" : "movie"); setTmdbResults([]);
   };
   const searchTmdb = async () => {
@@ -123,7 +129,7 @@ export function UqloadManager() {
     setBusyFile(tmdbFile.file_code);
     try {
       const filename = tmdbFile.file_title || tmdbFile.title || "";
-      const ep = filename.match(/\\bS(\\d{1,2})\\s*[._ -]*E(\\d{1,3})\\b/i);
+      const ep = filename.match(/\bS(\d{1,2})\s*[._ -]*E(\d{1,3})\b/i);
       await adminJson("/api/uqload/tmdb-select", { method: "POST", body: JSON.stringify({ fileCode: tmdbFile.file_code, tmdbId: result.id, kind: result.kind, season: ep ? Number(ep[1]) : null, episode: ep ? Number(ep[2]) : null }) });
       setMessage(`« ${tmdbFile.file_title || tmdbFile.title || tmdbFile.file_code} » associé à ${result.title}.`);
       setTmdbFile(null); setTmdbResults([]); await refresh(true);
@@ -161,7 +167,8 @@ export function UqloadManager() {
             <div className="admin-remote-file-actions">
               <label><span>Film ou série</span><select value={selection.titleId} onChange={e=>updateFileSelection(file.file_code,{titleId:e.target.value,episodeId:""})}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
               <label><span>Épisode</span><select value={selection.episodeId} onChange={e=>updateFileSelection(file.file_code,{episodeId:e.target.value})} disabled={!target || target.kind!=="series"}><option value="">Film / vidéo entière</option>{(target?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>
-              <button type="button" className="admin-shared-refresh" disabled={!selection.titleId || !!busyFile} onClick={()=>void associateDetectedFile(file)}>{fileBusy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Associer</button>\n              <button type="button" className="admin-shared-refresh" disabled={!!busyFile} onClick={()=>openTmdbPicker(file)}><Search size={14}/> Choisir via TMDB</button>
+              <button type="button" className="admin-shared-refresh" disabled={!selection.titleId || !!busyFile} onClick={()=>void associateDetectedFile(file)}>{fileBusy?<LoaderCircle size={14} className="admin-spin"/>:<Link2 size={14}/>} Associer</button>
+              <button type="button" className="admin-shared-refresh" disabled={!!busyFile} onClick={()=>openTmdbPicker(file)}><Search size={14}/> Choisir via TMDB</button>
             </div>
           </article>;
         })}</div>
