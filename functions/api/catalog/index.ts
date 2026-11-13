@@ -75,6 +75,20 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
        FROM catalog_episodes WHERE title_id IN (${pageRows.map(() => "?").join(",")}) ORDER BY season_number,episode_number`,
     ).bind(...pageRows.map(entry => entry.row.id)).all<CatalogEpisodeRow>() : { results: [], success: true };
     if (!episodeResult.success) throw new Error("D1 episode query failed");
+    // Playback sources are part of the public catalogue response: without them,
+    // an admin can associate a Uqload file but viewers never receive its URL.
+    const sourceResult = pageRows.length ? await env.DB.prepare(
+      `SELECT title_id,episode_id,playback_url FROM catalog_media_sources
+       WHERE provider='uqload' AND title_id IN (${pageRows.map(() => "?").join(",")})`,
+    ).bind(...pageRows.map(entry => entry.row.id)).all<{ title_id: string; episode_id: string | null; playback_url: string }>() : { results: [], success: true };
+    if (!sourceResult.success) throw new Error("D1 media source query failed");
+    const sourceByTitle = new Map<string, string>();
+    const sourceByEpisode = new Map<string, string>();
+    for (const source of sourceResult.results) {
+      if (!source.playback_url) continue;
+      if (source.episode_id) sourceByEpisode.set(source.episode_id, source.playback_url);
+      else if (!sourceByTitle.has(source.title_id)) sourceByTitle.set(source.title_id, source.playback_url);
+    }
     const episodesByTitle = new Map<string, CatalogEpisodeRow[]>();
     for (const episode of episodeResult.results) {
       const list = episodesByTitle.get(episode.title_id) || []; list.push(episode); episodesByTitle.set(episode.title_id, list);
@@ -85,7 +99,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         const season = seasons.get(episode.season_number) || { number: episode.season_number, episodes: [] };
         let episodeMetadata: Record<string, unknown> = {};
         try { const parsed = JSON.parse(episode.metadata_json); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) episodeMetadata = parsed; } catch {}
-        season.episodes.push({ number: episode.episode_number, title: episode.title, overview: episode.overview, runtime: episode.duration_seconds, thumbnailPath: episode.thumbnail_path, tmdbId: episodeMetadata.tmdbId ?? null });
+        season.episodes.push({ number: episode.episode_number, title: episode.title, overview: episode.overview, runtime: episode.duration_seconds, thumbnailPath: episode.thumbnail_path, tmdbId: episodeMetadata.tmdbId ?? null, videoUrl: sourceByEpisode.get(episode.id) });
         seasons.set(episode.season_number, season);
       }
       return {
@@ -93,6 +107,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         posterPath: row.poster_path, backdropPath: row.backdrop_path, genres, metadata,
         vipExclusive: Boolean(row.vip_exclusive), vipEarlyAccess: Boolean(row.vip_early_access),
         publicAt: row.public_at, access: row.vip_exclusive ? "vip" : row.vip_early_access && row.public_at && Date.parse(row.public_at) > Date.now() ? "early" : "public",
+        videoUrl: sourceByTitle.get(row.id),
         seasons: [...seasons.values()], updatedAt: row.updated_at,
       };
     });
