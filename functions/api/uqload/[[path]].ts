@@ -28,7 +28,7 @@ export async function onRequestGet({request,env}:{request:Request;env:Env}){
    // Admins must be able to attach media before publishing a catalogue title.
    env.DB.prepare("SELECT id,kind,title,published FROM catalog_titles ORDER BY title COLLATE NOCASE").all<{id:string;kind:"movie"|"series"|"video";title:string;published:number}>(),
    env.DB.prepare("SELECT id,title_id,title,season_number,episode_number FROM catalog_episodes ORDER BY title_id,season_number,episode_number").all<{id:string;title_id:string;title:string;season_number:number;episode_number:number}>(),
-   env.DB.prepare("SELECT s.id,s.title_id,s.episode_id,s.file_code,s.playback_url,s.encoding_status,s.uploaded_at,t.title,e.title AS episode_title FROM catalog_media_sources s JOIN catalog_titles t ON t.id=s.title_id LEFT JOIN catalog_episodes e ON e.id=s.episode_id ORDER BY s.updated_at DESC").all<Record<string,unknown>>()
+   env.DB.prepare("SELECT s.id,s.title_id,s.episode_id,s.provider,s.file_code,s.playback_url,s.encoding_status,s.uploaded_at,t.title,e.title AS episode_title FROM catalog_media_sources s JOIN catalog_titles t ON t.id=s.title_id LEFT JOIN catalog_episodes e ON e.id=s.episode_id ORDER BY s.updated_at DESC").all<Record<string,unknown>>()
   ]);
   const filesPayload=env.UQLOAD_API_KEY?await upstream("/file/list",env.UQLOAD_API_KEY,{per_page:"100",page:"1"}):null;
   const files=filesPayload?resultArray(filesPayload).map(f=>({file_code:String(f.file_code||f.code||""),file_title:String(f.file_title||f.title||""),status:String(f.status||"") })).filter(f=>/^[A-Za-z0-9]{6,64}$/.test(f.file_code)):[];
