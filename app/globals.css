@@ -2752,3 +2752,9 @@ footer { font-size: 9.5px !important; }
 .cinebox-confirm-actions button.is-danger{border-color:#8d453c;background:#7d332c;color:#fff}
 .cinebox-confirm-actions button:disabled{opacity:.6;cursor:wait}
 @media(max-width:520px){.cinebox-confirm-dialog{padding:21px}.cinebox-confirm-actions{flex-direction:column-reverse}.cinebox-confirm-actions button{width:100%}}
+
+
+.uqload-playback-fallback{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:14px 18px;background:#11141a;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.5}
+.uqload-playback-fallback strong{color:var(--text);font-weight:600}
+.uqload-playback-fallback a{display:inline-flex;align-items:center;gap:7px;margin-top:3px;padding:9px 13px;border:1px solid var(--gold);border-radius:8px;background:rgba(211,177,125,.1);color:var(--gold2);font-weight:700;text-decoration:none}
+.uqload-playback-fallback a:hover{background:rgba(211,177,125,.2)}
