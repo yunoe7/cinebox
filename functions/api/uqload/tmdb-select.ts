@@ -19,9 +19,16 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  const code=body.fileCode.trim(),tmdbId=body.tmdbId,kind=body.kind;
  if(!/^[A-Za-z0-9]{6,64}$/.test(code)||!Number.isSafeInteger(tmdbId)||tmdbId<=0)return json({error:"Code Uqload ou identifiant TMDB invalide."},400);
  const files=await env.DB.prepare("SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(code).all<{id:string}>();
- if(files.results?.length)return json({error:"Cette vidéo est déjà associée."},409);
+ 
  const detail=await tmdb(kind==="series"?`/tv/${tmdbId}`:`/movie/${tmdbId}`,env.TMDB_READ_ACCESS_TOKEN);
  const title=clean(detail.title||detail.name,300);if(!title)return json({error:"Titre absent de la fiche TMDB."},502);
+ const fileTitle=clean(body.fileTitle,300);
+ const marker=fileTitle.match(/(?:^|[^A-Za-z0-9])S([0-9OQIl]{1,2})[._ -]*E([0-9OQIl]{1,3})(?:[^0-9]|$)/i);
+ const digits=(value:string)=>value.replace(/[OQ]/gi,"0").replace(/[Il]/g,"1");
+ const parsedSeason=marker?Number(digits(marker[1])):NaN;
+ const parsedEpisode=marker?Number(digits(marker[2])):NaN;
+ const seasonNumber=Number.isInteger(body.season)&&Number(body.season)>=0?Number(body.season):parsedSeason;
+ const episodeNumber=Number.isInteger(body.episode)&&Number(body.episode)>0?Number(body.episode):parsedEpisode;
  const id=`tmdb:${kind}:${tmdbId}`;
  const genres=Array.isArray(detail.genres)?detail.genres.filter(isObj).map(g=>clean(g.name,80)).filter(Boolean):[];
  const releaseDate=clean(detail.release_date||detail.first_air_date,20)||null;
@@ -48,5 +55,5 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
  .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,`https://uqload.to/embed-${code}.html`,null,"ready",null).run();
- return json({associated:true,title,kind,titleId:id,episodeId,published:false});
+ return json({associated:true,title,kind,titleId:id,episodeId,published:false,episodeDetected:Boolean(episodeId)});
 }
