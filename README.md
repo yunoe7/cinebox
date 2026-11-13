@@ -91,7 +91,7 @@ Configuration du projet Pages :
 - **Répertoire de sortie** : `out`
 - **Version de Node** : 22
 - **Binding D1** : `DB` → base du catalogue partagé
-- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_DISCORD_USER_ID`
+- **Variables d'environnement** : `TMDB_READ_ACCESS_TOKEN`, `CINEBOX_ADMIN_DISCORD_USER_ID`, `CINEBOX_DISCORD_BOT_TOKEN`, `CINEBOX_DISCORD_GUILD_ID`, `CINEBOX_DISCORD_ROLE_FONDA_ID`, `CINEBOX_DISCORD_ROLE_ADMIN_ID`, `CINEBOX_DISCORD_ROLE_MODO_ID`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`
 
 Configurer ces variables dans **Production** et **Preview**. Ajouter aussi `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` et `DISCORD_REDIRECT_URI` dans les deux environnements, et déclarer l’URL de callback exacte dans le portail développeur Discord. Ne jamais coller les valeurs dans une conversation, un ticket ou un commit. Tous ces secrets sont lus uniquement par les Pages Functions.
 
@@ -105,7 +105,7 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 - VIP reste indépendant de l'administration et conserve uniquement ses avantages VIP.
 - Les requêtes mutantes exigent une `Origin` exacte, `Sec-Fetch-Site: same-origin` lorsqu’il est présent, et l’en-tête `x-cinebox-request: 1`.
 
-**Rate limiting** : la limitation du bruteforce doit être configurée dans Cloudflare (WAF > Rate limiting rules) sur `POST /api/auth/login`, par exemple 10 requêtes par minute et par IP avec blocage ou challenge. Aucune table D1 n'est nécessaire. Valider le seuil et l'action dans l'environnement Cloudflare avant activation. Une règle WAF peut également restreindre `/api/auth/*` et `/api/catalog/manage` aux pays ou réseaux attendus.
+**Rate limiting** : le démarrage OAuth Discord (`GET /api/auth/discord/start`) est limité côté serveur à 12 tentatives par adresse IP sur 15 minutes via la table D1 `account_rate_limits` (migration `0005_account_rate_limits.sql`). Une règle Cloudflare WAF complémentaire peut aussi protéger les routes `/api/auth/*` et `/api/catalog/manage`.
 
 ### Connexion des membres avec Discord\n\n- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.\n- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.\n- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.\n- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre et administrateur est partagée dans le même cookie HttpOnly ; l’accès admin dépend d’une autorisation Discord vérifiée côté serveur.\n- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.\n\n### Migrations D1
 
@@ -196,7 +196,7 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 - Les données personnelles restent propres au navigateur.
 - Le filtrage du mode enfant est indicatif : les titres partagés n'ont pas de classification d'âge fiable.
 - Le catalogue public n'expose que les métadonnées nécessaires à l'affichage et à la lecture.
-- La session admin est stateless : la déconnexion efface le cookie du navigateur, mais un cookie copié avant expiration reste valide jusqu'à son `exp`. La durée est plafonnée à 12 heures ; une révocation immédiate nécessiterait un stockage serveur supplémentaire, à valider avant mise en place.
+- La session Discord est stockée sous forme de hash dans D1 (`account_sessions`), expire après 12 heures et est révoquée côté serveur à la déconnexion. Les cookies temporaires OAuth `state` et `mode` expirent après 10 minutes.
 - Le rate limiting du login dépend d'une règle Cloudflare WAF / Rate Limiting à configurer et à valider dans le compte Cloudflare ; aucun contournement applicatif n'est fourni.
 - Les styles hérités morts ont été retirés ; deux avertissements Autoprefixer historiques subsistent dans le CSS minifié.
 
@@ -214,4 +214,4 @@ Les jobs Playwright et de validation s'exécutent dans des workspaces séparés 
 | `npm run test:integration` | Tests Playwright contre les vraies Pages Functions via Wrangler (après `npm run build`) |
 | `npm run check:csp` | Vérifie que `out/_headers` couvre tous les scripts inline |
 | `npm run test:csp` | Smoke test Playwright de la CSP sur l'export statique (nécessite `npm run build`) |
-| `npm run hash:admin` | Génère `CINEBOX_ADMIN_PASSWORD_HASH` sans afficher le mot de passe |
+| `npm run hash:admin` | Ancien utilitaire de migration du mot de passe admin (non utilisé par l'authentification actuelle) |
