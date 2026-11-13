@@ -41,7 +41,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  .bind(id,kind,title,clean(detail.overview),releaseDate,clean(detail.poster_path,180)||null,clean(detail.backdrop_path,180)||null,JSON.stringify(genres),metadata).run();
  let episodeId:string|null=null;
  if(kind==="series"){
-  const season=Number(body.season),episode=Number(body.episode);
+  const season=seasonNumber,episode=episodeNumber;
   if(Number.isInteger(season)&&season>=0&&Number.isInteger(episode)&&episode>0){
    const seasonData=await tmdb(`/tv/${tmdbId}/season/${season}`,env.TMDB_READ_ACCESS_TOKEN).catch(()=>({} as Obj));
    const list=Array.isArray(seasonData.episodes)?seasonData.episodes.filter(isObj):[];
@@ -53,7 +53,7 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
   }
  }
  await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
- VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
+ VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,encoding_status=excluded.encoding_status,updated_at=CURRENT_TIMESTAMP`)
  .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,`https://uqload.vc/embed-${code}.html`,null,"ready",null).run();
  return json({associated:true,title,kind,titleId:id,episodeId,published:false,episodeDetected:Boolean(episodeId)});
 }
