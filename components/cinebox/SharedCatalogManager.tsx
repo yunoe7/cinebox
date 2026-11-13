@@ -333,8 +333,6 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   };
 
   const deletePermanently = async (item: Item) => {
-    const confirmed = window.confirm(`SUPPRESSION DÉFINITIVE\n\n« ${item.title} » sera supprimé du catalogue, avec ses épisodes, ses vidéos associées, ses favoris et son historique. Cette action est irréversible.\n\nContinuer ?`);
-    if (!confirmed) return;
     setBusy(item.id);
     setActionError(false);
     setActionMessage("");
