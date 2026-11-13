@@ -59,7 +59,13 @@ export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boo
 }
 
 export function adminConfigurationError(): Response {
-  return json({ error: ADMIN_CONFIG_ERROR }, 503);
+  return json({ error: "L'administration n'est pas configurée côté serveur." }, 503);
+}
+export function buildAdminCookie(request: Request, token: string): string {
+  return buildSessionCookie(token, {
+    secure: new URL(request.url).protocol === "https:",
+    maxAge: ADMIN_SESSION_TTL_SECONDS,
+  });
 }
 
 export function adminInternalError(): Response {
