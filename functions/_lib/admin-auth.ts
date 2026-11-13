@@ -1,23 +1,13 @@
-import {
-  ADMIN_SESSION_TTL_SECONDS,
-  buildClearSessionCookie,
-  buildSessionCookie,
-  parsePasswordHash,
-  readCookie,
-  sessionCookieName,
-  verifyAdminSession,
-  verifyRequestOrigin,
-} from "../../lib/cinebox/admin-auth.mjs";
+import { getAccount, validOrigin, type AccountEnv } from "./account-auth.ts";
 
-export interface AdminEnv {
-  CINEBOX_ADMIN_PASSWORD_HASH?: string;
-  CINEBOX_SESSION_SECRET?: string;
+export interface AdminEnv extends Partial<AccountEnv> {
+  CINEBOX_ADMIN_DISCORD_USER_ID?: string;
 }
 
 export const ADMIN_AUTH_ERROR = "Authentification administrateur requise.";
-export const ADMIN_SESSION_EXPIRED_ERROR = "Session administrateur expirée. Reconnecte-toi.";
+export const ADMIN_SESSION_EXPIRED_ERROR = "Session Discord expirée. Reconnecte-toi.";
 export const ADMIN_ORIGIN_ERROR = "Requête refusée : origine invalide.";
-export const ADMIN_CONFIG_ERROR = "L'administration n'est pas configurée côté serveur.";
+export const ADMIN_CONFIG_ERROR = "La connexion Discord ou la base de données administrateur n’est pas configurée.";
 export const ADMIN_INTERNAL_ERROR = "Erreur serveur. Réessaie plus tard.";
 
 export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
@@ -32,45 +22,25 @@ export function json(body: unknown, status = 200, extraHeaders: Record<string, s
   });
 }
 
-export function isSecureRequest(request: Request): boolean {
+/** True only for a signed-in Discord account explicitly authorized as admin. */
+export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boolean> {
+  if (!env.DB) return false;
   try {
-    return new URL(request.url).protocol === "https:";
+    const row = await env.DB.prepare(
+      "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
+    ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
+    return Boolean(row?.allowed);
   } catch {
     return false;
   }
-}
-
-export function isAdminConfigured(env: AdminEnv): boolean {
-  return parsePasswordHash(env.CINEBOX_ADMIN_PASSWORD_HASH) !== null &&
-    typeof env.CINEBOX_SESSION_SECRET === "string" &&
-    env.CINEBOX_SESSION_SECRET.length >= 32;
 }
 
 export function adminConfigurationError(): Response {
   return json({ error: ADMIN_CONFIG_ERROR }, 503);
 }
 
-/** Generic 500 for internal failures; never carries verifier material. */
 export function adminInternalError(): Response {
   return json({ error: ADMIN_INTERNAL_ERROR }, 500);
-}
-
-export function readAdminCookie(request: Request): string {
-  return readCookie(
-    request.headers.get("cookie"),
-    sessionCookieName({ secure: isSecureRequest(request) }),
-  );
-}
-
-export function buildAdminCookie(request: Request, token: string): string {
-  return buildSessionCookie(token, {
-    secure: isSecureRequest(request),
-    maxAge: ADMIN_SESSION_TTL_SECONDS,
-  });
-}
-
-export function buildClearedAdminCookie(request: Request): string {
-  return buildClearSessionCookie({ secure: isSecureRequest(request) });
 }
 
 export function rejectInvalidOrigin(): Response {
@@ -81,16 +51,17 @@ export function rejectInvalidOrigin(): Response {
  * Returns null when the request may proceed, or the response to send back.
  * Checks configuration first, then CSRF, then the signed HttpOnly cookie.
  */
-export async function requireAdmin(
-  request: Request,
-  env: AdminEnv,
-): Promise<Response | null> {
-  if (!isAdminConfigured(env)) return adminConfigurationError();
-  const origin = verifyRequestOrigin(request);
-  if (!origin.ok) return rejectInvalidOrigin();
-  const token = readAdminCookie(request);
-  if (!token) return json({ error: ADMIN_AUTH_ERROR }, 401);
-  const session = await verifyAdminSession(token, { secret: env.CINEBOX_SESSION_SECRET as string });
-  if (!session.valid) return json({ error: ADMIN_SESSION_EXPIRED_ERROR }, 401);
-  return null;
+export async function requireAdmin(request: Request, env: AdminEnv): Promise<Response | null> {
+  if (!env.DB) return adminConfigurationError();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase()) && !validOrigin(request)) {
+    return rejectInvalidOrigin();
+  }
+  try {
+    const account = await getAccount(request, env as AccountEnv);
+    if (!account) return json({ error: ADMIN_AUTH_ERROR }, 401);
+    if (!await isAdminAccount(env, account.id)) return json({ error: "Ce compte Discord n’est pas autorisé à administrer CinéBox." }, 403);
+    return null;
+  } catch {
+    return adminInternalError();
+  }
 }
