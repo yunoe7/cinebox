@@ -43,7 +43,7 @@ export async function onRequestGet({request,env}:{request:Request;env:AccountEnv
       }
     }
     const session=await createAccountSession(request,env,userId);
-    const headers=new Headers({location:new URL(mode==="link"?"/connexion?discord=lie":"/?connexion=discord",request.url).toString(),"cache-control":"no-store","set-cookie":session.cookie});
+    const headers=new Headers({location:new URL(mode==="link"?"/connexion?discord=lie":mode==="admin"?"/?admin=1&connexion=discord":"/?connexion=discord",request.url).toString(),"cache-control":"no-store","set-cookie":session.cookie});
     headers.append("set-cookie",clearCookie(request,STATE_COOKIE)); headers.append("set-cookie",clearCookie(request,"cinebox_discord_mode"));
     return new Response(null,{status:302,headers});
   } catch { return fail("discord-unavailable"); }
