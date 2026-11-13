@@ -10,7 +10,8 @@ import {
 } from "../../lib/cinebox/admin-auth.mjs";
 import { getAccount, validOrigin, type AccountEnv } from "./account-auth.ts";
 
-export interface AdminEnv extends Partial<AccountEnv> {
+export interface AdminEnv {
+  DB?: unknown;
   CINEBOX_ADMIN_DISCORD_USER_ID?: string;
   CINEBOX_ADMIN_PASSWORD_HASH?: string;
   CINEBOX_SESSION_SECRET?: string;
@@ -49,7 +50,7 @@ export function buildClearedAdminCookie(request: Request): string {
 export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boolean> {
   if (!env.DB) return false;
   try {
-    const row = await env.DB.prepare(
+    const row = await (env.DB as AccountEnv["DB"]).prepare(
       "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
     ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
     return Boolean(row?.allowed);
@@ -86,7 +87,7 @@ export async function requireAdmin(request: Request, env: AdminEnv): Promise<Res
     return rejectInvalidOrigin();
   }
   try {
-    const account = await getAccount(request, env as AccountEnv);
+    const account = await getAccount(request, env as unknown as AccountEnv);
     if (!account) return json({ error: ADMIN_AUTH_ERROR }, 401);
     if (!await isAdminAccount(env, account.id)) return json({ error: "Ce compte Discord n’est pas autorisé à administrer CinéBox." }, 403);
     return null;
