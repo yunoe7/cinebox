@@ -2734,3 +2734,5 @@ footer { font-size: 9.5px !important; }
 .admin-remote-file-actions select:disabled{opacity:.45;cursor:not-allowed}
 .admin-remote-file-actions button{flex:0 0 auto;min-height:34px}
 @media(max-width:640px){.admin-remote-file-actions{flex-basis:100%}.admin-remote-file-actions button{flex:1 1 100%}}
+
+.detail-video-embed{width:100%;display:flex;flex-direction:column;align-items:stretch;background:#000}.detail-video-embed .detail-video{width:100%;aspect-ratio:16/9;max-height:68vh;border:0;background:#000}.detail-video-embed>a{align-self:flex-end;padding:9px 12px;color:#e2c18f;font-size:11px;text-decoration:underline}
