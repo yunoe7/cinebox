@@ -168,6 +168,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("updated");
+  const [pendingConfirmation, setPendingConfirmation] = useState<{ item: Item; permanent: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,7 +318,6 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   };
 
   const unpublish = async (item: Item) => {
-    if (!window.confirm(`Retirer « ${item.title} » du catalogue partagé ? La fiche sera masquée.`)) return;
     setBusy(item.id);
     setActionError(false);
     setActionMessage("");
@@ -347,7 +347,15 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
       setActionMessage(reason instanceof Error ? reason.message : "Suppression définitive impossible.");
     } finally {
       setBusy("");
+      setPendingConfirmation(null);
     }
+  };
+
+  const confirmPendingAction = async () => {
+    if (!pendingConfirmation) return;
+    const { item, permanent } = pendingConfirmation;
+    if (permanent) await deletePermanently(item);
+    else await unpublish(item);
   };
 
   return (
@@ -420,6 +428,29 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
               Réinitialiser
             </button>
           )}
+        </div>
+      )}
+
+      {pendingConfirmation && (
+        <div className="cinebox-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingConfirmation(null); }}>
+          <section className="cinebox-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="cinebox-confirm-title" aria-describedby="cinebox-confirm-description">
+            <div className="cinebox-confirm-icon"><Trash2 size={20} /></div>
+            <span className="eyebrow">GESTION DU CATALOGUE</span>
+            <h3 id="cinebox-confirm-title">{pendingConfirmation.permanent ? "Supprimer définitivement ?" : "Retirer du catalogue ?"}</h3>
+            <p id="cinebox-confirm-description">
+              <strong>{pendingConfirmation.item.title}</strong>
+              {pendingConfirmation.permanent
+                ? " sera supprimé avec ses épisodes, ses vidéos associées, ses favoris et son historique. Cette action est irréversible."
+                : " sera masqué du catalogue public. La fiche et ses données seront conservées et pourront être republiées."}
+            </p>
+            <div className="cinebox-confirm-actions">
+              <button type="button" onClick={() => setPendingConfirmation(null)}>Annuler</button>
+              <button type="button" className="is-danger" onClick={() => void confirmPendingAction()} disabled={busy === pendingConfirmation.item.id}>
+                {busy === pendingConfirmation.item.id ? <LoaderCircle size={14} className="admin-spin" /> : <Trash2 size={14} />}
+                {pendingConfirmation.permanent ? "Supprimer définitivement" : "Retirer"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -543,9 +574,9 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                       <Edit3 size={13} /> {isEditing ? "Fermer" : "Modifier"}
                     </button>
                     {isPublished
-                      ? <button type="button" onClick={() => void unpublish(item)} disabled={busy === item.id}><EyeOff size={13} /> Retirer</button>
+                      ? <button type="button" onClick={() => setPendingConfirmation({ item, permanent: false })} disabled={busy === item.id}><EyeOff size={13} /> Retirer</button>
                       : <button type="button" onClick={() => void republish(item)} disabled={busy === item.id}><Check size={13} /> Republier</button>}
-                    <button type="button" className="admin-shared-delete" onClick={() => void deletePermanently(item)} disabled={busy === item.id} title="Supprimer définitivement ce titre et ses données associées"><Trash2 size={13} /> Supprimer définitivement</button>
+                    <button type="button" className="admin-shared-delete" onClick={() => setPendingConfirmation({ item, permanent: true })} disabled={busy === item.id} title="Supprimer définitivement ce titre et ses données associées"><Trash2 size={13} /> Supprimer définitivement</button>
                     <span className="admin-shared-source"><HardDrive size={12} aria-hidden="true" /> D1 · {item.id.slice(0, 14)}{item.id.length > 14 ? "…" : ""}</span>
                   </div>
 
