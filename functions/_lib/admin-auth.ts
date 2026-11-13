@@ -1,6 +1,6 @@
 import { getAccount, validOrigin, type AccountEnv } from "./account-auth.ts";
 
-export interface AdminEnv extends AccountEnv {}
+export interface AdminEnv extends Omit<AccountEnv, "DB"> { DB?: unknown; }
 
 export const ADMIN_AUTH_ERROR = "Authentification administrateur requise.";
 export const ADMIN_SESSION_EXPIRED_ERROR = "Session Discord expirée. Reconnecte-toi.";
@@ -74,16 +74,17 @@ async function hasPrivilegedDiscordRole(env: AdminEnv, discordUserId: string): P
 /** True only for an account explicitly allowed or holding a configured staff role. */
 export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boolean> {
   if (!env.DB) return false;
+  const db = env.DB as AccountEnv["DB"];
   try {
     // Keep existing explicit grants (owner ID, database admin role, allowlist).
-    const explicit = await env.DB.prepare(
+    const explicit = await db.prepare(
       "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
     ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
     if (explicit?.allowed) return true;
 
     // Otherwise inspect the linked Discord identity and resolve its current guild roles.
     if (!env.CINEBOX_DISCORD_BOT_TOKEN || !env.CINEBOX_DISCORD_GUILD_ID) return false;
-    const identity = await env.DB.prepare(
+    const identity = await db.prepare(
       "SELECT provider_user_id FROM auth_identities WHERE user_id=? AND provider='discord' LIMIT 1",
     ).bind(userId).first<{ provider_user_id: string }>();
     if (!identity?.provider_user_id) return false;
@@ -103,7 +104,7 @@ export async function requireAdmin(request: Request, env: AdminEnv): Promise<Res
     return rejectInvalidOrigin();
   }
   try {
-    const account = await getAccount(request, env);
+    const account = await getAccount(request, env as AccountEnv);
     if (!account) return json({ error: ADMIN_AUTH_ERROR }, 401);
     if (!await isAdminAccount(env, account.id)) {
       return json({ error: "Ton compte Discord ne possède pas le rôle Fondateur, Admin ou Modérateur requis." }, 403);
