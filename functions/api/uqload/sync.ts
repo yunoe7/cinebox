@@ -34,10 +34,19 @@ function similarity(a: string, b: string): number {
 }
 function parseFilename(raw: string): { kind: "movie" | "series"; title: string; year?: string; season?: number; episode?: number } | null {
   const name = raw.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/\[[^\]]*\]/g, " ");
-  const ep = name.match(/^(.*?)\s*[._ -]+S(\d{1,2})\s*E(\d{1,3})\b/i) || name.match(/^(.*?)\b(\d{1,2})x(\d{1,3})\b/i);
-  if (ep && clean(ep[1])) return { kind: "series", title: clean(ep[1]).replace(/[._-]+/g, " "), season: Number(ep[2]), episode: Number(ep[3]) };
+  // Uqload filenames sometimes contain OCR-like O/I characters in SxxEyy markers.
+  const ep = name.match(/^(.*?)\s*[._ -]+S([0-9OQIl]{1,2})\s*[._ -]*E([0-9OQIl]{1,3})\b/i)
+    || name.match(/^(.*?)\b([0-9OQIl]{1,2})x([0-9OQIl]{1,3})\b/i);
+  if (ep && clean(ep[1])) {
+    const digits = (value: string) => value.replace(/[OQ]/gi, "0").replace(/[Il]/g, "1");
+    const season = Number(digits(ep[2])), episode = Number(digits(ep[3]));
+    if (Number.isInteger(season) && Number.isInteger(episode) && season >= 0 && episode > 0)
+      return { kind: "series", title: clean(ep[1]).replace(/[._-]+/g, " "), season, episode };
+  }
   const year = name.match(/\b(19\d{2}|20\d{2})\b/);
-  const title = clean(year ? name.slice(0, year.index) : name).replace(/[._-]+/g, " ");
+  const title = clean(year ? name.slice(0, year.index) : name)
+    .replace(/\bS[0-9OQIl]{1,2}[._ -]*E[0-9OQIl]{1,3}\b.*$/i, " ")
+    .replace(/[._-]+/g, " ");
   if (!title || normalize(title).length < 2) return null;
   return { kind: "movie", title, ...(year ? { year: year[1] } : {}) };
 }
