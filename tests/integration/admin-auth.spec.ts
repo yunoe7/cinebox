@@ -37,13 +37,13 @@ test("l'API réelle n'accepte pas les anciens jetons admin sans session Discord 
 
   const denied = await request.get(ADMIN_ROUTE);
   expect(denied.status()).toBe(503);
-  expect(await denied.json()).toEqual({ error: "L'administration n'est pas configurée côté serveur." });
+  expect(await denied.json()).toEqual({ error: "Base de données indisponible." });
 
   const legacyBearer = await request.get(ADMIN_ROUTE, {
     headers: { authorization: "Bearer legacy-admin-token-that-is-long-enough" },
   });
   expect(legacyBearer.status()).toBe(503);
-  expect(await legacyBearer.json()).toEqual({ error: "L'administration n'est pas configurée côté serveur." });
+  expect(await legacyBearer.json()).toEqual({ error: "Base de données indisponible." });
 
   const wrongPassword = await request.post(LOGIN, {
     headers: mutationHeaders(),
