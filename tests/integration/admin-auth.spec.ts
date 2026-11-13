@@ -30,20 +30,20 @@ async function login(request: APIRequestContext) {
   });
 }
 
-test("l'API réelle refuse les anonymes et l'ancien jeton Bearer", async ({ request }) => {
+test("l'API réelle n'accepte pas les anciens jetons admin sans session Discord et D1", async ({ request }) => {
   const anonymous = await request.get(SESSION);
   expect(anonymous.status()).toBe(200);
   expect(await anonymous.json()).toEqual({ authenticated: false, configured: true });
 
   const denied = await request.get(ADMIN_ROUTE);
-  expect(denied.status()).toBe(401);
-  expect(await denied.json()).toEqual({ error: "Authentification administrateur requise." });
+  expect(denied.status()).toBe(503);
+  expect(await denied.json()).toEqual({ error: "La connexion Discord ou la base de données administrateur n’est pas configurée." });
 
   const legacyBearer = await request.get(ADMIN_ROUTE, {
     headers: { authorization: "Bearer legacy-admin-token-that-is-long-enough" },
   });
-  expect(legacyBearer.status()).toBe(401);
-  expect(await legacyBearer.json()).toEqual({ error: "Authentification administrateur requise." });
+  expect(legacyBearer.status()).toBe(503);
+  expect(await legacyBearer.json()).toEqual({ error: "La connexion Discord ou la base de données administrateur n’est pas configurée." });
 
   const wrongPassword = await request.post(LOGIN, {
     headers: mutationHeaders(),
@@ -143,5 +143,5 @@ test("la déconnexion efface le cookie et coupe l'accès", async ({ request }) =
 
   const session = await request.get(SESSION);
   expect(await session.json()).toEqual({ authenticated: false, configured: true });
-  expect((await request.get(ADMIN_ROUTE)).status()).toBe(401);
+  expect((await request.get(ADMIN_ROUTE)).status()).toBe(503);
 });
