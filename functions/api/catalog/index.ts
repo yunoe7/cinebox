@@ -1,5 +1,5 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
-import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { getAccount, enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
 import { isAdminAccount } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
 import { catalogVisibilitySql, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
@@ -47,6 +47,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
   const rawMaxAge = url.searchParams.get("maxAge");
   const maxAge = rawMaxAge === null ? null : Number(rawMaxAge);
   if (maxAge !== null && (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 18)) return json({ error: "La limite d’âge demandée est invalide." }, 400);
+
+  try {
+    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-list", 120, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
 
   try {
     // VIP entitlement is derived only from the signed-in server session and the

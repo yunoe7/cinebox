@@ -1,6 +1,11 @@
-import { json, getAccount, validOrigin, type AccountEnv } from "../../_lib/account-auth.ts";
+import { json, getAccount, validOrigin, enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
 
 const MAX_LIBRARY_BYTES = 2 * 1024 * 1024;
+const MAX_TITLES = 300;
+const MAX_FAVORITES = 500;
+const MAX_HISTORY = 200;
+const MAX_PLAYBACK_ITEMS = 500;
+const MAX_VIEW_COUNTS = 500;
 
 type LibraryDocument = {
   version: 1;
@@ -15,13 +20,14 @@ type LibraryDocument = {
 function validLibrary(value: unknown): value is LibraryDocument {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  if (v.version !== 1 || !Array.isArray(v.titles) || !Array.isArray(v.favorites) ||
+  if (v.version !== 1 || !Array.isArray(v.titles) || v.titles.length > MAX_TITLES ||
+      !Array.isArray(v.favorites) || v.favorites.length > MAX_FAVORITES ||
       !v.favorites.every((id) => Number.isSafeInteger(id)) ||
-      !v.playback || typeof v.playback !== "object" || Array.isArray(v.playback) ||
-      !Array.isArray(v.history) || !v.history.every((entry) => !!entry && typeof entry === "object" &&
+      !v.playback || typeof v.playback !== "object" || Array.isArray(v.playback) || Object.keys(v.playback).length > MAX_PLAYBACK_ITEMS ||
+      !Array.isArray(v.history) || v.history.length > MAX_HISTORY || !v.history.every((entry) => !!entry && typeof entry === "object" &&
         Number.isSafeInteger((entry as {titleId?: unknown}).titleId) &&
         typeof (entry as {viewedAt?: unknown}).viewedAt === "number" && Number.isFinite((entry as {viewedAt:number}).viewedAt)) ||
-      !v.viewCounts || typeof v.viewCounts !== "object" || Array.isArray(v.viewCounts) ||
+      !v.viewCounts || typeof v.viewCounts !== "object" || Array.isArray(v.viewCounts) || Object.keys(v.viewCounts).length > MAX_VIEW_COUNTS ||
       !v.preferences || typeof v.preferences !== "object" ||
       typeof (v.preferences as {autoplayNext?: unknown}).autoplayNext !== "boolean") return false;
   return true;
@@ -31,6 +37,8 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
   try {
     const user = await getAccount(request, env);
     if (!user) return json({ error: "unauthorized" }, 401);
+    if (!await enforceRateLimit(env, request, "account-library-read:" + user.id, 120, 60))
+      return json({ error: "rate-limited" }, 429, { "retry-after": "60" });
     const row = await env.DB.prepare("SELECT library_json, revision, updated_at FROM account_libraries WHERE user_id=? LIMIT 1")
       .bind(user.id).first<{library_json:string;revision:number;updated_at:string}>();
     if (!row) return json({ library: null, revision: 0, updatedAt: null });
@@ -49,6 +57,8 @@ export async function onRequestPut({ request, env }: { request: Request; env: Ac
   try {
     const user = await getAccount(request, env);
     if (!user) return json({ error: "unauthorized" }, 401);
+    if (!await enforceRateLimit(env, request, "account-library-write:" + user.id, 30, 60))
+      return json({ error: "rate-limited" }, 429, { "retry-after": "60" });
     const raw = await request.text();
     if (new TextEncoder().encode(raw).byteLength > MAX_LIBRARY_BYTES) return json({ error: "library-too-large" }, 413);
     const body = JSON.parse(raw) as { library?: unknown; revision?: unknown };
