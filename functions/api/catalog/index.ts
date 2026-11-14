@@ -37,12 +37,6 @@ function json(body: unknown, status = 200): Response {
 }
 export async function onRequestGet({ request, env }: { request: Request; env: CatalogEnv }): Promise<Response> {
   if (!env.DB) return json({ error: "Le catalogue distant n'est pas configuré." }, 503);
-  try {
-    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-list", 120, 60))
-      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
-  } catch {
-    return json({ error: "Service temporairement indisponible." }, 503);
-  }
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind");
   if (kind && !["movie", "series", "video"].includes(kind)) return json({ error: "Le type de contenu demandé est invalide." }, 400);
@@ -53,6 +47,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
   const rawMaxAge = url.searchParams.get("maxAge");
   const maxAge = rawMaxAge === null ? null : Number(rawMaxAge);
   if (maxAge !== null && (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 18)) return json({ error: "La limite d’âge demandée est invalide." }, 400);
+
+  try {
+    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-list", 120, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
 
   try {
     // VIP entitlement is derived only from the signed-in server session and the
