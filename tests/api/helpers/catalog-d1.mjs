@@ -38,6 +38,7 @@ export function createCatalogD1({
   }
 
   function query(sql, values) {
+    if (/INSERT INTO account_rate_limits/.test(sql)) return [{ attempts: 1 }];
     if (/FROM account_sessions s JOIN users u/.test(sql)) {
       return state.account ? [{ ...state.account }] : [];
     }
