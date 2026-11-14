@@ -2716,6 +2716,7 @@ footer { font-size: 9.5px !important; }
 .vip-status-pill.is-active{background:rgba(184,145,86,.14);color:#e6c991}
 .vip-card-chip{position:absolute;z-index:2;top:11px;right:11px;display:inline-flex;align-items:center;gap:5px;max-width:calc(100% - 78px);padding:6px 9px;border:1px solid rgba(223,190,133,.42);border-radius:999px;background:linear-gradient(135deg,rgba(38,30,20,.96),rgba(15,16,19,.94));color:#ecd09d;font-size:8px;font-weight:850;letter-spacing:.075em;white-space:nowrap;backdrop-filter:blur(12px);box-shadow:0 5px 18px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.08)}.vip-card-chip.is-premiere{border-color:rgba(157,143,230,.52);background:linear-gradient(135deg,rgba(43,36,72,.96),rgba(17,17,25,.94));color:#d0c5ff}.vip-card-chip svg{flex:0 0 auto;filter:drop-shadow(0 0 5px currentColor)}
 .vip-release-date{display:block;margin-top:6px;color:#c4a879;font-size:11px}
+.hero-premiere-countdown{display:block;width:max-content;max-width:100%;padding:6px 10px;border:1px solid rgba(157,143,230,.3);border-radius:8px;background:rgba(20,17,34,.62);color:#d0c5ff;font-size:11px;font-weight:700;letter-spacing:.02em}
 .vip-screen .poster-grid{margin-top:20px}
 @media(max-width:700px){.vip-intro{align-items:flex-start;flex-wrap:wrap;padding:22px 18px;gap:14px}.vip-intro-mark{width:44px;height:44px;flex-basis:44px}.vip-intro>div:nth-child(2){flex:1;min-width:0}.vip-status-pill{margin-left:58px}}
 
