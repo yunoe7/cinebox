@@ -13,7 +13,7 @@ function makeEnv(rows = []) {
         return {
           bind(...values) { call.values = values; return this; },
           async all() { return { success: true, results: rows }; },
-          async first() { return null; },
+          async first() { return /INSERT INTO account_rate_limits/.test(sql) ? { attempts: 1 } : null; },
         };
       },
     },
@@ -124,7 +124,7 @@ function makeCatalogEnv({ rows = [], episodes = [] } = {}) {
         calls.push(call);
         return {
           bind(...values) { call.values = values; return this; },
-          async first() { return null; },
+          async first() { return /INSERT INTO account_rate_limits/.test(sql) ? { attempts: 1 } : null; },
           async all() {
             if (/COUNT\(\*\) AS titles/.test(sql)) {
               return { success: true, results: [{ titles: rows.length, films: rows.length, series: 0, videos: 0 }] };
