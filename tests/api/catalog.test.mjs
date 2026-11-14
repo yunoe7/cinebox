@@ -292,16 +292,16 @@ test("a VIP member only sees early access inside the 48-hour window", async () =
   });
 });
 
-test("an administrator never bypasses the lower bound of a scheduled premiere", async () => {
+test("an administrator without VIP sees only public titles in the viewer catalogue", async () => {
   const { body } = await fetchTitles(
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: false, admin: true }),
   );
-  // The admin console uses /api/catalog/manage; the viewer catalogue must not
-  // expose a premiere before its 48 h window, even to an administrator.
-  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released"]);
+  // Admins inspect restricted rows through /api/catalog/manage. The viewer
+  // catalogue grants no VIP access based on the admin role alone.
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["public", "released"]);
   assert.equal(body.viewer.admin, true);
-  assert.equal(body.viewer.entitled, true);
+  assert.equal(body.viewer.entitled, false);
   assert.equal(body.viewer.vip, false);
 });
 
