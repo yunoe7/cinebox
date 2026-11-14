@@ -59,7 +59,8 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
       .bind(account.id, new Date(now).toISOString()).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
-    const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled: isVip || isAdmin };
+    // Administration permissions do not confer VIP playback rights.
+    const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled: isVip };
 
     const result = await env.DB.prepare(
       `SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,updated_at,
