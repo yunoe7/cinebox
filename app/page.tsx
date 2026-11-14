@@ -660,20 +660,26 @@ export default function HomePage() {
   // video. A stale right (downgrade, expiry, revocation) closes the detail or
   // refuses playback instead of replaying a cached URL.
   const revalidateTitleAccess = async (item: Title): Promise<Title | null> => {
-    if (!item.sharedId) return item;
+    // A personal copy can lack sharedId while still matching a published TMDB
+    // title. Resolve that stable ID too, otherwise its cached URL could bypass
+    // the server-side VIP check.
+    const accessId = item.sharedId || (item.tmdbId ? resolveSharedId({ tmdbId: item.tmdbId, kind: item.kind }) : "");
+    if (!accessId) return item;
     try {
-      const response = await fetch(`/api/catalog/access?id=${encodeURIComponent(item.sharedId)}`, {
+      const response = await fetch(`/api/catalog/access?id=${encodeURIComponent(accessId)}`, {
         cache: "no-store",
         headers: { accept: "application/json" },
       });
       if (response.status === 404) return null;
-      if (!response.ok) return item;
+      if (!response.ok) return null;
       const contentType = (response.headers.get("content-type") || "").toLowerCase();
-      if (!contentType.includes("application/json")) return item;
+      if (!contentType.includes("application/json")) return null;
       const payload = await response.json();
-      return payload?.title && typeof payload.title === "object" ? sharedCatalogItemToTitle(payload.title) : item;
+      return payload?.title && typeof payload.title === "object" ? sharedCatalogItemToTitle(payload.title) : null;
     } catch {
-      return item;
+      // Fail closed: a failed entitlement check must never fall back to a cached
+      // title carrying a previously-issued playback URL.
+      return null;
     }
   };
 
@@ -833,6 +839,23 @@ export default function HomePage() {
       setSelectedEpisodeUrl(null);
     }
   };
+  const playEpisode = async (item: Title, season: number, episode: NonNullable<Title["seasons"]>[number]["episodes"][number]) => {
+    const resolved = await revalidateTitleAccess(item);
+    if (!resolved) {
+      setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      setSharedCatalogRetryKey(key => key + 1);
+      return;
+    }
+    const resolvedEpisode = resolved.seasons?.find(entry => entry.number === season)?.episodes.find(entry => entry.number === episode.number);
+    if (!resolvedEpisode) {
+      setNotice({ title: "Épisode indisponible", message: "Cet épisode n’est plus accessible." });
+      return;
+    }
+    setSelected(withAccountPlayback(resolved));
+    setSelectedEpisode({ season, episode: episode.number });
+    setSelectedEpisodeUrl(resolvedEpisode.videoUrl || null);
+  };
+
   const toggleFavorite = async (id: number) => {
     const current = favoritesRef.current;
     const next = current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id];
@@ -1168,7 +1191,7 @@ export default function HomePage() {
             <div className="hero-cinema-overlay"/>
             <BlurFade className="hero-cinema-copy" key={activeFeatured.id} direction="up" offset={14} duration={0.55}>
               <div className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>À LA UNE · SÉLECTION CINÉBOX</AnimatedShinyText></div>
-              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
+              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>{(activeFeatured.vipExclusive || vipAccessState(activeFeatured, accessClock) === "early") && <span className={`hero-vip-tag ${activeFeatured.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`}><Star size={12} fill="currentColor"/>{activeFeatured.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} delay={0.05} once>{activeFeatured.name}</TextAnimate></h1>
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
@@ -1229,7 +1252,7 @@ export default function HomePage() {
             {upNext.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
-                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
+                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => void playEpisode(item, season, episode)}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {collections.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">

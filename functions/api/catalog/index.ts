@@ -62,7 +62,9 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
       .bind(account.id, nowIso).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
-    const entitled = isVip || isAdmin;
+    // Admin tools can inspect restricted rows through /api/catalog/manage,
+    // but admin status alone must never unlock viewer playback.
+    const entitled = isVip;
     const visibility = catalogVisibilitySql(entitled, { now: nowIso });
     const accessSql = visibility.sql;
     const accessParams: (string | number | null)[] = [...visibility.params];
