@@ -56,8 +56,9 @@ export function VipMembershipManager() {
   },[query]);
 
   const grant=async(user:UserMatch)=>{
-    const expiry=duration==="custom" ? new Date(customDate).toISOString() : new Date(Date.now()+Number(duration)*86400000).toISOString();
-    if(!Number.isFinite(Date.parse(expiry)) || Date.parse(expiry)<=Date.now()){setMessage({kind:"error",text:"Choisis une date d’expiration future."});return;}
+    const parsedExpiry=duration==="custom" ? Date.parse(customDate) : Date.now()+Number(duration)*86400000;
+    if(!Number.isFinite(parsedExpiry) || parsedExpiry<=Date.now()){setMessage({kind:"error",text:"Choisis une date d’expiration future."});return;}
+    const expiry=new Date(parsedExpiry).toISOString();
     setSaving(true);setMessage(null);
     try {
       const response=await fetch("/api/admin/vip",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({userId:user.userId,expiresAt:expiry})});
