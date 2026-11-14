@@ -6,16 +6,6 @@ import { BadgeCheck, Crown, Search, ShieldCheck, Clock3, UserRound, CalendarCloc
 type Membership = { userId:string; displayName:string; expiresAt:string; grantedBy:string|null; createdAt:string; active:boolean };
 type UserMatch = { userId:string; displayName:string; discordUsername:string|null; discordName:string|null; expiresAt:string|null; active:boolean };
 const durations = [{label:"7 jours",days:7},{label:"30 jours",days:30},{label:"90 jours",days:90},{label:"1 an",days:365}];
-function discordSyncLabel(status?:string) {
-  if(status==="synced") return "Rôle VIP Discord synchronisé.";
-  if(status==="not-linked") return "VIP CinéBox activé, mais aucun compte Discord n’est lié.";
-  if(status==="not-in-server") return "VIP CinéBox activé, mais le membre n’est pas sur le serveur Discord.";
-  if(status==="not-configured") return "VIP CinéBox activé, mais la synchronisation Discord n’est pas configurée.";
-  if(status==="invalid-configuration") return "VIP CinéBox activé, mais les identifiants Discord sont invalides.";
-  if(status==="discord-unavailable"||status==="discord-error") return "VIP CinéBox activé, mais Discord n’a pas pu être synchronisé.";
-  return "";
-}
-
 function dateLabel(value:string|null) {
   if(!value) return "Aucune expiration";
   const date=new Date(value);
@@ -73,7 +63,7 @@ export function VipMembershipManager() {
       const response=await fetch("/api/admin/vip",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({userId:user.userId,expiresAt:expiry})});
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error||"Impossible d’activer le VIP.");
-      setMessage({kind:"success",text:[`Le statut VIP de ${user.displayName} est actif jusqu’au ${dateLabel(payload.expiresAt)}.`,discordSyncLabel(payload.discord?.status)].filter(Boolean).join(" ")});
+      setMessage({kind:"success",text:`Le statut VIP de ${user.displayName} est actif jusqu’au ${dateLabel(payload.expiresAt)}. Le rôle Discord sera synchronisé au prochain passage automatique du bot (toutes les 5 minutes).`});
       setSelected(null);setQuery("");setMatches([]);await load();
     } catch(error) {setMessage({kind:"error",text:error instanceof Error?error.message:"Erreur inattendue."});}
     finally {setSaving(false);}
@@ -86,7 +76,7 @@ export function VipMembershipManager() {
       const response=await fetch("/api/admin/vip",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({userId})});
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error||"Impossible de retirer le VIP.");
-      setMessage({kind:"success",text:[`Le statut VIP de ${name} a été retiré.`,discordSyncLabel(payload.discord?.status,"remove")].filter(Boolean).join(" ")});await load();
+      setMessage({kind:"success",text:`Le statut VIP de ${name} a été retiré. Le bot synchronisera le rôle Discord au prochain passage automatique (toutes les 5 minutes).`});await load();
     } catch(error) {setMessage({kind:"error",text:error instanceof Error?error.message:"Erreur inattendue."});}
     finally {setSaving(false);}
   };
