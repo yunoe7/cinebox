@@ -25,12 +25,11 @@ export function createCatalogD1({
   const calls = [];
 
   function isEntitled(sql) {
-    // Catalogue visibility intentionally includes every valid scheduled
-    // premiere; playback entitlement is enforced by /api/catalog/access.
-    const entitled = /vip_exclusive\)?=1/.test(sql);
+    // Both VIP-exclusive and valid premiere rows are visible in the catalogue;
+    // /api/catalog/access and the response sanitiser enforce playback rights.
     return (row) => {
       const exclusive = Number(row.vip_exclusive || 0) === 1;
-      if (exclusive) return entitled;
+      if (exclusive) return true;
       const early = Number(row.vip_early_access || 0) === 1;
       if (!early) return true;
       const publicAtMs = typeof row.public_at === "string" ? Date.parse(row.public_at) : NaN;
