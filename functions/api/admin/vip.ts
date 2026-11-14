@@ -22,7 +22,8 @@ async function syncDiscordVipRole(env: Env, userId: string, action: "add" | "rem
   ).bind(userId).all<{ provider_user_id: string }>();
   const discordUserId = identity.results[0]?.provider_user_id;
   if (!discordUserId) return { status: "not-linked" as const };
-  if (!/^\\d{17,20}$/.test(discordUserId) || !/^\\d{17,20}$/.test(env.CINEBOX_DISCORD_GUILD_ID) || !/^\\d{17,20}$/.test(env.CINEBOX_DISCORD_ROLE_VIP_ID)) {
+  const isSnowflake = (value: string) => value.length >= 17 && value.length <= 20 && [...value].every(char => char >= "0" && char <= "9");
+  if (!isSnowflake(discordUserId) || !isSnowflake(env.CINEBOX_DISCORD_GUILD_ID) || !isSnowflake(env.CINEBOX_DISCORD_ROLE_VIP_ID)) {
     return { status: "invalid-configuration" as const };
   }
   let response: Response;
