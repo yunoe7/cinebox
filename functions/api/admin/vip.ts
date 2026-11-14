@@ -25,10 +25,15 @@ async function syncDiscordVipRole(env: Env, userId: string, action: "add" | "rem
   if (!/^\\d{17,20}$/.test(discordUserId) || !/^\\d{17,20}$/.test(env.CINEBOX_DISCORD_GUILD_ID) || !/^\\d{17,20}$/.test(env.CINEBOX_DISCORD_ROLE_VIP_ID)) {
     return { status: "invalid-configuration" as const };
   }
-  const response = await fetch(
-    `https://discord.com/api/v10/guilds/${env.CINEBOX_DISCORD_GUILD_ID}/members/${discordUserId}/roles/${env.CINEBOX_DISCORD_ROLE_VIP_ID}`,
-    { method: action === "add" ? "PUT" : "DELETE", headers: { authorization: `Bot ${env.CINEBOX_DISCORD_BOT_TOKEN}`, accept: "application/json" } },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://discord.com/api/v10/guilds/${env.CINEBOX_DISCORD_GUILD_ID}/members/${discordUserId}/roles/${env.CINEBOX_DISCORD_ROLE_VIP_ID}`,
+      { method: action === "add" ? "PUT" : "DELETE", headers: { authorization: `Bot ${env.CINEBOX_DISCORD_BOT_TOKEN}`, accept: "application/json" } },
+    );
+  } catch {
+    return { status: "discord-unavailable" as const };
+  }
   if (response.ok || response.status === 204) return { status: "synced" as const };
   if (response.status === 404) return { status: "not-in-server" as const };
   return { status: "discord-error" as const, httpStatus: response.status };
