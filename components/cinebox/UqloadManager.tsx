@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { RefreshCw, Link2, LoaderCircle, Search, CloudDownload, PlayCircle, Film, Tv, Video, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Link2, LoaderCircle, Search, CloudDownload, PlayCircle, Film } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { buildPlaybackUrl } from "../../lib/cinebox/media-sources.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
