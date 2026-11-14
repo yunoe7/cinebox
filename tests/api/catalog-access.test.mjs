@@ -95,15 +95,13 @@ test("a VIP member can open an early-access title during the 48-hour window", as
   assert.equal(body.viewer.entitled, true);
 });
 
-test("an administrator can inspect an early-access title during the 48-hour window", async () => {
+test("an administrator without VIP cannot open an early-access title through the viewer API", async () => {
   const response = await get("tmdb:movie:1", {
     titles: [earlyRow(WINDOW)],
     account: ACCOUNT, admin: true,
   });
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(body.title.access, "early");
-  assert.equal(body.viewer.admin, true);
+  assert.equal(response.status, 404);
+  assert.equal(JSON.stringify(await response.json()).includes("videoUrl"), false);
 });
 
 test("an early-access title with an invalid date is inaccessible to every viewer", async () => {
@@ -144,15 +142,13 @@ test("a VIP member receives a VIP-exclusive title with its playback URL", async 
   assert.equal(body.viewer.entitled, true);
 });
 
-test("an administrator receives a VIP-exclusive title without a VIP membership", async () => {
+test("an administrator without VIP cannot receive a VIP-exclusive title", async () => {
   const response = await get("tmdb:movie:1", {
     titles: [catalogTitle({ id: "tmdb:movie:1", vip_exclusive: 1 })],
     account: ACCOUNT, vip: false, admin: true,
   });
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(body.viewer.admin, true);
-  assert.equal(body.viewer.vip, false);
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { error: "Ce titre n’est pas disponible." });
 });
 
 test("a downgraded (ex-VIP) account is refused like any guest", async () => {
