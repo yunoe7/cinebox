@@ -1,5 +1,5 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
-import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { getAccount, enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
 import { isAdminAccount } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
 import { catalogVisibilitySql, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
@@ -37,6 +37,12 @@ function json(body: unknown, status = 200): Response {
 }
 export async function onRequestGet({ request, env }: { request: Request; env: CatalogEnv }): Promise<Response> {
   if (!env.DB) return json({ error: "Le catalogue distant n'est pas configuré." }, 503);
+  try {
+    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-list", 120, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind");
   if (kind && !["movie", "series", "video"].includes(kind)) return json({ error: "Le type de contenu demandé est invalide." }, 400);
