@@ -660,9 +660,13 @@ export default function HomePage() {
   // video. A stale right (downgrade, expiry, revocation) closes the detail or
   // refuses playback instead of replaying a cached URL.
   const revalidateTitleAccess = async (item: Title): Promise<Title | null> => {
-    if (!item.sharedId) return item;
+    // A personal copy can lack sharedId while still matching a published TMDB
+    // title. Resolve that stable ID too, otherwise its cached URL could bypass
+    // the server-side VIP check.
+    const accessId = item.sharedId || (item.tmdbId ? resolveSharedId({ tmdbId: item.tmdbId, kind: item.kind }) : "");
+    if (!accessId) return item;
     try {
-      const response = await fetch(`/api/catalog/access?id=${encodeURIComponent(item.sharedId)}`, {
+      const response = await fetch(`/api/catalog/access?id=${encodeURIComponent(accessId)}`, {
         cache: "no-store",
         headers: { accept: "application/json" },
       });
