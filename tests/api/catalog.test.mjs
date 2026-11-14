@@ -59,7 +59,9 @@ test("catalogue returns only published titles and maps metadata safely", async (
     env,
   });
   assert.equal(response.status, 200);
-  assert.match(calls[0].sql, /published=1/);
+  const listingCall = calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
+  assert.ok(listingCall);
+  assert.match(listingCall.sql, /published=1/);
   const listingCall = calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
   assert.ok(listingCall);
   assert.deepEqual(listingCall.values, ["movie", 10, 5]);
@@ -182,7 +184,9 @@ test("catalogue maxAge excludes unclassified and over-age titles (fail closed)",
   const body = await response.json();
   assert.deepEqual(body.titles.map((title) => title.title), ["Tous publics", "Série 10+"]);
   assert.equal(body.pagination.count, 2);
-  assert.deepEqual(calls[0].values, [500, 0]);
+  const listingCall = calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
+  assert.ok(listingCall);
+  assert.deepEqual(listingCall.values, [500, 0]);
 });
 
 test("catalogue maxAge keeps exact pagination after filtering", async () => {
