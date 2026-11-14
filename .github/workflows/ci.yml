@@ -43,7 +43,23 @@ jobs:
           path: out
           retention-days: 3
 
-  # E2E temporarily removed from CI while Playwright performance is investigated.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end browser tests
+        run: npm run test:e2e
 
   csp-smoke:
     needs: validate
