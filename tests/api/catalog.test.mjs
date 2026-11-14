@@ -13,6 +13,7 @@ function makeEnv(rows = []) {
         return {
           bind(...values) { call.values = values; return this; },
           async all() { return { success: true, results: rows }; },
+          async first() { return null; },
         };
       },
     },
@@ -278,8 +279,8 @@ test("a VIP member sees scheduled premiere teasers and can play only titles insi
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: true }),
   );
-  // The scheduled premiere (window starts in 24 h) is still hidden, exactly
-  // like the invalid rows; the exclusive title stays visible to VIP members.
+  // Scheduled premieres are visible as teasers; invalid dates stay hidden.
+  // VIP-exclusive rows remain visible only to active VIP members.
   assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.equal(body.viewer.vip, true);
   assert.equal(body.viewer.entitled, true);
@@ -289,6 +290,7 @@ test("a VIP member sees scheduled premiere teasers and can play only titles insi
     exclusive: "vip",
     early: "early",
     released: "public",
+    scheduled: "scheduled",
   });
 });
 
@@ -339,9 +341,7 @@ test("catalogue SQL includes every valid scheduled premiere as a teaser without 
   assert.ok(titlesCall);
   assert.match(titlesCall.sql, /vip_exclusive\)?=0/);
   assert.match(titlesCall.sql, /datetime\(public_at\)/);
-  assert.equal(titlesCall.values.length, 2);
-  assert.equal(titlesCall.values[0], 24);
-  assert.equal(titlesCall.values[1], 0);
+  assert.deepEqual(titlesCall.values, [24, 0]);
   const scheduled = (await (await onRequestGet({ request: new Request("https://cinebox.test/api/catalog"), env: { DB: db } })).json()).titles.find((title) => title.id === "scheduled");
   assert.ok(scheduled);
   assert.equal(scheduled.videoUrl, undefined);
@@ -367,8 +367,8 @@ test("stats and episode counts follow the same audience as the listing", async (
     ],
   });
   const guest = await fetchTitles(new Request("https://cinebox.test/api/catalog?kind=movie"), { DB: db });
-  assert.equal(guest.body.stats.titles, 2);
-  assert.equal(guest.body.stats.episodes, 1);
+  assert.equal(guest.body.stats.titles, 4);
+  assert.equal(guest.body.stats.episodes, 2);
 
   const vip = await fetchTitles(catalogRequest({ account: ACCOUNT }), { DB: createCatalogD1({
     titles: vipRows,
@@ -380,7 +380,7 @@ test("stats and episode counts follow the same audience as the listing", async (
       { id: "e3", title_id: "scheduled", season_number: 1, episode_number: 1, title: "E3", overview: "", duration_seconds: 1, thumbnail_path: null, metadata_json: "{}" },
     ],
   }) });
-  // public + exclusive + early + released; the scheduled episode is excluded.
-  assert.equal(vip.body.stats.titles, 4);
-  assert.equal(vip.body.stats.episodes, 2);
+  // Every valid premiere is counted as visible; exclusive rows remain VIP-only.
+  assert.equal(vip.body.stats.titles, 5);
+  assert.equal(vip.body.stats.episodes, 3);
 });
