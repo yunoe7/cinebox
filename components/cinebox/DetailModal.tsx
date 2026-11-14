@@ -14,6 +14,7 @@ import { useModalDialog } from "./useModalDialog";
 type SelectedEpisode = { season: number; episode: number };
 type DetailModalProps = {
   selected: Title | null; selectedEpisodeUrl: string | null; selectedEpisode: SelectedEpisode | null;
+  canPlayContent: boolean;
   activePage: string; favorites: number[]; onClose: () => void;
   onSelectEpisode: (season: number, episode: number, url: string) => void;
   onEditEpisode: (season: number, episode: number, title: string) => void;
@@ -22,7 +23,7 @@ type DetailModalProps = {
   onEnded: (title: Title, episode: SelectedEpisode | null) => void; onView: (titleId: number) => void;
 };
 
-export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpisode, activePage, favorites, onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView }: DetailModalProps) {
+export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpisode, canPlayContent, activePage, favorites, onClose, onSelectEpisode, onEditEpisode, onToggleFavorite, onProgress, onEnded, onView }: DetailModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [activeTab, setActiveTab] = useState<"details" | "episodes">("details");
   const [activeSeasonNumber, setActiveSeasonNumber] = useState<number | null>(null);
@@ -70,12 +71,13 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   // A selected episode must never fall back to the title-level URL: that URL
   // belongs to the whole series and would play the wrong video. For a series
   // without a selected episode, the first available episode is used instead.
-  const playbackUrl = selectedEpisode
+  const playbackUrl = !canPlayContent ? null : selectedEpisode
     ? selectedEpisodeUrl || chosen?.url || null
     : selected.kind === "Série"
       ? selectedEpisodeUrl || firstPlayableEpisode?.url || (episodes.length ? null : selected.videoUrl) || null
       : selectedEpisodeUrl || selected.videoUrl || firstEpisode?.url || null;
-  const canUseVidsrc = Boolean(selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"));
+  // A TMDB ID alone must never bypass a VIP restriction through Vidsrc.
+  const canUseVidsrc = canPlayContent && Boolean(selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"));
   const playbackProgress = selectedEpisode
     ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.progress ?? 0
     : selected.progress ?? 0;
@@ -84,14 +86,14 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
       ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
       : selected.currentTime ?? 0)
     : 0;
-  const canPlay = canUseVidsrc || Boolean(selectedEpisode
+  const canPlay = canPlayContent && (canUseVidsrc || Boolean(selectedEpisode
     ? selectedEpisodeUrl || chosen?.url
-    : playbackUrl);
+    : playbackUrl));
   const resumableEpisode = selected.seasons?.flatMap(season => season.episodes
     .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
     .map(episode => ({ season: season.number, episode })))
     .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
-  const titleCanResume = Boolean((selected.videoUrl || selected.tmdbId) && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
+  const titleCanResume = canPlayContent && Boolean((selected.videoUrl || selected.tmdbId) && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
   const canResume = selected.kind === "Série" ? Boolean(resumableEpisode) : titleCanResume;
   const progressLabel = selected.kind === "Série" ? resumableEpisode?.episode.progress : selected.progress;
   const activeSeason = selected.seasons?.find(season => season.number === activeSeasonNumber) || selected.seasons?.[0];
@@ -159,7 +161,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
               <button className="detail-secondary-btn" type="button" onClick={() => setActiveTab("details")}><Info size={15}/> Plus d'infos</button>
               <button className={`detail-icon-btn ${favorites.includes(selected.id) ? "is-fav" : ""}`} type="button" aria-label="Ajouter à ma liste" aria-pressed={favorites.includes(selected.id)} onClick={() => onToggleFavorite(selected.id)}><Heart size={17} fill={favorites.includes(selected.id) ? "currentColor" : "none"}/></button>
             </div>
-            {!canPlay && <span className="detail-no-video">Aucun fichier vidéo associé pour le moment.</span>}
+            {!canPlay && <span className="detail-no-video">{selected.vipExclusive || selected.vipEarlyAccess ? "Lecture réservée aux membres VIP." : "Aucun fichier vidéo associé pour le moment."}</span>}
           </BlurFade>
           </MagicCard>
         </section>}
@@ -181,7 +183,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
               <div className="detail-episode-grid">{activeSeason.episodes.map(episode => {
                 const active = selectedEpisode?.season === activeSeason.number && selectedEpisode?.episode === episode.number;
                 const progress = Math.max(0, Math.min(100, episode.progress || 0));
-                const playable = Boolean(episode.videoUrl || (selected.tmdbId && selected.kind === "Série"));
+                const playable = canPlayContent && Boolean(episode.videoUrl || (selected.tmdbId && selected.kind === "Série"));
                 return <MagicCard className={`detail-episode-card ${active ? "active" : ""}`} key={episode.number}>
                   <button type="button" className="detail-episode-main" disabled={!playable} onClick={() => { onSelectEpisode(activeSeason.number,episode.number,episode.videoUrl || ""); setPlaying(true); }}>
                     <span className="detail-episode-thumb">{episode.thumbnailUrl ? <img src={episode.thumbnailUrl} alt=""/> : <span>{String(episode.number).padStart(2,"0")}</span>}<i><Play size={15} fill="currentColor"/></i></span>
