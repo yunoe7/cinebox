@@ -86,7 +86,7 @@ export function VipMembershipManager() {
       const response=await fetch("/api/admin/vip",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({userId})});
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error||"Impossible de retirer le VIP.");
-      setMessage({kind:"success",text:[`Le statut VIP de ${name} a été retiré.`,discordSyncLabel(payload.discord?.status)].filter(Boolean).join(" ")});await load();
+      setMessage({kind:"success",text:[`Le statut VIP de ${name} a été retiré.`,discordSyncLabel(payload.discord?.status,"remove")].filter(Boolean).join(" ")});await load();
     } catch(error) {setMessage({kind:"error",text:error instanceof Error?error.message:"Erreur inattendue."});}
     finally {setSaving(false);}
   };
