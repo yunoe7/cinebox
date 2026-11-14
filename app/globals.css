@@ -2928,3 +2928,134 @@ footer { font-size: 9.5px !important; }
 /* VIP status is visible on the home-page featured title as well as catalogue posters. */
 .hero-vip-tag{display:inline-flex;align-items:center;gap:7px;width:max-content;margin:10px 0 2px;padding:7px 12px;border:1px solid rgba(211,177,125,.55);border-radius:999px;background:linear-gradient(135deg,rgba(211,177,125,.24),rgba(32,26,18,.72));color:#f0d5a8;font-size:10px;font-weight:800;letter-spacing:1.2px;box-shadow:0 6px 22px rgba(0,0,0,.24);backdrop-filter:blur(12px)}
 .hero-vip-tag.is-premiere{border-color:rgba(157,119,255,.62);background:linear-gradient(135deg,rgba(126,87,194,.3),rgba(30,22,47,.78));color:#d7c5ff}
+
+
+/* Admin catalogue toolbar — aligned controls and a calmer, premium search field. */
+.admin-page .admin-shared-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.085);
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(20,22,27,.96), rgba(12,14,18,.94));
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 8px 22px rgba(0,0,0,.12);
+}
+.admin-page .admin-shared-toolbar > label:not(.admin-shared-search) {
+  display: grid;
+  flex: 0 0 174px;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-page .admin-shared-toolbar > label:not(.admin-shared-search) > span {
+  padding-left: 2px;
+  color: #a6a7ad;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+.admin-page .admin-shared-toolbar select {
+  width: 100%;
+  height: 42px;
+  min-width: 0;
+  padding: 0 34px 0 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background-color: #191b20;
+  color: #e9e7e2;
+  font-size: 11px;
+  transition: border-color .18s, background .18s, box-shadow .18s;
+}
+.admin-page .admin-shared-toolbar select:hover {
+  border-color: rgba(211,177,125,.35);
+  background-color: #1d1f24;
+}
+.admin-page .admin-shared-toolbar select:focus-visible {
+  outline: 2px solid rgba(211,177,125,.55);
+  outline-offset: 2px;
+}
+.admin-page .admin-shared-toolbar > label.admin-shared-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 11px;
+  min-width: 220px;
+  height: 42px;
+  margin: 0;
+  padding: 0 13px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  background: rgba(7,9,12,.72);
+  color: #a9abb2;
+  cursor: text;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+}
+.admin-page .admin-shared-toolbar > label.admin-shared-search:focus-within {
+  border-color: rgba(211,177,125,.58);
+  background: #0c0e12;
+  box-shadow: 0 0 0 3px rgba(211,177,125,.075);
+}
+.admin-page .admin-shared-search > svg {
+  flex: 0 0 auto;
+  color: #c5a575;
+}
+.admin-page .admin-shared-search input {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f0eee9;
+  font-size: 12px;
+}
+.admin-page .admin-shared-search input::placeholder {
+  color: #777b84;
+  opacity: 1;
+}
+.admin-page .admin-shared-search-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255,255,255,.07);
+  color: #b9bbc2;
+  cursor: pointer;
+}
+.admin-page .admin-shared-search-clear:hover {
+  background: rgba(211,177,125,.14);
+  color: #e8c995;
+}
+@media (max-width: 760px) {
+  .admin-page .admin-shared-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 10px;
+  }
+  .admin-page .admin-shared-toolbar > label.admin-shared-search {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+    height: 44px;
+  }
+  .admin-page .admin-shared-toolbar > label:not(.admin-shared-search) {
+    flex: 1 1 calc(50% - 5px);
+  }
+  .admin-page .admin-shared-toolbar select {
+    height: 40px;
+  }
+}
+@media (max-width: 420px) {
+  .admin-page .admin-shared-toolbar > label:not(.admin-shared-search) {
+    flex-basis: 100%;
+  }
+}
