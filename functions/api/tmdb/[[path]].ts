@@ -1,3 +1,5 @@
+import { enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
+
 const TMDB_API = "https://api.themoviedb.org/3";
 const IMAGE_HOST = "https://image.tmdb.org/t/p/w780";
 const MAX_QUERY_LENGTH = 120;
@@ -5,7 +7,7 @@ const MAX_QUERY_LENGTH = 120;
 function json(body: unknown, status = 200, extra: HeadersInit = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extra },
   });
 }
 
@@ -18,9 +20,15 @@ function safeImagePath(value: string | null) {
 }
 
 /** Cloudflare Pages read-only TMDB proxy. The bearer token is only read from the server binding. */
-export async function onRequestGet({ request, env }: { request: Request; env: { TMDB_READ_ACCESS_TOKEN?: string } }) {
+export async function onRequestGet({ request, env }: { request: Request; env: { TMDB_READ_ACCESS_TOKEN?: string; DB: AccountEnv["DB"] } }) {
   const token = env.TMDB_READ_ACCESS_TOKEN;
   if (!token) return json({ error: "La connexion au catalogue externe n’est pas configurée." }, 503);
+  try {
+    if (!await enforceRateLimit(env as AccountEnv, request, "tmdb-proxy", 60, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429, { "retry-after": "60" });
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
 
   const url = new URL(request.url);
   const route = url.pathname.replace(/^\/api\/tmdb\/?/, "").split("/").filter(Boolean);
@@ -79,11 +87,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: { 
       if (response.status === 429) return json({ error: "Limite de recherches atteinte. Réessayez dans un instant." }, 429, { "retry-after": response.headers.get("retry-after") || "5" });
       return json({ error: "Le catalogue externe est temporairement indisponible." }, 502);
     }
-    try {
-      JSON.parse(body);
-    } catch {
-      return json({ error: "Réponse invalide du catalogue externe." }, 502);
-    }
+    try { JSON.parse(body); } catch { return json({ error: "Réponse invalide du catalogue externe." }, 502); }
     return new Response(body, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=60, stale-while-revalidate=300", "x-content-type-options": "nosniff" } });
   } catch {
     return json({ error: "Connexion au catalogue impossible. Vérifiez votre réseau puis réessayez." }, 502);
