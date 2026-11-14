@@ -264,6 +264,18 @@ test("a guest sees premiere teasers and VIP-exclusive cards without playback URL
   for (const title of body.titles) assert.ok(!title.videoUrl);
 });
 
+test("a guest sees VIP-exclusive teaser metadata but never receives its playback URL", async () => {
+  const db = createCatalogD1({
+    titles: vipRows,
+    sources: [{ title_id: "exclusive", episode_id: null, provider: "uqload", file_code: "exclusive-secret", playback_url: null, encoding_status: "ready" }],
+  });
+  const { body } = await fetchTitles(new Request("https://cinebox.test/api/catalog"), { DB: db });
+  const teaser = body.titles.find((title) => title.id === "exclusive");
+  assert.ok(teaser, "the VIP-exclusive title should remain visible as a teaser");
+  assert.equal(teaser.videoUrl, undefined);
+  assert.equal(JSON.stringify(body).includes("exclusive-secret"), false);
+});
+
 test("an authenticated non-VIP account sees scheduled premiere teasers without playback URLs", async () => {
   const { body } = await fetchTitles(
     catalogRequest({ account: ACCOUNT }),
@@ -281,7 +293,7 @@ test("a VIP member sees scheduled premiere teasers and can play only titles insi
     envFor({ account: ACCOUNT, vip: true }),
   );
   // Scheduled premieres are visible as teasers; invalid dates stay hidden.
-  // VIP-exclusive rows remain visible only to active VIP members.
+  // VIP-exclusive rows are visible to everyone, but playable only by VIP members.
   assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.equal(body.viewer.vip, true);
   assert.equal(body.viewer.entitled, true);
