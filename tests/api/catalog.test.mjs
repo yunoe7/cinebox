@@ -62,8 +62,6 @@ test("catalogue returns only published titles and maps metadata safely", async (
   const listingCall = calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
   assert.ok(listingCall);
   assert.match(listingCall.sql, /published=1/);
-  const listingCall = calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
-  assert.ok(listingCall);
   assert.deepEqual(listingCall.values, ["movie", 10, 5]);
   assert.deepEqual(await response.json(), {
     titles: [{
