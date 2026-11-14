@@ -33,7 +33,7 @@ import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cin
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
 import { loadSharedCatalog, sharedCatalogItemToTitle } from "../lib/cinebox/shared-catalog.mjs";
-import { applySharedVipRestrictions, filterAccessibleTitles, vipAccessState } from "../lib/cinebox/vip-access.mjs";
+import { applySharedVipRestrictions, filterVisibleTitles, vipAccessState } from "../lib/cinebox/vip-access.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
@@ -279,6 +279,17 @@ function sharedCatalogErrorMessage(reason?: string) {
   return "Le catalogue partagé n’a pas pu être chargé.";
 }
 
+function formatPremiereCountdown(publicAt: string, now: number): string {
+  const target = Date.parse(publicAt);
+  if (!Number.isFinite(target)) return "date à confirmer";
+  const remaining = Math.max(0, target - now);
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1_000);
+  return days > 0 ? `${days} j ${hours} h ${minutes} min` : `${hours} h ${minutes} min ${seconds} s`;
+}
+
 /** Decorative artwork for streaming rows: never renders an empty `src` attribute. */
 function StreamingArtwork({ src }: { src?: string }) {
   return src
@@ -360,7 +371,7 @@ export default function HomePage() {
     // Personal copies of a shared title inherit the authoritative VIP rights,
     // then the whole catalogue is filtered with the same policy as the API.
     const localWithRights = applySharedVipRestrictions(titles, sharedCatalogTitles);
-    const entitled = filterAccessibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess, accessClock);
+    const entitled = filterVisibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess, accessClock);
     return overlayAccountData(entitled, accountData);
   }, [titles, sharedCatalogTitles, accountData, viewerAccess, accessClock]);
   const visibleFavorites = useMemo(() => {
@@ -652,7 +663,7 @@ export default function HomePage() {
   // exact instant; this timer only avoids showing a stale audience for longer
   // than one tick.
   useEffect(() => {
-    const timer = window.setInterval(() => setAccessClock(Date.now()), 30_000);
+    const timer = window.setInterval(() => setAccessClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -808,7 +819,13 @@ export default function HomePage() {
   ].filter(row => row.items.length), [browseTitles]);
   const withAccountPlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
+  const canOpenTitle = (item: Title) => {
+    const state = vipAccessState(item, accessClock);
+    return state === "public" || ((state === "early" || state === "vip") && viewerVip);
+  };
+
   const openTitle = async (item: Title) => {
+    if (!canOpenTitle(item)) return;
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -821,6 +838,7 @@ export default function HomePage() {
   };
 
   const resumeTitle = async (item: Title) => {
+    if (!canOpenTitle(item)) return;
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -840,6 +858,7 @@ export default function HomePage() {
     }
   };
   const playEpisode = async (item: Title, season: number, episode: NonNullable<Title["seasons"]>[number]["episodes"][number]) => {
+    if (!canOpenTitle(item)) return;
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -1374,7 +1393,7 @@ export default function HomePage() {
             </div>}
             <div className={`poster-grid ${activePage === "Films" || activePage === "Séries" ? "films-poster-grid" : activePage === "Vidéos" ? "video-library-grid" : activePage === "Ma liste" ? "ma-list-poster-grid" : ""} ${(activePage === "Films" || activePage === "Séries") && visibleTitles.length > 4 && visibleTitles.length % 4 === 1 ? "films-poster-grid-balanced" : ""}`}>
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className={`poster-card ${activePage === "Vidéos" ? "video-library-card" : activePage === "Ma liste" ? "favorite-card" : ""}`} initial={{ opacity: 0, y: 16, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} whileHover={{ y: -6, scale: 1.018 }} whileTap={{ scale: .992 }} transition={{ layout: { duration: .28 }, opacity: { duration: .32, delay: Math.min(index * .035, .25) }, y: { type: "spring", stiffness: 280, damping: 22 }, scale: { type: "spring", stiffness: 300, damping: 24 } }}>
-                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{(item.vipExclusive || vipAccessState(item, accessClock) === "early") && <span className={`vip-card-chip ${item.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`} aria-label={item.vipEarlyAccess ? "Avant-première VIP" : "Contenu exclusif VIP"}><Star size={11} fill="currentColor"/>{item.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
+                <button className="poster-open" onClick={() => openTitle(item)} disabled={!canOpenTitle(item)} aria-label={canOpenTitle(item) ? `Ouvrir ${item.name}` : `${item.name} — bientôt disponible`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{(item.vipExclusive || item.vipEarlyAccess) && <span className={`vip-card-chip ${item.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`} aria-label={item.vipEarlyAccess ? "Avant-première" : "Contenu exclusif VIP"}><Star size={11} fill="currentColor"/>{item.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}{item.vipEarlyAccess && item.publicAt && vipAccessState(item, accessClock) !== "public" && <small className="vip-release-date">Sortie publique dans {formatPremiereCountdown(item.publicAt, accessClock)}</small>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
                 <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
               </motion.article>)}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucun film dans le catalogue</strong><span>Les films publiés dans le catalogue partagé apparaîtront ici.</span></div>}

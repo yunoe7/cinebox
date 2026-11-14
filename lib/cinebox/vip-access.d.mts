@@ -45,6 +45,7 @@ export function vipStatusLabel(row?: VipFlagsInput, now?: number): {
 };
 export function sanitizeTitleForViewer<T>(title: T, viewer: ViewerEntitlements | null | undefined, now?: number): T;
 export function filterAccessibleTitles<T>(titles: T[], viewer: ViewerEntitlements | null | undefined, now?: number): T[];
+export function filterVisibleTitles<T>(titles: T[], viewer: ViewerEntitlements | null | undefined, now?: number): T[];
 export function applySharedVipRestrictions<T extends Title, S extends Title>(
   localTitles: T[],
   sharedTitles: S[],
