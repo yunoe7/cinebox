@@ -1,6 +1,7 @@
 import { resolvePublishId } from "../../../lib/cinebox/shared-id.mjs";
 import { normalizeCatalogMetadata } from "../../../lib/cinebox/catalog-metadata.mjs";
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { validateVipSettings } from "../../../lib/cinebox/vip-access.mjs";
 
 /**
  * Bounds for a single publish request.
@@ -41,6 +42,10 @@ type PublishBody = {
   backdropPath?: string | null;
   genres?: string[];
   metadata?: Record<string, unknown>;
+  /** Optional VIP rights. Omitted means "keep the stored rights unchanged". */
+  vipExclusive?: boolean;
+  vipEarlyAccess?: boolean;
+  publicAt?: string | null;
   /** Replace the full episode list of the single season present in `seasons`. */
   replaceSeason?: boolean;
   /** Replace the full episode list of the title. Requires a complete snapshot. */
@@ -280,18 +285,42 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     }
   }
 
-  // Read the current kind before writing. A kind change is a destructive
-  // operation: it requires an explicit full-title snapshot (replaceTitle).
+  // Read the current kind and VIP rights before writing. A kind change is a
+  // destructive operation: it requires an explicit full-title snapshot
+  // (replaceTitle). VIP rights are only written when the caller explicitly
+  // sends them, so republishing a title never silently resets its audience.
   let existingKind: string | null = null;
+  let existingVip: { vip_exclusive: number; vip_early_access: number; public_at: string | null } | null = null;
   try {
-    const existing = await env.DB.prepare("SELECT kind FROM catalog_titles WHERE id = ?").bind(id).all<{ kind: string }>();
+    const existing = await env.DB.prepare(
+      "SELECT kind, vip_exclusive, vip_early_access, public_at FROM catalog_titles WHERE id = ?",
+    ).bind(id).all<{ kind: string; vip_exclusive: number; vip_early_access: number; public_at: string | null }>();
     if (!existing.success) throw new Error("D1 read failed");
     existingKind = existing.results[0]?.kind ?? null;
+    existingVip = existing.results[0]
+      ? {
+          vip_exclusive: Number(existing.results[0].vip_exclusive) || 0,
+          vip_early_access: Number(existing.results[0].vip_early_access) || 0,
+          public_at: existing.results[0].public_at ?? null,
+        }
+      : null;
   } catch {
     return json({ error: "Impossible de vérifier l’état du titre dans le catalogue partagé." }, 503);
   }
   if (existingKind !== null && existingKind !== body.kind && !replaceTitle) {
     return json({ error: "Le type de ce titre change. Une publication complète avec replaceTitle est requise." }, 400);
+  }
+
+  const hasVipInput = body.vipExclusive !== undefined || body.vipEarlyAccess !== undefined || body.publicAt !== undefined;
+  let vip: { vipExclusive: boolean; vipEarlyAccess: boolean; publicAt: string | null } | null = null;
+  if (hasVipInput) {
+    const validated = validateVipSettings({
+      vipExclusive: body.vipExclusive === undefined ? Boolean(existingVip?.vip_exclusive) : body.vipExclusive,
+      vipEarlyAccess: body.vipEarlyAccess === undefined ? Boolean(existingVip?.vip_early_access) : body.vipEarlyAccess,
+      publicAt: body.publicAt === undefined ? existingVip?.public_at ?? null : body.publicAt,
+    });
+    if (!validated.ok) return json({ error: validated.error }, 400);
+    vip = validated.value;
   }
 
   // Compute the exact obsolete set before any write. The deletions are derived
@@ -319,17 +348,33 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
     statements.push(statement);
   };
 
-  push(env.DB.prepare(
-    `INSERT INTO catalog_titles (id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, published, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, title=excluded.title, overview=excluded.overview,
-     release_date=excluded.release_date, poster_path=excluded.poster_path, backdrop_path=excluded.backdrop_path,
-     genres_json=excluded.genres_json,
-     metadata_json=json_patch(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END, excluded.metadata_json),
-     published=1, updated_at=CURRENT_TIMESTAMP`,
-  ).bind(id, body.kind, body.title.trim().slice(0, 300), cleanText(body.overview, 12000),
+  const baseValues: (string | number | null)[] = [
+    id, body.kind, body.title.trim().slice(0, 300), cleanText(body.overview, 12000),
     cleanText(body.releaseDate, 20) || null, safePath(body.posterPath), safePath(body.backdropPath),
-    JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}) })));
+    JSON.stringify(genres), JSON.stringify({ ...metadata, ...(tmdbId ? { tmdbId } : {}) }),
+  ];
+  if (vip) {
+    push(env.DB.prepare(
+      `INSERT INTO catalog_titles (id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, published, updated_at, vip_exclusive, vip_early_access, public_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, title=excluded.title, overview=excluded.overview,
+       release_date=excluded.release_date, poster_path=excluded.poster_path, backdrop_path=excluded.backdrop_path,
+       genres_json=excluded.genres_json,
+       metadata_json=json_patch(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END, excluded.metadata_json),
+       vip_exclusive=excluded.vip_exclusive, vip_early_access=excluded.vip_early_access, public_at=excluded.public_at,
+       published=1, updated_at=CURRENT_TIMESTAMP`,
+    ).bind(...baseValues, vip.vipExclusive ? 1 : 0, vip.vipEarlyAccess ? 1 : 0, vip.publicAt));
+  } else {
+    push(env.DB.prepare(
+      `INSERT INTO catalog_titles (id, kind, title, overview, release_date, poster_path, backdrop_path, genres_json, metadata_json, published, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+       ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, title=excluded.title, overview=excluded.overview,
+       release_date=excluded.release_date, poster_path=excluded.poster_path, backdrop_path=excluded.backdrop_path,
+       genres_json=excluded.genres_json,
+       metadata_json=json_patch(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END, excluded.metadata_json),
+       published=1, updated_at=CURRENT_TIMESTAMP`,
+    ).bind(...baseValues));
+  }
 
   for (const episode of parsed.episodes) {
     push(env.DB.prepare(

@@ -29,6 +29,16 @@ export function createPublishD1({
   const batches = [];
 
   function query(sql, values) {
+    if (/^SELECT kind, vip_exclusive, vip_early_access, public_at FROM catalog_titles WHERE id = \?$/i.test(sql)) {
+      return state.titles
+        .filter((title) => title.id === values[0])
+        .map((title) => ({
+          kind: title.kind,
+          vip_exclusive: title.vip_exclusive ?? 0,
+          vip_early_access: title.vip_early_access ?? 0,
+          public_at: title.public_at ?? null,
+        }));
+    }
     if (/^SELECT kind FROM catalog_titles WHERE id = \?$/i.test(sql)) {
       return state.titles
         .filter((title) => title.id === values[0])
@@ -49,7 +59,8 @@ export function createPublishD1({
 
   function apply(sql, values) {
     if (/^INSERT INTO catalog_titles/i.test(sql)) {
-      const [id, kind, title, overview, releaseDate, posterPath, backdropPath, genresJson, metadataJson] = values;
+      const [id, kind, title, overview, releaseDate, posterPath, backdropPath, genresJson, metadataJson, vipExclusive, vipEarlyAccess, publicAt] = values;
+      const hasVip = values.length > 9;
       const existing = state.titles.find((entry) => entry.id === id);
       if (existing) {
         existing.kind = kind;
@@ -63,6 +74,11 @@ export function createPublishD1({
           ...parseMetadata(existing.metadata_json),
           ...parseMetadata(metadataJson),
         });
+        if (hasVip) {
+          existing.vip_exclusive = vipExclusive;
+          existing.vip_early_access = vipEarlyAccess;
+          existing.public_at = publicAt;
+        }
         existing.published = 1;
         existing.updated_at = "2024-01-01T00:00:00Z";
       } else {
@@ -78,6 +94,7 @@ export function createPublishD1({
           metadata_json: metadataJson,
           published: 1,
           updated_at: "2024-01-01T00:00:00Z",
+          ...(hasVip ? { vip_exclusive: vipExclusive, vip_early_access: vipEarlyAccess, public_at: publicAt } : {}),
         });
       }
       return { success: true, meta: { changes: 1 } };

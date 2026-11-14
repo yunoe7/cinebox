@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { resolveRuntime } from "../../lib/cinebox/catalog-metadata.mjs";
+import { vipStatusLabel } from "../../lib/cinebox/vip-access.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
 
 type Episode = {
@@ -61,6 +62,30 @@ type Item = {
 
 type StatusFilter = "all" | "published" | "hidden";
 type SortMode = "updated" | "title" | "year-desc" | "year-asc" | "episodes" | "duration";
+type VipMode = "public" | "vip-exclusive" | "early-access";
+
+/** Convert an ISO instant to the local value expected by `<input type="datetime-local">`. */
+function toLocalDateTimeInput(value: string | null | undefined): string {
+  if (!value) return "";
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return "";
+  const date = new Date(ms);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Convert a local `<input type="datetime-local">` value to an ISO instant. */
+function fromLocalDateTimeInput(value: string): string | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+function modeOf(item: Pick<Item, "vip_exclusive" | "vip_early_access">): VipMode {
+  if (Number(item.vip_exclusive) === 1) return "vip-exclusive";
+  if (Number(item.vip_early_access) === 1) return "early-access";
+  return "public";
+}
 
 const kindLabels = { movie: "Film", series: "Série", video: "Vidéo" } as const;
 const kindIcons = { movie: Film, series: Tv, video: Video } as const;
@@ -167,8 +192,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftOverview, setDraftOverview] = useState("");
-  const [draftVipExclusive, setDraftVipExclusive] = useState(false);
-  const [draftVipEarlyAccess, setDraftVipEarlyAccess] = useState(false);
+  const [draftVipMode, setDraftVipMode] = useState<VipMode>("public");
   const [draftPublicAt, setDraftPublicAt] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -292,13 +316,33 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
   const mediaFiltersActive = Boolean(query.trim()) || sortMode !== "updated";
 
   const save = async (item: Item) => {
-    setBusy(item.id);
     setActionError(false);
     setActionMessage("");
+    const publicAt = draftVipMode === "early-access" ? fromLocalDateTimeInput(draftPublicAt) : null;
+    if (draftVipMode === "early-access" && !publicAt) {
+      setActionError(true);
+      setActionMessage("Choisis une date et une heure d’ouverture au public pour l’avant-première VIP.");
+      return;
+    }
+    setBusy(item.id);
     try {
-      await request("/api/catalog/manage", { method: "PATCH", body: JSON.stringify({ id: item.id, title: draftTitle, overview: draftOverview, vip_exclusive: draftVipExclusive, vip_early_access: draftVipEarlyAccess, public_at: draftVipEarlyAccess && draftPublicAt ? new Date(draftPublicAt).toISOString() : null }) });
+      const payload = await request("/api/catalog/manage", {
+        method: "PATCH",
+        body: JSON.stringify({
+          id: item.id,
+          title: draftTitle,
+          overview: draftOverview,
+          vip_exclusive: draftVipMode === "vip-exclusive",
+          vip_early_access: draftVipMode === "early-access",
+          public_at: publicAt,
+        }),
+      });
+      // Apply the row returned by the server first, then reload the whole list:
+      // the editor must show persisted values even if the refresh fails.
+      const saved = payload && typeof payload === "object" ? (payload as { title?: Item }).title : null;
+      if (saved && saved.id) setItems(current => current.map(entry => entry.id === saved.id ? { ...entry, ...saved } : entry));
       setEditing(null);
-      if (await refresh()) setActionMessage("Fiche mise à jour dans le catalogue partagé.");
+      if (await refresh()) setActionMessage("Fiche mise à jour dans le catalogue partagé. Droits VIP enregistrés côté serveur.");
     } catch (reason) {
       setActionError(true);
       setActionMessage(reason instanceof Error ? reason.message : "Modification impossible.");
@@ -524,6 +568,11 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
             const year = yearOf(item);
             const isPublished = Number(item.published) === 1;
             const isEditing = editing === item.id;
+            const vipStatus = vipStatusLabel({
+              vipExclusive: Number(item.vip_exclusive) === 1,
+              vipEarlyAccess: Number(item.vip_early_access) === 1,
+              publicAt: item.public_at ?? null,
+            });
             return (
               <article className={`admin-shared-item ${item.kind === "video" ? "is-video" : ""} ${isEditing ? "is-editing" : ""}`} key={item.id}>
                 <div className={`admin-shared-poster ${item.kind === "video" ? "is-wide" : ""}`}>
@@ -535,6 +584,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                     <KindIcon size={14} aria-hidden="true" />
                     <strong>{item.title}</strong>
                     <span className={`admin-status-chip ${isPublished ? "is-published" : "is-hidden"}`}>{isPublished ? "Publié" : "Masqué"}</span>
+                    <span className={`admin-vip-chip is-${vipStatus.state}`}>{vipStatus.label}</span>
                     <span className="admin-kind-chip">{kindLabels[item.kind]}</span>
                   </div>
 
@@ -543,6 +593,9 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                     <span>{(item.genres || []).join(" · ") || "Genre non renseigné"}</span>
                     <span><Clock3 size={11} aria-hidden="true" /> {item.kind === "series" ? `${seasonCount(item)} saison${seasonCount(item) === 1 ? "" : "s"} · ${totalEpisodes} épisode${totalEpisodes === 1 ? "" : "s"}` : runtimeLabel(item)}</span>
                     <span>Mise à jour {updatedLabel(item.updated_at)}</span>
+                    {vipStatus.mode === "early-access" && item.public_at && (
+                      <span>Ouverture publique : {new Date(item.public_at).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</span>
+                    )}
                   </div>
 
                   <p className="admin-shared-overview">{item.overview || "Synopsis non renseigné."}</p>
@@ -573,7 +626,7 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                   )}
 
                   <div className="admin-shared-actions">
-                    <button type="button" className={isEditing ? "is-active" : ""} onClick={() => { setEditing(isEditing ? null : item.id); setDraftTitle(item.title); setDraftOverview(item.overview); setDraftVipExclusive(Boolean(item.vip_exclusive)); setDraftVipEarlyAccess(Boolean(item.vip_early_access)); setDraftPublicAt(item.public_at ? new Date(item.public_at).toISOString().slice(0,16) : ""); }}>
+                    <button type="button" className={isEditing ? "is-active" : ""} onClick={() => { setEditing(isEditing ? null : item.id); setDraftTitle(item.title); setDraftOverview(item.overview); setDraftVipMode(modeOf(item)); setDraftPublicAt(toLocalDateTimeInput(item.public_at)); }}>
                       <Edit3 size={13} /> {isEditing ? "Fermer" : "Modifier"}
                     </button>
                     {isPublished
@@ -595,49 +648,52 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                             <h4 id={`access-heading-${item.id}`}>Qui peut accéder à ce titre ?</h4>
                             <p>Choisissez une seule règle d’accès. Le mode public reste actif si aucune option VIP n’est sélectionnée.</p>
                           </div>
-                          <span className={`admin-access-current ${draftVipExclusive ? "is-exclusive" : draftVipEarlyAccess ? "is-premiere" : "is-public"}`}>
-                            {draftVipExclusive ? "Exclusif VIP" : draftVipEarlyAccess ? "Avant-première" : "Public"}
+                          <span className={`admin-access-current ${draftVipMode === "vip-exclusive" ? "is-exclusive" : draftVipMode === "early-access" ? "is-premiere" : "is-public"}`}>
+                            {draftVipMode === "vip-exclusive" ? "Exclusif VIP" : draftVipMode === "early-access" ? "Avant-première" : "Public"}
                           </span>
                         </div>
 
                         <div className="admin-access-options">
-                          <button type="button" className={`admin-access-option ${!draftVipExclusive && !draftVipEarlyAccess ? "is-selected" : ""}`} aria-pressed={!draftVipExclusive && !draftVipEarlyAccess} onClick={() => { setDraftVipExclusive(false); setDraftVipEarlyAccess(false); setDraftPublicAt(""); }}>
+                          <button type="button" className={`admin-access-option ${draftVipMode === "public" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "public"} onClick={() => { setDraftVipMode("public"); setDraftPublicAt(""); }}>
                             <span className="admin-access-option-icon"><Globe2 size={18}/></span>
                             <span className="admin-access-option-copy"><strong>Accès public</strong><small>Tout le monde peut voir et lire ce titre dès sa publication.</small></span>
                             <span className="admin-access-radio" />
                           </button>
-                          <button type="button" className={`admin-access-option ${draftVipExclusive ? "is-selected" : ""}`} aria-pressed={draftVipExclusive} onClick={() => { setDraftVipExclusive(true); setDraftVipEarlyAccess(false); setDraftPublicAt(""); }}>
+                          <button type="button" className={`admin-access-option ${draftVipMode === "vip-exclusive" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "vip-exclusive"} onClick={() => { setDraftVipMode("vip-exclusive"); setDraftPublicAt(""); }}>
                             <span className="admin-access-option-icon"><LockKeyhole size={18}/></span>
                             <span className="admin-access-option-copy"><strong>Exclusivité VIP</strong><small>Réservé aux membres VIP actifs. Invisible pour les autres membres.</small></span>
                             <span className="admin-access-radio" />
                           </button>
-                          <button type="button" className={`admin-access-option ${draftVipEarlyAccess ? "is-selected" : ""}`} aria-pressed={draftVipEarlyAccess} onClick={() => { setDraftVipExclusive(false); setDraftVipEarlyAccess(true); }}>
+                          <button type="button" className={`admin-access-option ${draftVipMode === "early-access" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "early-access"} onClick={() => setDraftVipMode("early-access")}>
                             <span className="admin-access-option-icon"><Crown size={18}/></span>
                             <span className="admin-access-option-copy"><strong>Avant-première VIP · 48 h</strong><small>Les VIP y accèdent 48 h avant l’ouverture au public.</small></span>
                             <span className="admin-access-radio" />
                           </button>
                         </div>
 
-                        {draftVipEarlyAccess && (
+                        {draftVipMode === "early-access" && (
                           <div className="admin-premiere-schedule">
                             <div className="admin-premiere-schedule-icon"><CalendarClock size={18}/></div>
                             <div className="admin-premiere-schedule-copy">
                               <strong>Programmation de la sortie publique</strong>
                               <span>Indiquez la date et l’heure auxquelles l’accès s’ouvrira à tous.</span>
                               <label htmlFor={`public-at-${item.id}`}>OUVERTURE AU PUBLIC</label>
-                              <input id={`public-at-${item.id}`} type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} required={draftVipEarlyAccess} />
+                              <input id={`public-at-${item.id}`} type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} required aria-required="true" />
                               <small>La période VIP commence automatiquement 48 heures avant cette date.</small>
+                              {draftPublicAt && Date.parse(draftPublicAt) <= Date.now() && (
+                                <small className="admin-vip-warning" role="status">Cette date est déjà passée : le titre est donc déjà public pour tous.</small>
+                              )}
                             </div>
                           </div>
                         )}
 
                         <div className="admin-access-footnote">
                           <ShieldCheck size={14}/>
-                          <span>Le choix est enregistré avec la fiche. Les droits d’accès doivent être appliqués côté serveur, pas seulement dans l’affichage.</span>
+                          <span>Le choix est enregistré avec la fiche. Les droits d’accès sont appliqués côté serveur, pas seulement dans l’affichage.</span>
                         </div>
                       </section>
                       <div className="admin-shared-editor-footer">
-                        <button type="button" className="is-primary" disabled={busy === item.id || !draftTitle.trim() || (draftVipEarlyAccess && !draftPublicAt)} onClick={() => void save(item)}>
+                        <button type="button" className="is-primary" disabled={busy === item.id || !draftTitle.trim() || (draftVipMode === "early-access" && !draftPublicAt)} onClick={() => void save(item)}>
                           {busy === item.id ? <LoaderCircle size={13} className="admin-spin" /> : <Save size={13} />} Enregistrer les modifications
                         </button>
                         <button type="button" onClick={() => setEditing(null)}>Annuler</button>
