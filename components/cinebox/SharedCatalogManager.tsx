@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   Tv,
   Video,
+  X,
 } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { resolveRuntime } from "../../lib/cinebox/catalog-metadata.mjs";
@@ -437,13 +438,18 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
       {authState === "authenticated" && (
         <div className="admin-shared-toolbar" role="group" aria-label={isMediaMode ? "Recherche et tri des médias D1" : `Recherche, filtres et tri des ${kindPlural} partagés`}>
           <label className="admin-shared-search">
-            <Search size={14} aria-hidden="true" />
+            <Search size={16} aria-hidden="true" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={isMediaMode ? "Rechercher un média…" : "Rechercher une fiche…"}
               aria-label={isMediaMode ? "Rechercher dans les médias D1" : "Rechercher dans le catalogue partagé"}
             />
+            {query && (
+              <button type="button" className="admin-shared-search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}>
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
           </label>
           {!isMediaMode && (
             <label>
