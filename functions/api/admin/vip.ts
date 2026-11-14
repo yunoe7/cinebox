@@ -8,36 +8,6 @@ interface Statement {
 interface DB { prepare(sql: string): Statement; }
 interface Env extends AdminEnv {
   DB?: DB;
-  CINEBOX_DISCORD_BOT_TOKEN?: string;
-  CINEBOX_DISCORD_GUILD_ID?: string;
-  CINEBOX_DISCORD_ROLE_VIP_ID?: string;
-}
-
-async function syncDiscordVipRole(env: Env, userId: string, action: "add" | "remove") {
-  if (!env.DB || !env.CINEBOX_DISCORD_BOT_TOKEN || !env.CINEBOX_DISCORD_GUILD_ID || !env.CINEBOX_DISCORD_ROLE_VIP_ID) {
-    return { status: "not-configured" as const };
-  }
-  const identity = await env.DB.prepare(
-    "SELECT provider_user_id FROM auth_identities WHERE user_id=? AND provider='discord' LIMIT 1",
-  ).bind(userId).all<{ provider_user_id: string }>();
-  const discordUserId = identity.results[0]?.provider_user_id;
-  if (!discordUserId) return { status: "not-linked" as const };
-  const isSnowflake = (value: string) => value.length >= 17 && value.length <= 20 && [...value].every(char => char >= "0" && char <= "9");
-  if (!isSnowflake(discordUserId) || !isSnowflake(env.CINEBOX_DISCORD_GUILD_ID) || !isSnowflake(env.CINEBOX_DISCORD_ROLE_VIP_ID)) {
-    return { status: "invalid-configuration" as const };
-  }
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://discord.com/api/v10/guilds/${env.CINEBOX_DISCORD_GUILD_ID}/members/${discordUserId}/roles/${env.CINEBOX_DISCORD_ROLE_VIP_ID}`,
-      { method: action === "add" ? "PUT" : "DELETE", headers: { authorization: `Bot ${env.CINEBOX_DISCORD_BOT_TOKEN}`, accept: "application/json" } },
-    );
-  } catch {
-    return { status: "discord-unavailable" as const };
-  }
-  if (response.ok || response.status === 204) return { status: "synced" as const };
-  if (response.status === 404) return { status: "not-in-server" as const };
-  return { status: "discord-error" as const, httpStatus: response.status };
 }
 
 async function authorize(request: Request, env: Env) {
@@ -89,8 +59,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     await env.DB!.prepare(
       "INSERT INTO vip_memberships (user_id, expires_at, granted_by) VALUES (?, ?, 'admin') ON CONFLICT(user_id) DO UPDATE SET expires_at=excluded.expires_at, granted_by=excluded.granted_by, updated_at=CURRENT_TIMESTAMP",
     ).bind(body.userId, new Date(body.expiresAt).toISOString()).run();
-    const discord = await syncDiscordVipRole(env, body.userId, "add");
-    return json({ updated: true, userId: body.userId, expiresAt: new Date(body.expiresAt).toISOString(), discord });
+    return json({ updated: true, userId: body.userId, expiresAt: new Date(body.expiresAt).toISOString() });
   } catch {
     return json({ error: "Impossible d’activer le statut VIP." }, 503);
   }
@@ -106,7 +75,6 @@ export async function onRequestDelete({ request, env }: { request: Request; env:
   }
   try {
     await env.DB!.prepare("DELETE FROM vip_memberships WHERE user_id=?").bind(body.userId).run();
-    const discord = await syncDiscordVipRole(env, body.userId, "remove");
     return json({ revoked: true, userId: body.userId, discord });
   } catch {
     return json({ error: "Impossible de retirer le statut VIP." }, 503);
