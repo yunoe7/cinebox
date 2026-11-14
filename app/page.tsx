@@ -1556,11 +1556,13 @@ export default function HomePage() {
           selected={selected}
           selectedEpisodeUrl={selectedEpisodeUrl}
           selectedEpisode={selectedEpisode}
+          canPlayContent={Boolean(selected && canPlayTitle(selected))}
           activePage={activePage}
           favorites={favorites}
           onClose={() => { setSelected(null); setSelectedEpisodeUrl(null); setSelectedEpisode(null); }}
           onSelectEpisode={async (season, episode, url) => {
-            if (selected?.sharedId) {
+            if (!selected || !canPlayTitle(selected)) return;
+            if (selected.sharedId) {
               const resolved = await revalidateTitleAccess(selected);
               if (!resolved) {
                 setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
