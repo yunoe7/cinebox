@@ -835,6 +835,23 @@ export default function HomePage() {
       setSelectedEpisodeUrl(null);
     }
   };
+  const playEpisode = async (item: Title, season: number, episode: Title["seasons"][number]["episodes"][number]) => {
+    const resolved = await revalidateTitleAccess(item);
+    if (!resolved) {
+      setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      setSharedCatalogRetryKey(key => key + 1);
+      return;
+    }
+    const resolvedEpisode = resolved.seasons?.find(entry => entry.number === season)?.episodes.find(entry => entry.number === episode.number);
+    if (!resolvedEpisode) {
+      setNotice({ title: "Épisode indisponible", message: "Cet épisode n’est plus accessible." });
+      return;
+    }
+    setSelected(withAccountPlayback(resolved));
+    setSelectedEpisode({ season, episode: episode.number });
+    setSelectedEpisodeUrl(resolvedEpisode.videoUrl || null);
+  };
+
   const toggleFavorite = async (id: number) => {
     const current = favoritesRef.current;
     const next = current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id];
@@ -1231,7 +1248,7 @@ export default function HomePage() {
             {upNext.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
-                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
+                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => void playEpisode(item, season, episode)}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {collections.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
