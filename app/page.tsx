@@ -27,6 +27,7 @@ import { ProfileMenu } from "../components/cinebox/ProfileMenu";
 import { CineboxLogo } from "../components/cinebox/CineboxLogo";
 import { SharedCatalogManager } from "../components/cinebox/SharedCatalogManager";
 import { UqloadManager } from "../components/cinebox/UqloadManager";
+import { VipMembershipManager } from "../components/cinebox/VipMembershipManager";
 import { DiscordAccessGate } from "../components/cinebox/DiscordAccessGate";
 
 import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cinebox/account-data.mjs";
@@ -41,7 +42,7 @@ import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
   Tv, X, ChevronRight, Trash2, ShieldCheck,
   LayoutDashboard, Image as ImageIcon, Database, Pencil,
-  HardDrive, Library, Star, LoaderCircle, RefreshCw, ShieldAlert
+  HardDrive, Library, Star, LoaderCircle, RefreshCw, ShieldAlert, Crown
 } from "lucide-react";
 
 const { stageAssets } = mediaLifecycle;
@@ -65,6 +66,7 @@ const adminSections = [
   { id: "series", label: "Séries", icon: Tv },
   { id: "videos", label: "Vidéos", icon: Clapperboard },
   { id: "media", label: "Médias", icon: ImageIcon },
+  { id: "vip", label: "Membres VIP", icon: Crown },
 ] as const;
 
 const navItems = [
@@ -1323,7 +1325,7 @@ export default function HomePage() {
             </header>
             <nav className="admin-section-nav" aria-label="Sections d’administration">
               {adminSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={adminSection === id ? "active" : ""} aria-current={adminSection === id ? "page" : undefined} onClick={() => { setAdminSection(id); setFilter("Tout"); }}>
-                <span className="admin-nav-icon"><Icon size={17}/></span><span className="admin-nav-copy"><strong>{label}</strong><small>{id === "overview" ? "Activité & statistiques" : id === "films" ? "Bibliothèque cinéma" : id === "series" ? "Saisons & épisodes" : id === "videos" ? "Contenus vidéo" : "Images & hébergeurs"}</small></span><ChevronRight size={14} className="admin-nav-arrow"/>
+                <span className="admin-nav-icon"><Icon size={17}/></span><span className="admin-nav-copy"><strong>{label}</strong><small>{id === "overview" ? "Activité & statistiques" : id === "films" ? "Bibliothèque cinéma" : id === "series" ? "Saisons & épisodes" : id === "videos" ? "Contenus vidéo" : id === "media" ? "Images & hébergeurs" : "Adhésions & accès"}</small></span><ChevronRight size={14} className="admin-nav-arrow"/>
               </button>)}
             </nav>
           </div>}
@@ -1341,6 +1343,8 @@ export default function HomePage() {
               </div>
             </section>
           </BlurFade>}
+
+          {activePage === "Administration" && adminSection === "vip" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-type-wrap"><VipMembershipManager /></BlurFade>}
 
           {activePage === "Administration" && adminSection === "media" && <BlurFade inView direction="up" offset={10} duration={0.4} className="admin-type-wrap">
             <section className="admin-type-page" aria-labelledby="admin-media-title">
