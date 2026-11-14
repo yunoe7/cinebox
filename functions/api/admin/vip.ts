@@ -89,7 +89,8 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     await env.DB!.prepare(
       "INSERT INTO vip_memberships (user_id, expires_at, granted_by) VALUES (?, ?, 'admin') ON CONFLICT(user_id) DO UPDATE SET expires_at=excluded.expires_at, granted_by=excluded.granted_by, updated_at=CURRENT_TIMESTAMP",
     ).bind(body.userId, new Date(body.expiresAt).toISOString()).run();
-    const discord = await syncDiscordVipRole(env, body.userId, "add");\n    return json({ updated: true, userId: body.userId, expiresAt: new Date(body.expiresAt).toISOString(), discord });
+    const discord = await syncDiscordVipRole(env, body.userId, "add");
+    return json({ updated: true, userId: body.userId, expiresAt: new Date(body.expiresAt).toISOString(), discord });
   } catch {
     return json({ error: "Impossible d’activer le statut VIP." }, 503);
   }
@@ -105,7 +106,8 @@ export async function onRequestDelete({ request, env }: { request: Request; env:
   }
   try {
     await env.DB!.prepare("DELETE FROM vip_memberships WHERE user_id=?").bind(body.userId).run();
-    return json({ revoked: true, userId: body.userId });
+    const discord = await syncDiscordVipRole(env, body.userId, "remove");
+    return json({ revoked: true, userId: body.userId, discord });
   } catch {
     return json({ error: "Impossible de retirer le statut VIP." }, 503);
   }
