@@ -60,7 +60,7 @@ export function VipMembershipManager() {
     const expiry=new Date(parsedExpiry).toISOString();
     setSaving(true);setMessage(null);
     try {
-      const response=await fetch("/api/admin/vip",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({userId:user.userId,expiresAt:expiry})});
+      const response=await fetch("/api/admin/vip",{method:"POST",headers:{"content-type":"application/json","x-cinebox-request":"1"},body:JSON.stringify({userId:user.userId,expiresAt:expiry})});
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error||"Impossible d’activer le VIP.");
       setMessage({kind:"success",text:`Le statut VIP de ${user.displayName} est actif jusqu’au ${dateLabel(payload.expiresAt)}. Le rôle Discord sera synchronisé au prochain passage automatique du bot (toutes les 5 minutes).`});
@@ -73,7 +73,7 @@ export function VipMembershipManager() {
     if(!window.confirm(`Retirer immédiatement le statut VIP de ${name} ?`)) return;
     setSaving(true);setMessage(null);
     try {
-      const response=await fetch("/api/admin/vip",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({userId})});
+      const response=await fetch("/api/admin/vip",{method:"DELETE",headers:{"content-type":"application/json","x-cinebox-request":"1"},body:JSON.stringify({userId})});
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error||"Impossible de retirer le VIP.");
       setMessage({kind:"success",text:`Le statut VIP de ${name} a été retiré. Le bot synchronisera le rôle Discord au prochain passage automatique (toutes les 5 minutes).`});await load();
