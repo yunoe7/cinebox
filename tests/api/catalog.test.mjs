@@ -255,9 +255,9 @@ function catalogRequest(options = {}) {
   });
 }
 
-test("a guest sees scheduled premiere teasers without playback URLs, but never VIP-exclusive rows", async () => {
+test("a guest sees premiere teasers and VIP-exclusive cards without playback URLs", async () => {
   const { body, response } = await fetchTitles(new Request("https://cinebox.test/api/catalog"), envFor({}));
-  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "public", "released", "scheduled"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.deepEqual(body.viewer, { authenticated: false, vip: false, admin: false, entitled: false });
   assert.equal(response.headers.get("vary"), "Cookie");
   // No video URL of a VIP title can be present in the payload.
@@ -269,7 +269,7 @@ test("an authenticated non-VIP account sees scheduled premiere teasers without p
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: false, admin: false }),
   );
-  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "public", "released", "scheduled"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.equal(body.viewer.authenticated, true);
   assert.equal(body.viewer.vip, false);
   assert.equal(body.viewer.entitled, false);
@@ -302,7 +302,7 @@ test("an administrator without VIP sees premiere teasers but receives no playbac
   );
   // Admins inspect restricted rows through /api/catalog/manage. The viewer
   // catalogue grants no VIP access based on the admin role alone.
-  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "public", "released", "scheduled"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.equal(body.viewer.admin, true);
   assert.equal(body.viewer.entitled, false);
   assert.equal(body.viewer.vip, false);
@@ -315,7 +315,7 @@ test("an expired VIP membership sees premiere teasers but is not entitled to pla
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: false }),
   );
-  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "public", "released", "scheduled"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["early", "exclusive", "public", "released", "scheduled"]);
   assert.equal(body.viewer.vip, false);
 });
 
@@ -340,7 +340,8 @@ test("catalogue SQL includes every valid scheduled premiere as a teaser without 
   await onRequestGet({ request: new Request("https://cinebox.test/api/catalog"), env: { DB: db } });
   const titlesCall = db.calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
   assert.ok(titlesCall);
-  assert.match(titlesCall.sql, /vip_exclusive\)?=0/);
+  assert.match(titlesCall.sql, /vip_exclusive\)?=1/);
+  assert.match(titlesCall.sql, /vip_early_access\)?=0/);
   assert.match(titlesCall.sql, /datetime\(public_at\)/);
   assert.deepEqual(titlesCall.values, [24, 0]);
   const scheduled = (await (await onRequestGet({ request: new Request("https://cinebox.test/api/catalog"), env: { DB: db } })).json()).titles.find((title) => title.id === "scheduled");
@@ -368,8 +369,8 @@ test("stats and episode counts follow the same audience as the listing", async (
     ],
   });
   const guest = await fetchTitles(new Request("https://cinebox.test/api/catalog?kind=movie"), { DB: db });
-  assert.equal(guest.body.stats.titles, 4);
-  assert.equal(guest.body.stats.episodes, 2);
+  assert.equal(guest.body.stats.titles, 5);
+  assert.equal(guest.body.stats.episodes, 3);
 
   const vip = await fetchTitles(catalogRequest({ account: ACCOUNT }), { DB: createCatalogD1({
     titles: vipRows,
@@ -381,7 +382,7 @@ test("stats and episode counts follow the same audience as the listing", async (
       { id: "e3", title_id: "scheduled", season_number: 1, episode_number: 1, title: "E3", overview: "", duration_seconds: 1, thumbnail_path: null, metadata_json: "{}" },
     ],
   }) });
-  // Every valid premiere is counted as visible; exclusive rows remain VIP-only.
+  // Every valid premiere and VIP-exclusive row is counted as visible.
   assert.equal(vip.body.stats.titles, 5);
   assert.equal(vip.body.stats.episodes, 3);
 });
