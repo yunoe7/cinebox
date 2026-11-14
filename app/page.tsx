@@ -287,7 +287,9 @@ function formatPremiereCountdown(publicAt: string, now: number): string {
   const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
   const minutes = Math.floor((remaining % 3_600_000) / 60_000);
   const seconds = Math.floor((remaining % 60_000) / 1_000);
-  return days > 0 ? `${days} j ${hours} h ${minutes} min` : `${hours} h ${minutes} min ${seconds} s`;
+  return days > 0
+    ? `${days} j ${hours} h ${minutes} min ${seconds} s`
+    : `${hours} h ${minutes} min ${seconds} s`;
 }
 
 /** Decorative artwork for streaming rows: never renders an empty `src` attribute. */
@@ -819,13 +821,24 @@ export default function HomePage() {
   ].filter(row => row.items.length), [browseTitles]);
   const withAccountPlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
-  const canOpenTitle = (item: Title) => {
+  // Catalogue details remain openable for restricted teasers; only playback
+  // requires a current entitlement. Invalid premiere metadata stays hidden.
+  const canViewTitle = (item: Title) => vipAccessState(item, accessClock) !== "invalid";
+  const canPlayTitle = (item: Title) => {
     const state = vipAccessState(item, accessClock);
     return state === "public" || ((state === "early" || state === "vip") && viewerVip);
   };
 
   const openTitle = async (item: Title) => {
-    if (!canOpenTitle(item)) return;
+    if (!canViewTitle(item)) return;
+    // The catalogue payload has already stripped restricted media URLs. Keep
+    // the teaser detail view local rather than calling the playback endpoint.
+    if (!canPlayTitle(item)) {
+      setSelectedEpisodeUrl(null);
+      setSelectedEpisode(null);
+      setSelected(item);
+      return;
+    }
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -838,7 +851,7 @@ export default function HomePage() {
   };
 
   const resumeTitle = async (item: Title) => {
-    if (!canOpenTitle(item)) return;
+    if (!canPlayTitle(item)) return;
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -858,7 +871,7 @@ export default function HomePage() {
     }
   };
   const playEpisode = async (item: Title, season: number, episode: NonNullable<Title["seasons"]>[number]["episodes"][number]) => {
-    if (!canOpenTitle(item)) return;
+    if (!canPlayTitle(item)) return;
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
@@ -1210,12 +1223,13 @@ export default function HomePage() {
             <div className="hero-cinema-overlay"/>
             <BlurFade className="hero-cinema-copy" key={activeFeatured.id} direction="up" offset={14} duration={0.55}>
               <div className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>À LA UNE · SÉLECTION CINÉBOX</AnimatedShinyText></div>
-              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>{(activeFeatured.vipExclusive || vipAccessState(activeFeatured, accessClock) === "early") && <span className={`hero-vip-tag ${activeFeatured.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`}><Star size={12} fill="currentColor"/>{activeFeatured.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}
+              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>{(activeFeatured.vipExclusive || activeFeatured.vipEarlyAccess) && <span className={`hero-vip-tag ${activeFeatured.vipExclusive ? "is-exclusive" : "is-premiere"}`}><Star size={12} fill="currentColor"/>{activeFeatured.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}
+              {activeFeatured.vipEarlyAccess && activeFeatured.publicAt && vipAccessState(activeFeatured, accessClock) !== "public" && <small className="hero-premiere-countdown">Sortie publique dans {formatPremiereCountdown(activeFeatured.publicAt, accessClock)}</small>}
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} delay={0.05} once>{activeFeatured.name}</TextAnimate></h1>
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
               <div className="hero-cinema-actions">
-                <ShimmerButton className="hero-cinema-play" onClick={() => void openTitle(activeFeatured)}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
+                <ShimmerButton className="hero-cinema-play" onClick={() => void openTitle(activeFeatured)}><Play size={15} fill="currentColor"/> {canPlayTitle(activeFeatured) ? "Lecture" : "Découvrir"}</ShimmerButton>
                 <button className="hero-cinema-info" onClick={() => void openTitle(activeFeatured)}>Détails</button>
               </div>
             </BlurFade>
@@ -1393,7 +1407,7 @@ export default function HomePage() {
             </div>}
             <div className={`poster-grid ${activePage === "Films" || activePage === "Séries" ? "films-poster-grid" : activePage === "Vidéos" ? "video-library-grid" : activePage === "Ma liste" ? "ma-list-poster-grid" : ""} ${(activePage === "Films" || activePage === "Séries") && visibleTitles.length > 4 && visibleTitles.length % 4 === 1 ? "films-poster-grid-balanced" : ""}`}>
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className={`poster-card ${activePage === "Vidéos" ? "video-library-card" : activePage === "Ma liste" ? "favorite-card" : ""}`} initial={{ opacity: 0, y: 16, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} whileHover={{ y: -6, scale: 1.018 }} whileTap={{ scale: .992 }} transition={{ layout: { duration: .28 }, opacity: { duration: .32, delay: Math.min(index * .035, .25) }, y: { type: "spring", stiffness: 280, damping: 22 }, scale: { type: "spring", stiffness: 300, damping: 24 } }}>
-                <button className="poster-open" onClick={() => openTitle(item)} disabled={!canOpenTitle(item)} aria-label={canOpenTitle(item) ? `Ouvrir ${item.name}` : `${item.name} — bientôt disponible`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{(item.vipExclusive || item.vipEarlyAccess) && <span className={`vip-card-chip ${item.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`} aria-label={item.vipEarlyAccess ? "Avant-première" : "Contenu exclusif VIP"}><Star size={11} fill="currentColor"/>{item.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}{item.vipEarlyAccess && item.publicAt && vipAccessState(item, accessClock) !== "public" && <small className="vip-release-date">Sortie publique dans {formatPremiereCountdown(item.publicAt, accessClock)}</small>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
+                <button className="poster-open" onClick={() => openTitle(item)} disabled={!canViewTitle(item)} aria-label={canViewTitle(item) ? `Ouvrir ${item.name}` : `${item.name} — bientôt disponible`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{(item.vipExclusive || item.vipEarlyAccess) && <span className={`vip-card-chip ${item.vipExclusive ? "is-exclusive" : "is-premiere"}`} aria-label={item.vipExclusive ? "Contenu exclusif VIP" : "Avant-première"}><Star size={11} fill="currentColor"/>{item.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}{item.vipEarlyAccess && item.publicAt && vipAccessState(item, accessClock) !== "public" && <small className="vip-release-date">Sortie publique dans {formatPremiereCountdown(item.publicAt, accessClock)}</small>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
                 <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
               </motion.article>)}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucun film dans le catalogue</strong><span>Les films publiés dans le catalogue partagé apparaîtront ici.</span></div>}
