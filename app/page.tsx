@@ -292,6 +292,10 @@ export default function HomePage() {
   const [sharedCatalogStatus, setSharedCatalogStatus] = useState<{ status: "loading" | "success" | "error"; reason?: string }>({ status: "loading" });
   const [viewerVip, setViewerVip] = useState(false);
   const [viewerAccess, setViewerAccess] = useState<{ authenticated: boolean; vip: boolean; admin: boolean; entitled: boolean }>({ authenticated: false, vip: false, admin: false, entitled: false });
+  // Shared UTC clock for the 48-hour VIP window. The server remains the
+  // authority; this only refreshes the client view when a boundary is crossed
+  // so a scheduled premiere opens (or a VIP window ends) without a reload.
+  const [accessClock, setAccessClock] = useState(() => Date.now());
   const [sharedCatalogRetryKey, setSharedCatalogRetryKey] = useState(0);
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -356,9 +360,9 @@ export default function HomePage() {
     // Personal copies of a shared title inherit the authoritative VIP rights,
     // then the whole catalogue is filtered with the same policy as the API.
     const localWithRights = applySharedVipRestrictions(titles, sharedCatalogTitles);
-    const entitled = filterAccessibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess);
+    const entitled = filterAccessibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess, accessClock);
     return overlayAccountData(entitled, accountData);
-  }, [titles, sharedCatalogTitles, accountData, viewerAccess]);
+  }, [titles, sharedCatalogTitles, accountData, viewerAccess, accessClock]);
   const visibleFavorites = useMemo(() => {
     const ids = visibleFavoriteIds(browseTitles, favorites);
     return { ids, idSet: new Set(ids), count: ids.length };
@@ -641,6 +645,15 @@ export default function HomePage() {
       window.removeEventListener("focus", revalidate);
       document.removeEventListener("visibilitychange", revalidate);
     };
+  }, []);
+
+  // Keep the client-side window evaluation in sync with wall-clock time even
+  // when the tab stays focused. The next server request still re-checks the
+  // exact instant; this timer only avoids showing a stale audience for longer
+  // than one tick.
+  useEffect(() => {
+    const timer = window.setInterval(() => setAccessClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   // Revalidate one title against the server before opening it or starting a

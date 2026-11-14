@@ -1,9 +1,10 @@
 import type { Title } from "./types";
 
 export const VIP_EARLY_ACCESS_HOURS: number;
+export const VIP_EARLY_ACCESS_WINDOW_MS: number;
 
 export type VipAccessMode = "public" | "vip-exclusive" | "early-access";
-export type VipAccessState = "public" | "early" | "vip";
+export type VipAccessState = "public" | "scheduled" | "early" | "vip" | "invalid";
 export type ViewerEntitlements = {
   vip?: boolean;
   admin?: boolean;
@@ -27,6 +28,7 @@ export function parsePublicAt(value: unknown): number | null;
 export function normalizeVipFlags(row?: VipFlagsInput): NormalizedVipFlags;
 export function accessMode(row?: VipFlagsInput): VipAccessMode;
 export function vipAccessState(row?: VipFlagsInput, now?: number): VipAccessState;
+export function vipEarlyAccessStart(row?: VipFlagsInput): number | null;
 export function viewerIsEntitled(viewer: ViewerEntitlements | null | undefined): boolean;
 export function canAccessContent(row: VipFlagsInput, viewer: ViewerEntitlements | null | undefined, now?: number): boolean;
 export function catalogVisibilitySql(

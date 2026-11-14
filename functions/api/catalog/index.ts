@@ -54,12 +54,16 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     // administrators (Fondateur/Admin/Modérateur) are entitled so they can
     // inspect the catalogue they manage.
     const account = await getAccount(request, env as unknown as AccountEnv);
+    // One instant per request: membership expiry, the SQL predicate, the
+    // reported `access` state and the defence-in-depth sanitiser must agree.
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
     const vip = account ? await env.DB.prepare("SELECT 1 AS active FROM vip_memberships WHERE user_id=? AND expires_at>? LIMIT 1")
-      .bind(account.id, new Date().toISOString()).first<{ active: number }>() : null;
+      .bind(account.id, nowIso).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
     const entitled = isVip || isAdmin;
-    const visibility = catalogVisibilitySql(entitled);
+    const visibility = catalogVisibilitySql(entitled, { now: nowIso });
     const accessSql = visibility.sql;
     const accessParams: (string | number | null)[] = [...visibility.params];
     const whereKind = kind ? " AND kind=?" : "";
@@ -127,13 +131,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         id: row.id, kind: row.kind, title: row.title, overview: row.overview, releaseDate: row.release_date,
         posterPath: row.poster_path, backdropPath: row.backdrop_path, genres, metadata,
         vipExclusive: Boolean(row.vip_exclusive), vipEarlyAccess: Boolean(row.vip_early_access),
-        publicAt: row.public_at ?? null, access: vipAccessState({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }),
+        publicAt: row.public_at ?? null, access: vipAccessState({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }, now),
         videoUrl: sourceByTitle.get(row.id),
         seasons: [...seasons.values()], updatedAt: row.updated_at,
       };
       // The SQL predicate already removed unentitled rows. This is a second,
       // explicit guard so a future query regression can never leak a video URL.
-      return sanitizeTitleForViewer(mapped, { vip: isVip, admin: isAdmin, authenticated: Boolean(account) });
+      return sanitizeTitleForViewer(mapped, { vip: isVip, admin: isAdmin, authenticated: Boolean(account) }, now);
     });
     const statsResult = await env.DB.prepare(
       `SELECT COUNT(*) AS titles,
@@ -142,7 +146,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) AS videos
        FROM catalog_titles WHERE published=1 AND ${accessSql}`,
     ).bind(...accessParams).all<{ titles:number; films:number; series:number; videos:number }>();
-    const episodeVisibility = catalogVisibilitySql(entitled, { prefix: "t." });
+    const episodeVisibility = catalogVisibilitySql(entitled, { now: nowIso, prefix: "t." });
     const episodeStats = await env.DB.prepare(
       `SELECT COUNT(*) AS episodes FROM catalog_episodes e INNER JOIN catalog_titles t ON t.id=e.title_id
        WHERE t.published=1 AND ${episodeVisibility.sql}`,
