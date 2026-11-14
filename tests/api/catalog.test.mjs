@@ -347,19 +347,14 @@ test("catalogue SQL includes every valid scheduled premiere as a teaser without 
   assert.equal(scheduled.videoUrl, undefined);
 });
 
-test("the VIP SQL applies the lower bound at now + 48 hours", async () => {
+test("the VIP catalogue includes scheduled premieres while preserving VIP-exclusive rows", async () => {
   const db = createCatalogD1({ titles: vipRows, account: ACCOUNT, vip: true });
   await onRequestGet({ request: catalogRequest({ account: ACCOUNT }), env: { DB: db } });
   const titlesCall = db.calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
   assert.ok(titlesCall);
   assert.match(titlesCall.sql, /vip_exclusive\)?=1/);
   assert.match(titlesCall.sql, /datetime\(public_at\)/);
-  // The cutoff is now + 48 h so a premiere becomes visible exactly when its
-  // VIP window starts.
-  const delta = Date.parse(titlesCall.values[0]) - (Date.now() + 48 * HOUR);
-  assert.ok(delta > -60_000 && delta < 60_000, `unexpected cutoff=${titlesCall.values[0]}`);
-  assert.equal(titlesCall.values[1], 24);
-  assert.equal(titlesCall.values[2], 0);
+  assert.deepEqual(titlesCall.values, [24, 0]);
 });
 
 test("stats and episode counts follow the same audience as the listing", async () => {
