@@ -667,13 +667,15 @@ export default function HomePage() {
         headers: { accept: "application/json" },
       });
       if (response.status === 404) return null;
-      if (!response.ok) return item;
+      if (!response.ok) return null;
       const contentType = (response.headers.get("content-type") || "").toLowerCase();
-      if (!contentType.includes("application/json")) return item;
+      if (!contentType.includes("application/json")) return null;
       const payload = await response.json();
-      return payload?.title && typeof payload.title === "object" ? sharedCatalogItemToTitle(payload.title) : item;
+      return payload?.title && typeof payload.title === "object" ? sharedCatalogItemToTitle(payload.title) : null;
     } catch {
-      return item;
+      // Fail closed: a failed entitlement check must never fall back to a cached
+      // title carrying a previously-issued playback URL.
+      return null;
     }
   };
 
@@ -1168,7 +1170,7 @@ export default function HomePage() {
             <div className="hero-cinema-overlay"/>
             <BlurFade className="hero-cinema-copy" key={activeFeatured.id} direction="up" offset={14} duration={0.55}>
               <div className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>À LA UNE · SÉLECTION CINÉBOX</AnimatedShinyText></div>
-              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
+              <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>{(activeFeatured.vipExclusive || vipAccessState(activeFeatured, accessClock) === "early") && <span className={`hero-vip-tag ${activeFeatured.vipEarlyAccess ? "is-premiere" : "is-exclusive"}`}><Star size={12} fill="currentColor"/>{activeFeatured.vipExclusive ? "VIP" : "AVANT-PREMIÈRE"}</span>}
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} delay={0.05} once>{activeFeatured.name}</TextAnimate></h1>
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
