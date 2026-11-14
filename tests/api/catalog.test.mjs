@@ -123,6 +123,7 @@ function makeCatalogEnv({ rows = [], episodes = [] } = {}) {
         calls.push(call);
         return {
           bind(...values) { call.values = values; return this; },
+          async first() { return null; },
           async all() {
             if (/COUNT\(\*\) AS titles/.test(sql)) {
               return { success: true, results: [{ titles: rows.length, films: rows.length, series: 0, videos: 0 }] };
