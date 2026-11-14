@@ -75,7 +75,7 @@ export async function onRequestDelete({ request, env }: { request: Request; env:
   }
   try {
     await env.DB!.prepare("DELETE FROM vip_memberships WHERE user_id=?").bind(body.userId).run();
-    return json({ revoked: true, userId: body.userId, discord });
+    return json({ revoked: true, userId: body.userId });
   } catch {
     return json({ error: "Impossible de retirer le statut VIP." }, 503);
   }
