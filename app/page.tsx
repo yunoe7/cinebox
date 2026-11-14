@@ -839,7 +839,7 @@ export default function HomePage() {
       setSelectedEpisodeUrl(null);
     }
   };
-  const playEpisode = async (item: Title, season: number, episode: Title["seasons"][number]["episodes"][number]) => {
+  const playEpisode = async (item: Title, season: number, episode: NonNullable<Title["seasons"]>[number]["episodes"][number]) => {
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
