@@ -195,8 +195,14 @@ export function UqloadManager() {
 
   
   return <section className="admin-shared-catalog admin-media-manager" aria-label="Gestion des lecteurs vidéo">
-    <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div><h3>Gérer les hébergeurs</h3><p>Deux lecteurs indépendants : Uqload pour tes fichiers synchronisés, Vidmoly pour tes liens ajoutés manuellement.</p></div>
-      {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
+    <header className="admin-section-hero admin-media-hero">
+      <span className="admin-section-hero-icon" aria-hidden="true"><Film size={21}/></span>
+      <div className="admin-section-hero-copy">
+        <div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div>
+        <h2>Gérer les hébergeurs</h2>
+        <p>Uqload pour tes fichiers synchronisés · Vidmoly pour tes liens ajoutés manuellement.</p>
+      </div>
+      {auth === "authenticated" && <button type="button" className="admin-shared-refresh admin-media-refresh" onClick={() => void refresh()} disabled={loading}>{loading ? <LoaderCircle size={14} className="admin-spin"/> : <RefreshCw size={14}/>} Actualiser</button>}
     </header>
     <AdminSessionPanel authState={auth} onLogin={login} onLogout={() => void logout()} description="Les deux espaces sont protégés par ta session administrateur Discord." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
     {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
