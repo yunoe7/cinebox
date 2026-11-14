@@ -14,7 +14,6 @@ export interface AccountEnv {
   CINEBOX_DISCORD_ROLE_FONDA_ID?: string;
   CINEBOX_DISCORD_ROLE_ADMIN_ID?: string;
   CINEBOX_DISCORD_ROLE_MODO_ID?: string;
-  CINEBOX_DISCORD_ROLE_VIP_ID?: string;
 }
 export const ACCOUNT_TTL = 12 * 60 * 60;
 export const ACCOUNT_COOKIE = "__Host-cinebox_session";
