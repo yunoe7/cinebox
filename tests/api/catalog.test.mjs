@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { onRequestGet } from "../../functions/api/catalog/index.ts";
+import { ACCOUNT, catalogTitle, createCatalogD1 } from "./helpers/catalog-d1.mjs";
 
 function makeEnv(rows = []) {
   const calls = [];
@@ -73,14 +74,19 @@ test("catalogue returns only published titles and maps metadata safely", async (
       metadata: { rating: 8 },
       vipExclusive: false,
       vipEarlyAccess: false,
+      publicAt: null,
       access: "public",
       seasons: [],
       updatedAt: "2026-11-07 12:00:00",
     }],
     stats: { titles: 0, films: 0, series: 0, videos: 0, episodes: 0 },
     pagination: { limit: 10, offset: 5, count: 1 },
-    viewer: { authenticated: false, vip: false },
+    viewer: { authenticated: false, vip: false, admin: false, entitled: false },
   });
+  // The catalogue is per-viewer: it must never be stored in a shared cache.
+  assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+  assert.equal(response.headers.get("cdn-cache-control"), "no-store");
+  assert.equal(response.headers.get("vary"), "Cookie");
 });
 
 test("catalogue handles malformed stored JSON without failing", async () => {
@@ -208,4 +214,130 @@ test("catalogue without maxAge returns unclassified titles", async () => {
   });
   const body = await response.json();
   assert.equal(body.titles.length, ageRows.length);
+});
+
+const FUTURE = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+const PAST = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+const vipRows = [
+  catalogTitle({ id: "public", title: "Public" }),
+  catalogTitle({ id: "exclusive", title: "Exclusif", vip_exclusive: 1 }),
+  catalogTitle({ id: "early", title: "Avant-première", vip_early_access: 1, public_at: FUTURE }),
+  catalogTitle({ id: "released", title: "Avant-première publiée", vip_early_access: 1, public_at: PAST }),
+  catalogTitle({ id: "broken", title: "Date manquante", vip_early_access: 1, public_at: null }),
+];
+
+function envFor(options) {
+  return { DB: createCatalogD1({ titles: vipRows, ...options }) };
+}
+
+function fetchTitles(request, env) {
+  return onRequestGet({ request, env }).then(async (response) => {
+    const text = await response.text();
+    if (response.status !== 200) assert.fail(`expected 200, got ${response.status}: ${text}`);
+    return { response, body: JSON.parse(text) };
+  });
+}
+
+function catalogRequest(options = {}) {
+  return new Request("https://cinebox.test/api/catalog", {
+    headers: options.account ? { cookie: "__Host-cinebox_session=test-token" } : {},
+  });
+}
+
+test("a guest sees only public and already-released titles, never VIP rows", async () => {
+  const { body, response } = await fetchTitles(new Request("https://cinebox.test/api/catalog"), envFor({}));
+  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.deepEqual(body.viewer, { authenticated: false, vip: false, admin: false, entitled: false });
+  assert.equal(response.headers.get("vary"), "Cookie");
+  // No video URL of a VIP title can be present in the payload.
+  for (const title of body.titles) assert.ok(!title.videoUrl);
+});
+
+test("an authenticated non-VIP account has the same rights as a guest", async () => {
+  const { body } = await fetchTitles(
+    catalogRequest({ account: ACCOUNT }),
+    envFor({ account: ACCOUNT, vip: false, admin: false }),
+  );
+  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.equal(body.viewer.authenticated, true);
+  assert.equal(body.viewer.vip, false);
+  assert.equal(body.viewer.entitled, false);
+});
+
+test("a VIP member sees exclusive and not-yet-public early-access titles immediately", async () => {
+  const { body } = await fetchTitles(
+    catalogRequest({ account: ACCOUNT }),
+    envFor({ account: ACCOUNT, vip: true }),
+  );
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["broken", "early", "exclusive", "public", "released"]);
+  assert.equal(body.viewer.vip, true);
+  assert.equal(body.viewer.entitled, true);
+  const access = Object.fromEntries(body.titles.map((title) => [title.id, title.access]));
+  assert.deepEqual(access, {
+    public: "public",
+    exclusive: "vip",
+    early: "early",
+    released: "public",
+    broken: "vip",
+  });
+});
+
+test("an administrator is entitled even without a VIP membership", async () => {
+  const { body } = await fetchTitles(
+    catalogRequest({ account: ACCOUNT }),
+    envFor({ account: ACCOUNT, vip: false, admin: true }),
+  );
+  assert.equal(body.titles.length, vipRows.length);
+  assert.equal(body.viewer.admin, true);
+  assert.equal(body.viewer.entitled, true);
+  assert.equal(body.viewer.vip, false);
+});
+
+test("an expired VIP membership is treated as a non-entitled viewer", async () => {
+  // The membership lookup is performed with the current instant as bound
+  // parameter; a revoked/expired row returns no active membership.
+  const { body } = await fetchTitles(
+    catalogRequest({ account: ACCOUNT }),
+    envFor({ account: ACCOUNT, vip: false }),
+  );
+  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.equal(body.viewer.vip, false);
+});
+
+test("the guest SQL filters on the public date without any VIP early-access window", async () => {
+  const db = createCatalogD1({ titles: vipRows });
+  await onRequestGet({ request: new Request("https://cinebox.test/api/catalog"), env: { DB: db } });
+  const titlesCall = db.calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
+  assert.ok(titlesCall);
+  assert.match(titlesCall.sql, /vip_exclusive=0/);
+  assert.match(titlesCall.sql, /public_at<=\?/);
+  // No `now + 48h` window may exist anywhere in the query.
+  assert.equal(/48|hours|\+ ?86400000/.test(titlesCall.sql), false);
+  assert.match(titlesCall.values[0], /^\d{4}-\d{2}-\d{2}T/);
+  // The bound instant is now, not now + 48 h.
+  const delta = Date.parse(titlesCall.values[0]) - Date.now();
+  assert.ok(delta > -60_000 && delta < 60_000, `unexpected now=${titlesCall.values[0]}`);
+});
+
+test("a VIP request carries no visibility predicate at all", async () => {
+  const db = createCatalogD1({ titles: vipRows, account: ACCOUNT, vip: true });
+  await onRequestGet({ request: catalogRequest({ account: ACCOUNT }), env: { DB: db } });
+  const titlesCall = db.calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
+  assert.match(titlesCall.sql, /WHERE published=1 AND 1=1/);
+  // Entitled viewers bind nothing before the pagination parameters.
+  assert.deepEqual(titlesCall.values, [24, 0]);
+});
+
+test("stats and episode counts follow the same audience as the listing", async () => {
+  const db = createCatalogD1({
+    titles: vipRows,
+    episodes: [
+      { id: "e1", title_id: "exclusive", season_number: 1, episode_number: 1, title: "E1", overview: "", duration_seconds: 1, thumbnail_path: null, metadata_json: "{}" },
+      { id: "e2", title_id: "public", season_number: 1, episode_number: 1, title: "E2", overview: "", duration_seconds: 1, thumbnail_path: null, metadata_json: "{}" },
+    ],
+  });
+  const guest = await fetchTitles(new Request("https://cinebox.test/api/catalog?kind=movie"), { DB: db });
+  assert.equal(guest.body.stats.titles, 2);
+  assert.equal(guest.body.stats.episodes, 1);
 });

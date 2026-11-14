@@ -592,3 +592,69 @@ test("replaceSeason deletes only the obsolete episode and keeps every retained r
   assert.equal(state.episodes.find((episode) => episode.id === `${id}:s1:e120`).stream_uid, "legacy-1-120");
   assert.equal(state.episodes.find((episode) => episode.id === `${id}:s2:e2`).stream_uid, "legacy-2-2");
 });
+
+const FUTURE = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+
+test("publishing explicit VIP flags stores them in the same batch", async () => {
+  const { env, calls, state } = makeEnv();
+  const response = await onRequestPost({ request: request({
+    tmdbId: 42, kind: "movie", title: "Film VIP",
+    vipExclusive: true, vipEarlyAccess: false, publicAt: null,
+  }), env });
+  assert.equal(response.status, 200);
+  assert.match(calls[0].sql, /vip_exclusive, vip_early_access, public_at/);
+  assert.match(calls[0].sql, /vip_exclusive=excluded\.vip_exclusive/);
+  const title = state.titles.find((entry) => entry.id === "tmdb:movie:42");
+  assert.equal(title.vip_exclusive, 1);
+  assert.equal(title.vip_early_access, 0);
+  assert.equal(title.public_at, null);
+});
+
+test("publishing early access stores the mandatory public date", async () => {
+  const { env, state } = makeEnv();
+  const response = await onRequestPost({ request: request({
+    tmdbId: 42, kind: "movie", title: "Film avant-première",
+    vipExclusive: false, vipEarlyAccess: true, publicAt: FUTURE,
+  }), env });
+  assert.equal(response.status, 200);
+  const title = state.titles.find((entry) => entry.id === "tmdb:movie:42");
+  assert.equal(title.vip_early_access, 1);
+  assert.equal(title.public_at, FUTURE);
+});
+
+test("a republish without VIP fields never resets the stored rights", async () => {
+  const { env, state } = makeEnv({
+    titles: [{
+      id: "tmdb:movie:42", kind: "movie", title: "Film VIP", metadata_json: "{}", published: 1,
+      vip_exclusive: 1, vip_early_access: 0, public_at: null,
+    }],
+  });
+  const response = await onRequestPost({ request: request({
+    tmdbId: 42, kind: "movie", title: "Film VIP modifié",
+  }), env });
+  assert.equal(response.status, 200);
+  const title = state.titles.find((entry) => entry.id === "tmdb:movie:42");
+  assert.equal(title.title, "Film VIP modifié");
+  assert.equal(title.vip_exclusive, 1, "the exclusive flag must survive a plain republish");
+});
+
+test("publishing early access without a date is refused without writes", async () => {
+  const { env, state, batches } = makeEnv();
+  const response = await onRequestPost({ request: request({
+    tmdbId: 42, kind: "movie", title: "Film", vipEarlyAccess: true, publicAt: null,
+  }), env });
+  assert.equal(response.status, 400);
+  assert.equal(batches.length, 0);
+  assert.equal(state.titles.length, 0);
+});
+
+test("publishing contradictory VIP flags is refused without writes", async () => {
+  const { env, state, batches } = makeEnv();
+  const response = await onRequestPost({ request: request({
+    tmdbId: 42, kind: "movie", title: "Film",
+    vipExclusive: true, vipEarlyAccess: true, publicAt: FUTURE,
+  }), env });
+  assert.equal(response.status, 400);
+  assert.equal(batches.length, 0);
+  assert.equal(state.titles.length, 0);
+});

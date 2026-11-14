@@ -8,7 +8,9 @@ export function createFakeD1({ titles = [], episodes = [] } = {}) {
 
   function query(sql, values) {
     if (/SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at,/.test(sql)) {
-      return state.titles.map((title) => ({ vip_exclusive: 0, vip_early_access: 0, public_at: null, ...title }));
+      const rows = state.titles.map((title) => ({ vip_exclusive: 0, vip_early_access: 0, public_at: null, ...title }));
+      if (/WHERE id\s*=\s*\?/.test(sql)) return rows.filter((title) => title.id === values[0]);
+      return rows;
     }
     if (/SELECT id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json FROM catalog_episodes/.test(sql)) {
       return state.episodes.map((episode) => ({ ...episode }));
@@ -32,7 +34,22 @@ export function createFakeD1({ titles = [], episodes = [] } = {}) {
       title.published = 0;
       return { success: true, meta: { changes: 1 } };
     }
-    if (/UPDATE catalog_titles SET title=COALESCE/.test(sql)) {
+    if (/UPDATE catalog_titles SET title=\?,overview=\?/.test(sql)) {
+      const title = state.titles.find((entry) => entry.id === values[9]);
+      if (!title) return { success: true, meta: { changes: 0 } };
+      const [nextTitle, overview, releaseDate, posterPath, backdropPath, published, vipExclusive, vipEarlyAccess, publicAt] = values;
+      Object.assign(title, {
+        title: nextTitle,
+        overview,
+        release_date: releaseDate,
+        poster_path: posterPath,
+        backdrop_path: backdropPath,
+        published,
+        vip_exclusive: vipExclusive,
+        vip_early_access: vipEarlyAccess,
+        public_at: publicAt,
+        updated_at: "2024-01-01T00:00:00Z",
+      });
       return { success: true, meta: { changes: 1 } };
     }
     throw new Error(`Unexpected D1 update: ${sql}`);

@@ -1,6 +1,8 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
 import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { isAdminAccount } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
+import { catalogVisibilitySql, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
 
 interface D1Result<T> { results: T[]; success: boolean; }
 interface D1Statement {
@@ -24,7 +26,13 @@ interface CatalogTitleRow {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: {
     "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store", "x-content-type-options": "nosniff",
+    // The response depends on the session cookie: it must never be reused for
+    // another viewer. Vary: Cookie is required even with no-store so shared
+    // caches cannot serve a VIP payload to a guest.
+    "cache-control": "private, no-store, max-age=0",
+    "cdn-cache-control": "no-store",
+    vary: "Cookie",
+    "x-content-type-options": "nosniff",
   }});
 }
 export async function onRequestGet({ request, env }: { request: Request; env: CatalogEnv }): Promise<Response> {
@@ -41,17 +49,19 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
   if (maxAge !== null && (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 18)) return json({ error: "La limite d’âge demandée est invalide." }, 400);
 
   try {
-    // VIP entitlement is derived only from the signed-in server session, never a client query parameter.
+    // VIP entitlement is derived only from the signed-in server session and the
+    // current VIP membership, never from a client query parameter. Community
+    // administrators (Fondateur/Admin/Modérateur) are entitled so they can
+    // inspect the catalogue they manage.
     const account = await getAccount(request, env as unknown as AccountEnv);
     const vip = account ? await env.DB.prepare("SELECT 1 AS active FROM vip_memberships WHERE user_id=? AND expires_at>? LIMIT 1")
       .bind(account.id, new Date().toISOString()).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
-    const now = new Date().toISOString();
-    const earlyCutoff = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    const accessSql = isVip
-      ? "(vip_exclusive=0 OR 1=1) AND (vip_early_access=0 OR (public_at IS NOT NULL AND public_at<=?))"
-      : "vip_exclusive=0 AND (vip_early_access=0 OR (public_at IS NOT NULL AND public_at<=?))";
-    const accessParams: (string | number | null)[] = isVip ? [earlyCutoff] : [now];
+    const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
+    const entitled = isVip || isAdmin;
+    const visibility = catalogVisibilitySql(entitled);
+    const accessSql = visibility.sql;
+    const accessParams: (string | number | null)[] = [...visibility.params];
     const whereKind = kind ? " AND kind=?" : "";
     const params = [...accessParams, ...(kind ? [kind] : [])];
     const queryLimit = maxAge === null ? rawLimit : 500;
@@ -113,14 +123,17 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         season.episodes.push({ number: episode.episode_number, title: episode.title, overview: episode.overview, runtime: episode.duration_seconds, thumbnailPath: episode.thumbnail_path, tmdbId: episodeMetadata.tmdbId ?? null, videoUrl: sourceByEpisode.get(episode.id) });
         seasons.set(episode.season_number, season);
       }
-      return {
+      const mapped = {
         id: row.id, kind: row.kind, title: row.title, overview: row.overview, releaseDate: row.release_date,
         posterPath: row.poster_path, backdropPath: row.backdrop_path, genres, metadata,
         vipExclusive: Boolean(row.vip_exclusive), vipEarlyAccess: Boolean(row.vip_early_access),
-        publicAt: row.public_at, access: row.vip_exclusive ? "vip" : row.vip_early_access && row.public_at && Date.parse(row.public_at) > Date.now() ? "early" : "public",
+        publicAt: row.public_at ?? null, access: vipAccessState({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }),
         videoUrl: sourceByTitle.get(row.id),
         seasons: [...seasons.values()], updatedAt: row.updated_at,
       };
+      // The SQL predicate already removed unentitled rows. This is a second,
+      // explicit guard so a future query regression can never leak a video URL.
+      return sanitizeTitleForViewer(mapped, { vip: isVip, admin: isAdmin, authenticated: Boolean(account) });
     });
     const statsResult = await env.DB.prepare(
       `SELECT COUNT(*) AS titles,
@@ -129,12 +142,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) AS videos
        FROM catalog_titles WHERE published=1 AND ${accessSql}`,
     ).bind(...accessParams).all<{ titles:number; films:number; series:number; videos:number }>();
+    const episodeVisibility = catalogVisibilitySql(entitled, { prefix: "t." });
     const episodeStats = await env.DB.prepare(
       `SELECT COUNT(*) AS episodes FROM catalog_episodes e INNER JOIN catalog_titles t ON t.id=e.title_id
-       WHERE t.published=1 AND ${accessSql.replaceAll("vip_exclusive","t.vip_exclusive").replaceAll("vip_early_access","t.vip_early_access").replaceAll("public_at","t.public_at")}`,
-    ).bind(...accessParams).all<{ episodes:number }>();
+       WHERE t.published=1 AND ${episodeVisibility.sql}`,
+    ).bind(...episodeVisibility.params).all<{ episodes:number }>();
     const stats = statsResult.results[0] || { titles:0, films:0, series:0, videos:0 };
-    return json({ titles, stats: { titles:stats.titles||0, films:stats.films||0, series:stats.series||0, videos:stats.videos||0, episodes:episodeStats.results[0]?.episodes||0 }, pagination:{ limit:rawLimit, offset:rawOffset, count:titles.length }, viewer:{ authenticated:Boolean(account), vip:isVip } });
+    return json({ titles, stats: { titles:stats.titles||0, films:stats.films||0, series:stats.series||0, videos:stats.videos||0, episodes:episodeStats.results[0]?.episodes||0 }, pagination:{ limit:rawLimit, offset:rawOffset, count:titles.length }, viewer:{ authenticated:Boolean(account), vip:isVip, admin:isAdmin, entitled } });
   } catch {
     return json({ error: "Impossible de charger le catalogue pour le moment." }, 503);
   }
