@@ -4,20 +4,34 @@
 
 Trois audiences possibles pour un titre du catalogue partagé (D1) :
 
-| État | Visibilité |
+| Mode | Audience |
 | --- | --- |
 | **Public** | Tous les comptes, y compris les visiteurs non connectés. |
 | **Exclusif VIP** | Uniquement les membres VIP actifs et les administrateurs. Invisible partout pour les autres. |
-| **Avant-première VIP** | Les VIP voient le titre immédiatement ; les autres comptes le voient automatiquement à `public_at`. |
+| **Avant-première VIP** | Fenêtre stricte de **48 h** avant `public_at` : personne avant, VIP actifs + administrateurs pendant, tout le monde à partir de `public_at`. |
+
+États calculés par `vipAccessState(row, now)` :
+
+| État | Période | Accès |
+| --- | --- | --- |
+| `scheduled` | `now < public_at − 48 h` | **Personne** (VIP et administrateurs inclus sur les surfaces spectateur). |
+| `early` | `public_at − 48 h ≤ now < public_at` | VIP actifs et administrateurs uniquement. |
+| `public` | `now ≥ public_at` (ou titre public) | Tout le monde, automatiquement. |
+| `vip` | Titre exclusif VIP, sans date | VIP actifs et administrateurs uniquement. |
+| `invalid` | Avant-première sans date exploitable | **Personne** jusqu'à correction par un administrateur (fail-closed). |
 
 Règles absolues :
 
-- Un titre exclusif est **invisible** pour un non-VIP : ni dans le catalogue, ni
-  dans la recherche, ni dans l'accueil, ni dans la fiche, ni dans l'URL de
-  lecture. Un identifiant ou une URL deviné reçoit `404` (jamais `403`, pour ne
-  rien révéler de l'existence du titre).
+- Un titre exclusif ou en avant-première est **invisible** pour un spectateur
+  non autorisé : ni dans le catalogue, ni dans la recherche, ni dans l'accueil,
+  ni dans le héros, ni dans la fiche, ni dans l'URL de lecture. Un identifiant
+  ou une URL deviné reçoit `404` (jamais `403`, pour ne rien révéler de
+  l'existence du titre).
+- **Avant le début de la fenêtre de 48 h, même les VIP et les administrateurs**
+  ne voient ni ne lisent le titre sur les surfaces spectateur. La gestion reste
+  possible via `/api/catalog/manage`, qui ne filtre pas par spectateur.
 - L'avant-première exige **une date publique obligatoire**. Sans date valide,
-  le titre reste VIP uniquement (fail-closed).
+  le titre est inaccessible à tous (fail-closed) jusqu'à correction.
 - Le passage au public est **automatique** : à partir de `public_at`, le titre
   devient visible par tous sans intervention d'un administrateur.
 - Les droits ne sont **jamais modifiés silencieusement** : une publication ou
@@ -33,13 +47,25 @@ l'interface React), afin qu'il n'existe jamais deux logiques VIP divergentes.
 | --- | --- |
 | `normalizeVipFlags` | Normalise les trois colonnes ; `vipExclusive` l'emporte sur `vipEarlyAccess`. |
 | `accessMode` | `"public" \| "vip-exclusive" \| "early-access"`. |
-| `vipAccessState` | Audience à un instant donné : `"public"`, `"early"` (VIP seulement) ou `"vip"`. |
-| `canAccessContent` | Décision d'accès pour un spectateur. Administrateur/VIP toujours autorisés. |
-| `catalogVisibilitySql` | Prédicat SQL identique pour le listing, les statistiques et les épisodes. |
+| `vipAccessState` | Audience à un instant donné : `"scheduled"`, `"early"`, `"public"`, `"vip"` ou `"invalid"`. |
+| `vipEarlyAccessStart` | Début exact de la fenêtre (`public_at − 48 h`), ou `null`. |
+| `canAccessContent` | Décision d'accès pour un spectateur : `public` pour tous, `vip`/`early` pour les ayants droit, `scheduled`/`invalid` pour personne. |
+| `catalogVisibilitySql` | Prédicat SQL identique pour le listing, les statistiques et les épisodes ; pour les ayants droit, borne basse `public_at ≤ now + 48 h`. |
 | `validateVipSettings` | Validation d'un payload administrateur (mutuellement exclusifs, date obligatoire, ISO 8601). |
-| `filterAccessibleTitles` / `sanitizeTitleForViewer` | Filtrage et nettoyage côté client (défense en profondeur). |
+| `filterAccessibleTitles` / `sanitizeTitleForViewer` | Filtrage et nettoyage côté client (défense en profondeur), avec le même instant `now`. |
 | `applySharedVipRestrictions` | Un ancien titre personnel recopie les droits VIP du catalogue partagé. |
 | `vipStatusLabel` | Libellé d'affichage réel (statut et audience). |
+
+### Horloge et fuseaux horaires
+
+- Un seul instant UTC est calculé **par requête** (`Date.now()` →
+  `new Date(now).toISOString()`) et réutilisé pour le prédicat SQL, l'état
+  `access` renvoyé et le nettoyage de défense en profondeur.
+- Les comparaisons SQL passent par `datetime(...)`, qui normalise une valeur ISO
+  8601, `datetime-local` ou héritée avant comparaison. Une date illisible donne
+  `NULL` et la ligne est exclue (fail-closed).
+- Le serveur reste l'autorité : l'interface ne fait que refléter le même calcul
+  avec l'horloge du navigateur, réévaluée toutes les 30 s.
 
 ## Contrôle d'accès côté serveur
 
@@ -95,7 +121,12 @@ réponse VIP pour un autre spectateur.
 
 - `browseTitles` applique `applySharedVipRestrictions` puis
   `filterAccessibleTitles` **avant** tout rendu : accueil, héros, rangées,
-  recherche, Top 10, favoris, page VIP, fiche de détail.
+  recherche, Top 10, favoris, page VIP, fiche de détail. Le même instant
+  `accessClock` est utilisé, donc un titre programmé n'apparaît ni dans le héros
+  ni dans les rangées avant l'ouverture de sa fenêtre.
+- L'horloge d'accès est réévaluée toutes les 30 s : à la borne
+  `public_at − 48 h`, le titre apparaît pour les VIP ; à `public_at`, il
+  apparaît pour tout le monde, sans rechargement manuel.
 - Révalidation du catalogue à chaque retour au plan / onglet visible (throttle
   30 s) : expiration VIP, révocation ou date atteinte sont propagées.
 - Ouverture d'une fiche et sélection d'un épisode passent par
@@ -114,12 +145,18 @@ réponse VIP pour un autre spectateur.
 
 ## Tests
 
-- `lib/cinebox/vip-access.test.mjs` : matrice public/exclusif/avant-première
-  (avant/après) × invité/classique/VIP/admin, validation, SQL, filtrage client.
-- `tests/api/catalog.test.mjs` : audience SQL par rôle, absence de fenêtre
-  48 h, statistiques, en-têtes de cache.
+- `lib/cinebox/vip-access.test.mjs` : matrice avant/à la borne/pendant/après la
+  fenêtre × invité/classique/VIP/admin, états `scheduled`/`early`/`public`/
+  `invalid`, départ exact à `public_at − 48 h`, SQL (borne basse VIP, cutoff
+  non-VIP, date illisible), labels, filtrage client, copies locales.
+- `tests/api/catalog.test.mjs` : audience SQL par rôle, avant-première
+  programmée (+72 h) invisible aux VIP, fenêtre (+24 h) visible aux VIP
+  seulement, titre publié visible à tous, absences de fuite d'URL, statistiques,
+  en-têtes de cache.
 - `tests/api/catalog-access.test.mjs` : accès direct fiche/lecture/épisodes,
-  404 non révélable, downgrade, expiration, publication, cache.
+  `scheduled` refusé à tous (VIP et admin inclus), `early` refusé aux non-VIP,
+  date invalide refusée à tous, `404` non révélable, downgrade, expiration,
+  publication, cache.
 - `tests/api/catalog-manage.test.mjs` : contradictions, date obligatoire,
   dates invalides, conservation des droits, réponse = ligne serveur.
 - `tests/api/catalog-publish.test.mjs` : persistance et **conservation** des

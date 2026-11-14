@@ -51,8 +51,12 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
 
   try {
     const account = await getAccount(request, env as unknown as AccountEnv);
+    // The whole request (membership expiry, access decision, reported state,
+    // sanitiser) shares one UTC instant so the 48-hour window boundary cannot
+    // drift mid-response.
+    const now = Date.now();
     const vip = account ? await env.DB.prepare("SELECT 1 AS active FROM vip_memberships WHERE user_id=? AND expires_at>? LIMIT 1")
-      .bind(account.id, new Date().toISOString()).first<{ active: number }>() : null;
+      .bind(account.id, new Date(now).toISOString()).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
     const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled: isVip || isAdmin };
@@ -65,7 +69,7 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
     if (!result.success) throw new Error("D1 query failed");
     const row = result.results[0];
     if (!row) return json(NOT_FOUND, 404);
-    if (!canAccessContent({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }, viewer)) {
+    if (!canAccessContent({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }, viewer, now)) {
       return json(NOT_FOUND, 404);
     }
 
@@ -118,10 +122,10 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
       metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {},
       vipExclusive: Boolean(row.vip_exclusive), vipEarlyAccess: Boolean(row.vip_early_access),
       publicAt: row.public_at ?? null,
-      access: vipAccessState({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }),
+      access: vipAccessState({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at }, now),
       videoUrl: sourceByTitle.get(row.id),
       seasons: [...seasons.values()], updatedAt: row.updated_at,
-    }, viewer);
+    }, viewer, now);
 
     return json({ title, viewer });
   } catch {

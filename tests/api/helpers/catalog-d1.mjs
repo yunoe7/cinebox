@@ -26,15 +26,19 @@ export function createCatalogD1({
 
   function isEntitled(sql, values) {
     if (/\b1=1\b/.test(sql)) return () => true;
-    const now = sql.indexOf("public_at<=?") >= 0 ? values[0] : null;
+    // The entitled predicate allows VIP-exclusive rows and binds `now + 48 h`;
+    // the public predicate forbids exclusive rows and binds `now`.
+    const entitled = /vip_exclusive\)?=1/.test(sql);
+    const cutoff = values.find((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value));
+    const cutoffMs = typeof cutoff === "string" ? Date.parse(cutoff) : NaN;
     const visible = (row) => {
       const exclusive = Number(row.vip_exclusive || 0) === 1;
-      if (exclusive) return false;
+      if (exclusive) return entitled;
       const early = Number(row.vip_early_access || 0) === 1;
       if (!early) return true;
-      const publicAt = typeof row.public_at === "string" ? row.public_at.trim() : "";
-      if (!publicAt) return false;
-      return now !== null && publicAt <= now;
+      const publicAtMs = typeof row.public_at === "string" ? Date.parse(row.public_at) : NaN;
+      if (!Number.isFinite(publicAtMs) || !Number.isFinite(cutoffMs)) return false;
+      return publicAtMs <= cutoffMs;
     };
     return visible;
   }
@@ -52,7 +56,7 @@ export function createCatalogD1({
 
     if (/FROM catalog_media_sources/.test(sql)) {
       const ids = String(sql).includes("title_id IN")
-        ? String(sql).match(/\(([^)]*)\)/)?.[1].split(",").map((value) => value.trim())
+        ? values.filter((value) => typeof value === "string")
         : [values[0]];
       return state.sources.filter((source) => ids.includes(source.title_id)).map((source) => ({ ...source }));
     }
@@ -67,7 +71,7 @@ export function createCatalogD1({
     }
 
     if (/FROM catalog_episodes/.test(sql) && sql.includes("title_id IN")) {
-      const ids = String(sql).match(/\(([^)]*)\)/)?.[1].split(",").map((value) => value.trim()) || [];
+      const ids = values.filter((value) => typeof value === "string");
       return state.episodes
         .filter((episode) => ids.includes(episode.title_id))
         .map((episode) => ({ ...episode }));
