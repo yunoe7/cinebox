@@ -42,7 +42,9 @@ test("shared catalog management does not require a separate admin password", asy
     request: request({ id: "tmdb:movie:42" }),
     env: { ...makeEnv(db), CINEBOX_ADMIN_PASSWORD_HASH: undefined, CINEBOX_SESSION_SECRET: undefined },
   });
-  assert.equal(response.status, 404);
+  // The Discord session authorises the route; no password challenge is issued.
+  // An empty body is rejected as "nothing to modify" (400), not as 401/403.
+  assert.equal(response.status, 400);
 });
 
 test("shared catalog management requires D1", async () => {
@@ -105,19 +107,34 @@ test("publishing a shared title still works through the single-statement path", 
     env: makeEnv(db),
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { updated: true, id: "tmdb:movie:42", published: true });
+  const body = await response.json();
+  assert.equal(body.updated, true);
+  assert.equal(body.id, "tmdb:movie:42");
+  // The response always carries the persisted row, never an echo of the request.
+  assert.equal(body.title.published, 1);
+  assert.equal(body.title.vip_exclusive, 0);
   assert.equal(db.state.titles[0].published, 1);
 });
 
-test("editing a shared title still uses the COALESCE update", async () => {
-  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+test("editing a shared title returns the row stored in D1", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}", published: 0, vip_exclusive: 1, public_at: null }] });
   const response = await onRequestPatch({
     request: request({ id: "tmdb:movie:42", title: "Nouveau titre" }),
     env: makeEnv(db),
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { updated: true, id: "tmdb:movie:42" });
-  assert.ok(db.calls.some((call) => /UPDATE catalog_titles SET title=COALESCE/.test(call.sql)));
+  const body = await response.json();
+  assert.equal(body.updated, true);
+  assert.equal(body.id, "tmdb:movie:42");
+  assert.equal(body.title.title, "Nouveau titre");
+  assert.equal(body.title.published, 0);
+  assert.equal(body.title.vip_exclusive, 1);
+  assert.equal(body.title.vip_early_access, 0);
+  assert.equal(body.title.public_at, null);
+  assert.equal(body.title.access, "vip");
+  assert.ok(db.calls.some((call) => /UPDATE catalog_titles SET title=\?,overview=\?/.test(call.sql)));
+  // An ordinary metadata edit must not touch the VIP rights.
+  assert.equal(db.state.titles[0].vip_exclusive, 1);
 });
 
 test("editing an unknown title returns 404 without writing", async () => {
@@ -127,5 +144,115 @@ test("editing an unknown title returns 404 without writing", async () => {
     env: makeEnv(db),
   });
   assert.equal(response.status, 404);
+  assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
+});
+
+const FUTURE = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+
+test("exclusive and early access can never be combined", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", vip_exclusive: true, vip_early_access: true, public_at: FUTURE }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /exclusif/i);
+  assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
+});
+
+test("early access without a public date is refused", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", vip_exclusive: false, vip_early_access: true, public_at: null }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /date/i);
+  assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
+});
+
+test("an unreadable public date is refused", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", vip_early_access: true, public_at: "hier" }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
+});
+
+test("non-boolean VIP flags are refused", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  for (const body of [
+    { vip_exclusive: "yes" },
+    { vip_early_access: "no" },
+  ]) {
+    const response = await onRequestPatch({ request: request({ id: "tmdb:movie:42", ...body }), env: makeEnv(db) });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+  assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
+});
+
+test("saving early access persists the ISO date and reports the stored row", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", vip_exclusive: false, vip_early_access: true, public_at: FUTURE }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.title.vip_early_access, 1);
+  assert.equal(body.title.vip_exclusive, 0);
+  assert.equal(body.title.public_at, FUTURE);
+  assert.equal(body.title.access, "early");
+  assert.equal(db.state.titles[0].public_at, FUTURE);
+});
+
+test("switching to exclusive clears the public date and the early flag", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}", vip_early_access: 1, public_at: FUTURE }] });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", vip_exclusive: true, vip_early_access: false }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.title.vip_exclusive, 1);
+  assert.equal(body.title.vip_early_access, 0);
+  assert.equal(body.title.public_at, null);
+  assert.equal(body.title.access, "vip");
+});
+
+test("editing metadata never changes the stored VIP rights", async () => {
+  const db = createFakeD1({
+    titles: [{ id: "tmdb:movie:42", metadata_json: "{}", vip_early_access: 1, public_at: FUTURE, overview: "avant" }],
+  });
+  const response = await onRequestPatch({
+    request: request({ id: "tmdb:movie:42", title: "Renommé", overview: "après" }),
+    env: makeEnv(db),
+  });
+  assert.equal(response.status, 200);
+  const stored = db.state.titles[0];
+  assert.equal(stored.vip_early_access, 1);
+  assert.equal(stored.public_at, FUTURE);
+  assert.equal(stored.title, "Renommé");
+  assert.equal(stored.overview, "après");
+});
+
+test("republishing through PATCH does not touch the VIP rights", async () => {
+  const db = createFakeD1({
+    titles: [{ id: "tmdb:movie:42", metadata_json: "{}", published: 0, vip_exclusive: 1 }],
+  });
+  const response = await onRequestPatch({ request: request({ id: "tmdb:movie:42", published: true }), env: makeEnv(db) });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.title.published, 1);
+  assert.equal(body.title.vip_exclusive, 1);
+  assert.equal(db.state.titles[0].vip_exclusive, 1);
+});
+
+test("a PATCH without any change is refused", async () => {
+  const db = createFakeD1({ titles: [{ id: "tmdb:movie:42", metadata_json: "{}" }] });
+  const response = await onRequestPatch({ request: request({ id: "tmdb:movie:42" }), env: makeEnv(db) });
+  assert.equal(response.status, 400);
   assert.equal(db.calls.some((call) => /UPDATE/.test(call.sql)), false);
 });

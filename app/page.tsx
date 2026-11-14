@@ -32,7 +32,8 @@ import { DiscordAccessGate } from "../components/cinebox/DiscordAccessGate";
 import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cinebox/account-data.mjs";
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
-import { loadSharedCatalog } from "../lib/cinebox/shared-catalog.mjs";
+import { loadSharedCatalog, sharedCatalogItemToTitle } from "../lib/cinebox/shared-catalog.mjs";
+import { applySharedVipRestrictions, filterAccessibleTitles } from "../lib/cinebox/vip-access.mjs";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
@@ -290,6 +291,7 @@ export default function HomePage() {
   const [sharedCatalogTitles, setSharedCatalogTitles] = useState<Title[]>([]);
   const [sharedCatalogStatus, setSharedCatalogStatus] = useState<{ status: "loading" | "success" | "error"; reason?: string }>({ status: "loading" });
   const [viewerVip, setViewerVip] = useState(false);
+  const [viewerAccess, setViewerAccess] = useState<{ authenticated: boolean; vip: boolean; admin: boolean; entitled: boolean }>({ authenticated: false, vip: false, admin: false, entitled: false });
   const [sharedCatalogRetryKey, setSharedCatalogRetryKey] = useState(0);
   const [sharedAdminStats, setSharedAdminStats] = useState<{titles:number;films:number;series:number;videos:number;episodes:number;loaded:boolean}>({titles:0,films:0,series:0,videos:0,episodes:0,loaded:false});
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -350,7 +352,13 @@ export default function HomePage() {
   const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
-  const browseTitles = useMemo(() => overlayAccountData(mergeCatalogTitles(titles, sharedCatalogTitles), accountData), [titles, sharedCatalogTitles, accountData]);
+  const browseTitles = useMemo(() => {
+    // Personal copies of a shared title inherit the authoritative VIP rights,
+    // then the whole catalogue is filtered with the same policy as the API.
+    const localWithRights = applySharedVipRestrictions(titles, sharedCatalogTitles);
+    const entitled = filterAccessibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess);
+    return overlayAccountData(entitled, accountData);
+  }, [titles, sharedCatalogTitles, accountData, viewerAccess]);
   const visibleFavorites = useMemo(() => {
     const ids = visibleFavoriteIds(browseTitles, favorites);
     return { ids, idSet: new Set(ids), count: ids.length };
@@ -597,7 +605,14 @@ export default function HomePage() {
       if (result.status === "success") {
         sharedCatalogTitlesRef.current = result.titles;
         setSharedCatalogTitles(result.titles);
-        setViewerVip(Boolean(result.viewer?.vip));
+        const nextAccess = {
+          authenticated: Boolean(result.viewer?.authenticated),
+          vip: Boolean(result.viewer?.vip),
+          admin: Boolean(result.viewer?.admin),
+          entitled: Boolean(result.viewer?.entitled ?? (result.viewer?.vip || result.viewer?.admin)),
+        };
+        setViewerVip(nextAccess.vip);
+        setViewerAccess(nextAccess);
         setSharedCatalogStatus({ status: "success" });
         return;
       }
@@ -608,6 +623,58 @@ export default function HomePage() {
     });
     return () => { cancelled = true; controller.abort(); };
   }, [sharedCatalogRetryKey]);
+
+  // Rights can change while the tab stays open (VIP expiry, grant/revoke,
+  // logout in another tab, early-access date reached). Revalidate on focus and
+  // when the tab becomes visible again, throttled to avoid request bursts.
+  useEffect(() => {
+    let lastCheck = Date.now();
+    const revalidate = () => {
+      if (document.visibilityState === "hidden") return;
+      if (Date.now() - lastCheck < 30_000) return;
+      lastCheck = Date.now();
+      setSharedCatalogRetryKey(key => key + 1);
+    };
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, []);
+
+  // Revalidate one title against the server before opening it or starting a
+  // video. A stale right (downgrade, expiry, revocation) closes the detail or
+  // refuses playback instead of replaying a cached URL.
+  const revalidateTitleAccess = async (item: Title): Promise<Title | null> => {
+    if (!item.sharedId) return item;
+    try {
+      const response = await fetch(`/api/catalog/access?id=${encodeURIComponent(item.sharedId)}`, {
+        cache: "no-store",
+        headers: { accept: "application/json" },
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) return item;
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      if (!contentType.includes("application/json")) return item;
+      const payload = await response.json();
+      return payload?.title && typeof payload.title === "object" ? sharedCatalogItemToTitle(payload.title) : item;
+    } catch {
+      return item;
+    }
+  };
+
+  // If the catalogue refreshes after a downgrade/expiry, a still-open detail
+  // for a now-hidden title must close immediately.
+  useEffect(() => {
+    if (!selected?.sharedId || selected.source !== "shared" || sharedCatalogStatus.status !== "success") return;
+    const stillAvailable = sharedCatalogTitles.some(item => item.sharedId === selected.sharedId);
+    if (stillAvailable) return;
+    setSelected(null);
+    setSelectedEpisodeUrl(null);
+    setSelectedEpisode(null);
+    setNotice({ title: "Accès modifié", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+  }, [sharedCatalogTitles, sharedCatalogStatus.status, selected]);
 
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
@@ -722,17 +789,29 @@ export default function HomePage() {
   ].filter(row => row.items.length), [browseTitles]);
   const withAccountPlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
-  const openTitle = (item: Title) => {
+  const openTitle = async (item: Title) => {
+    const resolved = await revalidateTitleAccess(item);
+    if (!resolved) {
+      setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      setSharedCatalogRetryKey(key => key + 1);
+      return;
+    }
     setSelectedEpisodeUrl(null);
     setSelectedEpisode(null);
-    setSelected(withAccountPlayback(item));
+    setSelected(withAccountPlayback(resolved));
   };
 
-  const resumeTitle = (item: Title) => {
-    const episode = (item.seasons || []).flatMap(season => season.episodes.map(entry => ({ season: season.number, episode: entry })))
+  const resumeTitle = async (item: Title) => {
+    const resolved = await revalidateTitleAccess(item);
+    if (!resolved) {
+      setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      setSharedCatalogRetryKey(key => key + 1);
+      return;
+    }
+    const episode = (resolved.seasons || []).flatMap(season => season.episodes.map(entry => ({ season: season.number, episode: entry })))
       .filter(entry => Boolean(entry.episode.videoUrl) && (entry.episode.progress || 0) > 0 && (entry.episode.progress || 0) < 100)
       .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
-    setSelected(item);
+    setSelected(resolved);
     if (episode?.episode.videoUrl) {
       setSelectedEpisode({ season: episode.season, episode: episode.episode.number });
       setSelectedEpisodeUrl(episode.episode.videoUrl);
@@ -1081,8 +1160,8 @@ export default function HomePage() {
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
               <div className="hero-cinema-actions">
-                <ShimmerButton className="hero-cinema-play" onClick={() => setSelected(withAccountPlayback(activeFeatured))}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
-                <button className="hero-cinema-info" onClick={() => setSelected(withAccountPlayback(activeFeatured))}>Détails</button>
+                <ShimmerButton className="hero-cinema-play" onClick={() => void openTitle(activeFeatured)}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
+                <button className="hero-cinema-info" onClick={() => void openTitle(activeFeatured)}>Détails</button>
               </div>
             </BlurFade>
             {featuredTitles.length > 1 && <div className="hero-cinema-controls">
@@ -1411,7 +1490,23 @@ export default function HomePage() {
           activePage={activePage}
           favorites={favorites}
           onClose={() => { setSelected(null); setSelectedEpisodeUrl(null); setSelectedEpisode(null); }}
-          onSelectEpisode={(season, episode, url) => {
+          onSelectEpisode={async (season, episode, url) => {
+            if (selected?.sharedId) {
+              const resolved = await revalidateTitleAccess(selected);
+              if (!resolved) {
+                setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+                setSelected(null);
+                setSelectedEpisodeUrl(null);
+                setSelectedEpisode(null);
+                setSharedCatalogRetryKey(key => key + 1);
+                return;
+              }
+              setSelected(withAccountPlayback(resolved));
+              const resolvedUrl = resolved.seasons?.find(item => item.number === season)?.episodes.find(item => item.number === episode)?.videoUrl;
+              setSelectedEpisode({ season, episode });
+              setSelectedEpisodeUrl(resolvedUrl || url || null);
+              return;
+            }
             setSelectedEpisode({ season, episode });
             setSelectedEpisodeUrl(url || null);
           }}
