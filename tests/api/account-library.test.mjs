@@ -318,3 +318,20 @@ test("mergeTitleEdits preserves local season deletion when server is unchanged",
   const merged = mergeTitleEdits(base, latest, edited);
   assert.deepEqual(merged.seasons.map((season) => season.number), [1]);
 });
+
+
+test("persistLibrary retries repeated concurrent library conflicts without losing local changes", async () => {
+  const base = createAccountLibrary({ favorites: [1] }, []);
+  const local = createAccountLibrary({ favorites: [1, 2] }, []);
+  let calls = 0;
+  const saveFn = async (library, revision) => {
+    calls++;
+    if (calls < 5) return { status: "conflict", revision: revision + 1, library: createAccountLibrary({ favorites: [1, 3 + calls] }, []) };
+    assert.ok(library.favorites.includes(2));
+    return { status: "saved", revision: revision + 1 };
+  };
+  const result = await persistLibrary({ saveFn, initialLibrary: local, initialAccountData: { favorites: [1, 2] }, initialRevision: 1, baseLibrary: base });
+  assert.equal(result.ok, true);
+  assert.equal(calls, 5);
+  assert.ok(result.library.favorites.includes(2));
+});
