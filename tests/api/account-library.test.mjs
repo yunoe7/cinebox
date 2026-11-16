@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits } from "../../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits, persistLibrary } from "../../lib/cinebox/account-library.mjs";
 
 test("account library strips device-local media URLs and asset keys", () => {
   const library = createAccountLibrary({
@@ -147,4 +147,28 @@ test("mergeTitleEdits preserves both sequential edits", () => {
   const v2 = mergeTitleEdits(base, v1, { id: 1, name: "V1", description: "V2", rating: 5 });
   assert.equal(v2.name, "V1");
   assert.equal(v2.description, "V2");
+});
+
+test("persistLibrary retries on conflict and merges", async () => {
+  const baseLib = createAccountLibrary({ favorites: [1] }, []);
+  const localLib = createAccountLibrary({ favorites: [1, 2] }, []);
+  let calls = 0;
+  const saveFn = async (lib, rev) => {
+    calls++;
+    if (calls === 1) return { status: "conflict", revision: 5, library: createAccountLibrary({ favorites: [1, 3] }, []) };
+    return { status: "saved", revision: 6 };
+  };
+  const res = await persistLibrary({ saveFn, initialLibrary: localLib, initialAccountData: { favorites: [1, 2] }, initialRevision: 1, baseLibrary: baseLib, maxAttempts: 3 });
+  assert.equal(res.ok, true);
+  assert.equal(res.revision, 6);
+  assert.ok(res.accountData.favorites.includes(2));
+  assert.ok(res.accountData.favorites.includes(3));
+});
+
+test("persistLibrary returns conflict after max attempts", async () => {
+  const localLib = createAccountLibrary({ favorites: [1] }, []);
+  const saveFn = async () => ({ status: "conflict", revision: 2, library: createAccountLibrary({ favorites: [2] }, []) });
+  const res = await persistLibrary({ saveFn, initialLibrary: localLib, initialAccountData: { favorites: [1] }, initialRevision: 1, baseLibrary: null, maxAttempts: 2 });
+  assert.equal(res.ok, false);
+  assert.equal(res.conflict, true);
 });

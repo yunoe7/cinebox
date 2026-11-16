@@ -465,8 +465,6 @@ export default function HomePage() {
       const previous = accountLibraryWriteRef.current;
       const operation = accountLibraryWriteRef.current.then(async () => {
         await previous.catch(() => {});
-        // Merge title updates into the latest known catalog without overwriting
-        // more recent changes to the same title (field-level three-way merge).
         const baseTitles = lastSavedLibraryRef.current?.titles || [];
         const latestTitles = catalogTitlesRef.current;
         const mergedTitles = [...latestTitles];
@@ -478,39 +476,34 @@ export default function HomePage() {
           else mergedTitles[idx] = mergeTitleEdits(baseT, latestT, t);
         }
         const library = createAccountLibrary(accountDataRef.current, mergedTitles);
-        const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-        if (result.status === "conflict") {
-          accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
-          if (result.library && isAccountLibrary(result.library)) {
-            const merged = mergeLibraries(library, result.library, lastSavedLibraryRef.current as any);
-            catalogTitlesRef.current = merged.titles as Title[];
-            const data = emptyAccountData();
-            data.favorites = merged.favorites;
-            data.playback = merged.playback as typeof data.playback;
-            data.history = merged.history;
-            data.viewCounts = merged.viewCounts;
-            data.preferences = merged.preferences;
-            accountDataRef.current = data;
-            setAccountData(data);
-            const displayed = overlayAccountData(catalogTitlesRef.current as Title[], data);
-            titlesRef.current = displayed;
-            setTitles(displayed);
-            const retry = await saveAccountLibrary(merged, accountLibraryRevisionRef.current);
-            if (retry.status === "saved") { accountLibraryRevisionRef.current = retry.revision; lastSavedLibraryRef.current = merged; return true; }
-            if (retry.status === "conflict") { accountLibraryRevisionRef.current = retry.revision ?? accountLibraryRevisionRef.current; }
-          }
-          throw new Error("Conflit de synchronisation : version serveur chargée, réessayez.");
+        const res = await persistLibrary({
+          saveFn: saveAccountLibrary,
+          initialLibrary: library,
+          initialAccountData: accountDataRef.current,
+          initialRevision: accountLibraryRevisionRef.current,
+          baseLibrary: lastSavedLibraryRef.current as any,
+          maxAttempts: 3,
+        });
+        accountLibraryRevisionRef.current = res.revision;
+        if (res.ok) {
+          lastSavedLibraryRef.current = res.library;
+          accountDataRef.current = res.accountData;
+          setAccountData(res.accountData);
+          catalogTitlesRef.current = res.library.titles as Title[];
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+          titlesRef.current = displayed;
+          setTitles(displayed);
+        } else {
+          accountDataRef.current = res.accountData;
+          setAccountData(res.accountData);
+          catalogTitlesRef.current = res.library.titles as Title[];
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+          titlesRef.current = displayed;
+          setTitles(displayed);
+          setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." });
         }
-        if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
-        accountLibraryRevisionRef.current = result.revision;
-        lastSavedLibraryRef.current = library;
-        catalogTitlesRef.current = mergedTitles;
-        const displayed = overlayAccountData(mergedTitles, accountDataRef.current);
-        titlesRef.current = displayed;
-        setTitles(displayed);
+        return res.ok;
       });
-      accountLibraryWriteRef.current = operation.catch(() => {});
-      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
     }
     return true;
   };
