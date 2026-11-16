@@ -1,4 +1,5 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { readJsonBody } from "../../_lib/account-auth.ts";
 import { validateVipSettings, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
 
 interface Statement { bind(...values: (string | number | null)[]): Statement; all<T>(): Promise<{ results: T[]; success: boolean }>; run(): Promise<{ success: boolean; meta?: { changes?: number } }>; }
@@ -57,7 +58,10 @@ export async function onRequestGet({ request, env }: { request: Request; env: En
 export async function onRequestPatch({ request, env }: { request: Request; env: Env }) {
   const denied = await requireAdmin(request, env); if (denied) return denied;
   if (!env.DB) return json({ error: "Base de données indisponible." }, 503);
-  let body: any; try { body = await request.json(); } catch { return json({ error: "JSON invalide." }, 400); }
+  const parsed = await readJsonBody(request, 32 * 1024);
+  if (!parsed.ok) return json({ error: parsed.reason === "too-large" ? "Requête trop volumineuse." : "JSON invalide." }, parsed.reason === "too-large" ? 413 : 400);
+  const body: any = parsed.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON invalide." }, 400);
   if (typeof body?.id !== "string" || !body.id.trim()) return json({ error: "Identifiant manquant." }, 400);
   const id = body.id.trim();
   const stringFields = ["title", "overview", "release_date"] as const;
@@ -135,7 +139,10 @@ export async function onRequestPatch({ request, env }: { request: Request; env: 
 export async function onRequestDelete({ request, env }: { request: Request; env: Env }) {
   const denied = await requireAdmin(request, env); if (denied) return denied;
   if (!env.DB) return json({ error: "Base de données indisponible." }, 503);
-  let body: any; try { body = await request.json(); } catch { return json({ error: "JSON invalide." }, 400); }
+  const parsed = await readJsonBody(request, 32 * 1024);
+  if (!parsed.ok) return json({ error: parsed.reason === "too-large" ? "Requête trop volumineuse." : "JSON invalide." }, parsed.reason === "too-large" ? 413 : 400);
+  const body: any = parsed.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON invalide." }, 400);
   if (typeof body?.id !== "string" || !body.id.trim()) return json({ error: "Identifiant manquant." }, 400);
   const id = body.id.trim();
   try {
