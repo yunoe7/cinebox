@@ -14,6 +14,7 @@ function makeDb({ titleKind = "movie", existingSource = null, runChanges = 1, fa
       return {
         bind(...values) { call.values = values; return this; },
         async all() {
+          if (failAll && failAll.test(sql)) return { success: false, results: [] };
           if (/FROM catalog_titles WHERE id=\?/.test(sql)) {
             return { success: true, results: [{ id: call.values[0], kind: titleKind }] };
           }
