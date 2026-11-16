@@ -45,6 +45,7 @@ export async function onRequestGet({request,env}:{request:Request;env:Env}){
    env.DB.prepare("SELECT id,title_id,title,season_number,episode_number FROM catalog_episodes ORDER BY title_id,season_number,episode_number").all<{id:string;title_id:string;title:string;season_number:number;episode_number:number}>(),
    env.DB.prepare("SELECT s.id,s.title_id,s.episode_id,s.provider,s.file_code,s.playback_url,s.encoding_status,s.uploaded_at,t.title,e.title AS episode_title FROM catalog_media_sources s JOIN catalog_titles t ON t.id=s.title_id LEFT JOIN catalog_episodes e ON e.id=s.episode_id ORDER BY s.updated_at DESC").all<Record<string,unknown>>()
   ]);
+  if(!titles.success||!episodes.success||!sources.success)return json({error:"D1 n’a pas pu charger les données d’import."},503);
   // The Uqload listing is a convenience. A Uqload outage must not hide the
   // D1 catalogue nor the Vidmoly sources, so its failure is reported, not thrown.
   let files:Array<{file_code:string;file_title:string;status:string;canplay:number|null}>=[];let upstreamError:string|null=null;
@@ -86,12 +87,14 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}){
  if(provider==="uqload"&&!env.UQLOAD_API_KEY)return json({error:"La clé UQLOAD_API_KEY n’est pas configurée dans Cloudflare Pages."},503);
  // Publication is not required for admin media association; the admin route remains protected by requireAdmin.
  const title=await env.DB.prepare("SELECT id,kind FROM catalog_titles WHERE id=?").bind(body.titleId).all<{id:string;kind:string}>();
+ if(!title.success)return json({error:"D1 n’a pas pu vérifier le contenu demandé."},503);
  if(!title.results?.length)return json({error:"Contenu introuvable."},404);
  const episodeId=typeof body.episodeId==="string"&&body.episodeId?body.episodeId:null;
- if(episodeId){const ep=await env.DB.prepare("SELECT id FROM catalog_episodes WHERE id=? AND title_id=?").bind(episodeId,body.titleId).all<{id:string}>();if(!ep.results?.length||title.results[0].kind!=="series")return json({error:"Épisode invalide pour cette série."},400);}
+ if(episodeId){const ep=await env.DB.prepare("SELECT id FROM catalog_episodes WHERE id=? AND title_id=?").bind(episodeId,body.titleId).all<{id:string}>();if(!ep.success)return json({error:"D1 n’a pas pu vérifier l’épisode demandé."},503);if(!ep.results?.length||title.results[0].kind!=="series")return json({error:"Épisode invalide pour cette série."},400);}
  // A provider/file code identifies one unique remote video. Never let a
  // routine manual import silently move a source to another title or episode.
  const existing=await env.DB.prepare("SELECT id,title_id,episode_id FROM catalog_media_sources WHERE provider=? AND file_code=? LIMIT 1").bind(provider,fileCode).all<{id:string;title_id:string;episode_id:string|null}>();
+ if(!existing.success)return json({error:"D1 n’a pas pu vérifier l’association de cette source vidéo."},503);
  const current=existing.results?.[0];
  if(current&&(current.title_id!==body.titleId.trim()||current.episode_id!==(episodeId??null))){
   return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED",existingTitleId:current.title_id,existingEpisodeId:current.episode_id},409);
