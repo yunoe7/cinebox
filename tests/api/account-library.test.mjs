@@ -293,3 +293,28 @@ test("mergeLibraries combines independent edits to the same title", () => {
   assert.equal(merged.titles[0].name, "server name");
   assert.equal(merged.titles[0].description, "local description");
 });
+
+
+test("mergeTitleEdits preserves local episode deletion when server is unchanged", () => {
+  const base = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Keep" }, { number: 2, title: "Remove" }] }] };
+  const latest = structuredClone(base);
+  const edited = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Keep" }] }] };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.deepEqual(merged.seasons[0].episodes.map((episode) => episode.number), [1]);
+});
+
+test("mergeTitleEdits keeps server-edited episode when local deletes it", () => {
+  const base = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Keep" }, { number: 2, title: "Old" }] }] };
+  const latest = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Keep" }, { number: 2, title: "Server edit" }] }] };
+  const edited = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Keep" }] }] };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.seasons[0].episodes.find((episode) => episode.number === 2).title, "Server edit");
+});
+
+test("mergeTitleEdits preserves local season deletion when server is unchanged", () => {
+  const base = { id: 1, seasons: [{ number: 1, episodes: [] }, { number: 2, episodes: [] }] };
+  const latest = structuredClone(base);
+  const edited = { id: 1, seasons: [{ number: 1, episodes: [] }] };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.deepEqual(merged.seasons.map((season) => season.number), [1]);
+});
