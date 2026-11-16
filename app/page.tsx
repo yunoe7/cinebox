@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
-import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits, persistLibrary } from "../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits, persistLibrary, enqueueLibraryWrite } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -462,9 +462,7 @@ export default function HomePage() {
     titlesRef.current = displayed;
     setTitles(displayed);
     if (accountLibraryReadyRef.current) {
-      const previous = accountLibraryWriteRef.current;
-      const operation = accountLibraryWriteRef.current.then(async () => {
-        await previous.catch(() => {});
+      const operation = enqueueLibraryWrite(accountLibraryWriteRef, async () => {
         const baseTitles = lastSavedLibraryRef.current?.titles || [];
         const latestTitles = catalogTitlesRef.current;
         const mergedTitles = [...latestTitles];
@@ -504,6 +502,7 @@ export default function HomePage() {
         }
         return res.ok;
       });
+      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
     }
     return true;
   };
