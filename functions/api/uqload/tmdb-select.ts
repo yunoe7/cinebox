@@ -1,6 +1,6 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, encodingStatusFromCanplay } from "../../../lib/cinebox/media-sources.mjs";
-interface Statement{bind(...values:(string|number|null)[]):Statement;all<T>():Promise<{success:boolean;results:T[]}>;run():Promise<{success:boolean}>;}
+interface Statement{bind(...values:(string|number|null)[]):Statement;all<T>():Promise<{success:boolean;results:T[]}>;run():Promise<{success:boolean;meta?:{changes?:number}}>;}
 interface DB{prepare(sql:string):Statement;}
 interface Env extends AdminEnv{DB?:DB;TMDB_READ_ACCESS_TOKEN?:string;}
 type Obj=Record<string,unknown>;
@@ -54,9 +54,15 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
     .bind(episodeId,id,season,episode,clean(ep?.name)||`Épisode ${episode}`,clean(ep?.overview,8000),Number.isFinite(Number(ep?.runtime))?Number(ep?.runtime)*60:null,clean(ep?.still_path,180)||null,JSON.stringify({tmdbId:ep?.id??null,airDate:clean(ep?.air_date,20)})).run();
   }
  }
- await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
+ const existing=await env.DB.prepare("SELECT title_id,episode_id FROM catalog_media_sources WHERE provider=? AND file_code=? LIMIT 1").bind("uqload",code).all<{title_id:string;episode_id:string|null}>();
+ if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
+ const current=existing.results?.[0];
+ if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
+ const saved=await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,
- encoding_status=CASE WHEN excluded.encoding_status='pending' THEN catalog_media_sources.encoding_status ELSE excluded.encoding_status END,updated_at=CURRENT_TIMESTAMP`)
+ encoding_status=CASE WHEN excluded.encoding_status='pending' THEN catalog_media_sources.encoding_status ELSE excluded.encoding_status END,updated_at=CURRENT_TIMESTAMP WHERE catalog_media_sources.title_id=excluded.title_id AND catalog_media_sources.episode_id IS excluded.episode_id`)
  .bind(crypto.randomUUID(),id,episodeId,"uqload",code,code,buildPlaybackUrl(code,"uqload"),null,encodingStatus,null).run();
+ if(!saved.success)return json({error:"D1 n’a pas enregistré l’association de la source vidéo."},503);
+ if(saved.meta?.changes===0)return json({error:"Cette source vidéo a été associée à un autre contenu ou épisode entre-temps. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
  return json({associated:true,title,kind,titleId:id,episodeId,encodingStatus,published:false,episodeDetected:Boolean(episodeId)});
 }
