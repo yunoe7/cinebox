@@ -5,7 +5,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 
 const CODE = "abc123def456";
 
-function makeDb({ titleKind = "movie", existingSource = null } = {}) {
+function makeDb({ titleKind = "movie", existingSource = null, runChanges = 1 } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -22,7 +22,7 @@ function makeDb({ titleKind = "movie", existingSource = null } = {}) {
           }
           return { success: true, results: [] };
         },
-        async run() { return { success: true }; },
+        async run() { return { success: true, meta: { changes: runChanges } }; },
       };
     },
     batch: async () => [],
@@ -179,4 +179,19 @@ test("une source déjà liée au même contenu peut être actualisée", async ()
   const { result } = await withUqloadFetch({ status: 200, result: [{ canplay: 1 }] }, () => onRequestPost({ request: makeRequest({ url: "https://uqload.vc/embed-" + CODE + ".html", titleId: "t1" }), env }));
   assert.equal(result.status, 200);
   assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), true);
+});
+
+
+test("un conflit apparu après la vérification préalable est bloqué atomiquement", async () => {
+  const { db, calls } = makeDb({ runChanges: 0 });
+  const env = { DB: withDiscordAdminDb(db), UQLOAD_API_KEY: "unit-test-key" };
+  const { result } = await withUqloadFetch(
+    { status: 200, result: [{ canplay: 1 }] },
+    () => onRequestPost({ request: makeRequest({ url: "https://uqload.vc/embed-" + CODE + ".html", titleId: "t1" }), env }),
+  );
+  assert.equal(result.status, 409);
+  assert.equal((await result.json()).code, "SOURCE_ALREADY_ASSOCIATED");
+  const insert = calls.find((call) => /INSERT INTO catalog_media_sources/.test(call.sql));
+  assert.ok(insert, "the atomic upsert must be attempted");
+  assert.match(insert.sql, /episode_id IS excluded\.episode_id/);
 });
