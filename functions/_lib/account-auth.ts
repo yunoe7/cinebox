@@ -36,6 +36,51 @@ export function validOrigin(request: Request) {
   const site=request.headers.get("sec-fetch-site");
   return (!site || site==="same-origin") && request.headers.get("x-cinebox-request")==="1";
 }
+
+/**
+ * Read and parse a JSON request body with a hard streaming byte limit.
+ * Content-Length is only an early hint; the streamed byte count is authoritative.
+ */
+export async function readJsonBody(
+  request: Request,
+  maxBytes: number,
+): Promise<{ ok: true; value: unknown } | { ok: false; reason: "too-large" | "invalid-json" }> {
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    return { ok: false, reason: "too-large" };
+  }
+  if (!request.body) return { ok: false, reason: "invalid-json" };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return { ok: false, reason: "too-large" };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { ok: true, value: JSON.parse(raw) as unknown };
+  } catch {
+    return { ok: false, reason: "invalid-json" };
+  }
+}
+
 export function randomToken(bytes=32) { const value=new Uint8Array(bytes); crypto.getRandomValues(value); return b64(value); }
 export async function sha256(value: string) { return b64(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))); }
 export async function createAccountSession(request: Request, env: AccountEnv, userId: string) {
