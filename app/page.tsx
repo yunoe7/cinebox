@@ -413,6 +413,9 @@ export default function HomePage() {
     const operation = (async () => {
       await previous.catch(() => {});
       const next = updater(structuredClone(accountDataRef.current));
+      // Keep the favorites UI and the ref used by rapid toggles in sync immediately.
+      favoritesRef.current = next.favorites;
+      setFavorites(next.favorites);
       const library = createAccountLibrary(next, catalogTitlesRef.current);
       const res = await persistLibrary({
         saveFn: saveAccountLibrary,
@@ -427,6 +430,8 @@ export default function HomePage() {
         lastSavedLibraryRef.current = res.library;
         accountDataRef.current = res.accountData;
         setAccountData(res.accountData);
+        favoritesRef.current = res.accountData.favorites;
+        setFavorites(res.accountData.favorites);
         catalogTitlesRef.current = res.library.titles as Title[];
         const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
         titlesRef.current = displayed;
