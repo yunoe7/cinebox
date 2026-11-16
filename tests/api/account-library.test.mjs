@@ -279,3 +279,14 @@ test("mergeTitleEdits keeps a server field when local did not change it", () => 
   const merged = mergeTitleEdits(base, latest, edited);
   assert.equal(merged.tagline, "server edit");
 });
+
+
+test("mergeLibraries combines independent edits to the same title", () => {
+  const title = (name, description) => ({ id: 7, name, description, kind: "Film", year: 2024, genre: "Drame", poster: "", backdrop: "", progress: 0, duration: "" });
+  const base = createAccountLibrary({}, [title("Base", "base description")]);
+  const local = createAccountLibrary({}, [title("Base", "local description")]);
+  const server = createAccountLibrary({}, [title("server name", "base description")]);
+  const merged = mergeLibraries(local, server, base);
+  assert.equal(merged.titles[0].name, "server name");
+  assert.equal(merged.titles[0].description, "local description");
+});
