@@ -1,6 +1,7 @@
 import { resolvePublishId } from "../../../lib/cinebox/shared-id.mjs";
 import { normalizeCatalogMetadata } from "../../../lib/cinebox/catalog-metadata.mjs";
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { readJsonBody } from "../../_lib/account-auth.ts";
 import { validateVipSettings } from "../../../lib/cinebox/vip-access.mjs";
 
 /**
@@ -227,14 +228,10 @@ export async function onRequestPost({ request, env }: { request: Request; env: P
   if (denied) return denied;
   if (!env.DB) return json({ error: "Le catalogue distant n'est pas configuré." }, 503);
 
-  let body: PublishBody;
-  try {
-    const raw: unknown = await request.json();
-    if (!isRecord(raw)) return json({ error: "Corps de requête invalide." }, 400);
-    body = raw as unknown as PublishBody;
-  } catch {
-    return json({ error: "Corps JSON invalide." }, 400);
-  }
+  const parsedBody = await readJsonBody(request, 2 * 1024 * 1024);
+  if (!parsedBody.ok) return json({ error: parsedBody.reason === "too-large" ? "Requête trop volumineuse." : "Corps JSON invalide." }, parsedBody.reason === "too-large" ? 413 : 400);
+  if (!isRecord(parsedBody.value)) return json({ error: "Corps de requête invalide." }, 400);
+  const body = parsedBody.value as unknown as PublishBody;
 
   const tmdbId = Number.isSafeInteger(body.tmdbId) && Number(body.tmdbId) > 0 ? Number(body.tmdbId) : null;
   const id = resolvePublishId({ id: body.id, kind: body.kind, tmdbId });
