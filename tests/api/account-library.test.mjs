@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAccountLibrary, isAccountLibrary, mergeLibraries } from "../../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits } from "../../lib/cinebox/account-library.mjs";
 
 test("account library strips device-local media URLs and asset keys", () => {
   const library = createAccountLibrary({
@@ -79,13 +79,13 @@ test("mergeLibraries keeps server-added favorite when local unchanged", () => {
   assert.deepEqual(merged.favorites.sort(), [1, 2]);
 });
 
-test("mergeLibraries preserves a voluntary progress reset to zero", () => {
-  const base = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
-  const local = createAccountLibrary({ playback: { "1": { currentSeconds: 0, progress: 0, episodes: {} } } }, []);
-  const server = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
-  const merged = mergeLibraries(local, server, base);
-  assert.equal(merged.playback["1"].progress, 0);
-  assert.equal(merged.playback["1"].currentSeconds, 0);
+test("mergeTitleEdits merges seasons and episodes by number", () => {
+  const base = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1", progress: 0 }] }] };
+  const latest = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1", progress: 10 }] }] };
+  const edited = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1 renamed", progress: 0 }] }] };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.seasons[0].episodes[0].title, "Ep1 renamed");
+  assert.equal(merged.seasons[0].episodes[0].progress, 10);
 });
 
 test("mergeLibraries preserves titles removed locally", () => {
@@ -95,4 +95,39 @@ test("mergeLibraries preserves titles removed locally", () => {
   const server = createAccountLibrary({}, [t(1), t(2)]); // unchanged
   const merged = mergeLibraries(local, server, base);
   assert.deepEqual(merged.titles.map((x) => x.id), [2]);
+});
+
+test("mergeLibraries preserves a voluntary progress reset to zero", () => {
+  const base = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
+  const local = createAccountLibrary({ playback: { "1": { currentSeconds: 0, progress: 0, episodes: {} } } }, []);
+  const server = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
+  const merged = mergeLibraries(local, server, base);
+  assert.equal(merged.playback["1"].progress, 0);
+  assert.equal(merged.playback["1"].currentSeconds, 0);
+});
+
+test("mergeTitleEdits preserves non-conflicting field changes", () => {
+  const base = { id: 1, name: "Base", description: "desc", rating: 5 };
+  const latest = { id: 1, name: "Renamed", description: "desc", rating: 5 };
+  const edited = { id: 1, name: "Base", description: "new desc", rating: 5 };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.name, "Renamed");
+  assert.equal(merged.description, "new desc");
+});
+
+test("mergeTitleEdits resolves conflicting field with server winning", () => {
+  const base = { id: 1, name: "Base", description: "desc" };
+  const latest = { id: 1, name: "ServerName", description: "desc" };
+  const edited = { id: 1, name: "LocalName", description: "desc" };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.name, "ServerName");
+});
+
+test("mergeTitleEdits merges seasons and episodes by number", () => {
+  const base = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1", progress: 0 }] }] };
+  const latest = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1", progress: 10 }] }] };
+  const edited = { id: 1, seasons: [{ number: 1, episodes: [{ number: 1, title: "Ep1 renamed", progress: 0 }] }] };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.seasons[0].episodes[0].title, "Ep1 renamed");
+  assert.equal(merged.seasons[0].episodes[0].progress, 10);
 });
