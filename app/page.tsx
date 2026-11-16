@@ -491,8 +491,16 @@ export default function HomePage() {
       const previous = accountLibraryWriteRef.current;
       const operation = accountLibraryWriteRef.current.then(async () => {
         await previous.catch(() => {});
-        // Build the library from the latest known state inside the queue.
-        const library = createAccountLibrary(accountDataRef.current, safeTitles);
+        // Apply the title update to the latest known catalog inside the queue,
+        // without overwriting titles changed by a more recent operation.
+        const latestTitles = catalogTitlesRef.current;
+        const mergedTitles = [...latestTitles];
+        for (const t of safeTitles) {
+          const idx = mergedTitles.findIndex((x) => x.id === t.id);
+          if (idx >= 0) mergedTitles[idx] = t;
+          else mergedTitles.push(t);
+        }
+        const library = createAccountLibrary(accountDataRef.current, mergedTitles);
         const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
         if (result.status === "conflict") {
           accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
@@ -519,6 +527,10 @@ export default function HomePage() {
         if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
         accountLibraryRevisionRef.current = result.revision;
         lastSavedLibraryRef.current = library;
+        catalogTitlesRef.current = mergedTitles;
+        const displayed = overlayAccountData(mergedTitles, accountDataRef.current);
+        titlesRef.current = displayed;
+        setTitles(displayed);
       });
       accountLibraryWriteRef.current = operation.catch(() => {});
       void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
