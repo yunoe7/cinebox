@@ -6,7 +6,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 const CODE = "abc123def456";
 const OTHER_CODE = "zzz999yyy888";
 
-function makeDb({ existingCodes = [] } = {}) {
+function makeDb({ existingCodes = [], failRun = null, failAll = null } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -15,6 +15,7 @@ function makeDb({ existingCodes = [] } = {}) {
       return {
         bind(...values) { call.values = values; return this; },
         async all() {
+          if (failAll && failAll.test(sql)) return { success: false, results: [] };
           // "already associated?" lookup used by createDraftAndAssociate.
           if (/SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=\?/.test(sql)) {
             const known = existingCodes.includes(call.values[0]);
@@ -26,7 +27,7 @@ function makeDb({ existingCodes = [] } = {}) {
           }
           return { success: true, results: [] };
         },
-        async run() { return { success: true, meta: { changes: 1 } }; },
+        async run() { return failRun && failRun.test(sql) ? { success: false, meta: { changes: 0 } } : { success: true, meta: { changes: 1 } }; },
       };
     },
     batch: async () => [],
@@ -214,4 +215,41 @@ test("des codes Uqload dupliqués bloquent la réconciliation même si le total 
   } finally {
     globalThis.fetch = original;
   }
+});
+
+
+test("un échec D1 pendant l'actualisation d'une source est compté comme erreur", async () => {
+  const { db } = makeDb({ existingCodes: [CODE], failRun: /^UPDATE catalog_media_sources/ });
+  const { result } = await withUqloadList(
+    [{ file_code: CODE, file_title: "Film 2024", canplay: 1 }],
+    () => onRequestPost({ request: makeRequest(), env: makeEnv(db) }),
+  );
+  assert.equal(result.status, 200);
+  const body = await result.json();
+  assert.equal(body.existing, 0);
+  assert.equal(body.skipped, 1);
+  assert.equal(body.details[0].status, "erreur");
+  assert.match(body.details[0].reason, /D1 n’a pas confirmé/);
+});
+
+test("un échec D1 lors de la lecture des sources interrompt la réconciliation", async () => {
+  const { db, calls } = makeDb({ existingCodes: [CODE, OTHER_CODE], failAll: /SELECT file_code FROM catalog_media_sources/ });
+  const { result } = await withUqloadList(
+    [{ file_code: CODE, file_title: "Film 2024", canplay: 1 }],
+    () => onRequestPost({ request: makeRequest(), env: makeEnv(db) }),
+  );
+  assert.equal(result.status, 503);
+  assert.equal(calls.some((call) => /^DELETE FROM catalog_media_sources/.test(call.sql)), false);
+});
+
+test("un échec D1 pendant une suppression arrête la réconciliation et le signale", async () => {
+  const { db } = makeDb({ existingCodes: [CODE, OTHER_CODE], failRun: /^DELETE FROM catalog_media_sources/ });
+  const { result } = await withUqloadList(
+    [{ file_code: CODE, file_title: "Film 2024", canplay: 1 }],
+    () => onRequestPost({ request: makeRequest(), env: makeEnv(db) }),
+  );
+  assert.equal(result.status, 200);
+  const body = await result.json();
+  assert.equal(body.deleted, 0);
+  assert.match(body.deletionSkipped, /Échec d’une suppression D1/);
 });
