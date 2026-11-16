@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Heart, Play, Settings, X, Bookmark, Info, Film, ChevronRight, ListVideo, Star, Clock } from "lucide-react";
 import type { Title } from "../../lib/cinebox/types";
-import VidsrcPlayer from "./VidsrcPlayer";
 import VideoPlayer from "./VideoPlayer";
 import { retainBlobUrl } from "../../lib/cinebox/blob-url-manager.mjs";
 import { MagicCard } from "../magicui/magic-card";
@@ -76,8 +75,6 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     : selected.kind === "Série"
       ? selectedEpisodeUrl || firstPlayableEpisode?.url || (episodes.length ? null : selected.videoUrl) || null
       : selectedEpisodeUrl || selected.videoUrl || firstEpisode?.url || null;
-  // A TMDB ID alone must never bypass a VIP restriction through Vidsrc.
-  const canUseVidsrc = canPlayContent && Boolean(selected.tmdbId && (selected.kind === "Film" || selected.kind === "Série"));
   const playbackProgress = selectedEpisode
     ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.progress ?? 0
     : selected.progress ?? 0;
@@ -86,14 +83,14 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
       ? selected.seasons?.find(season => season.number === selectedEpisode.season)?.episodes.find(episode => episode.number === selectedEpisode.episode)?.currentTime ?? 0
       : selected.currentTime ?? 0)
     : 0;
-  const canPlay = canPlayContent && (canUseVidsrc || Boolean(selectedEpisode
+  const canPlay = canPlayContent && Boolean(selectedEpisode
     ? selectedEpisodeUrl || chosen?.url
-    : playbackUrl));
+    : playbackUrl);
   const resumableEpisode = selected.seasons?.flatMap(season => season.episodes
     .filter(episode => (episode.progress || 0) > 0 && (episode.progress || 0) < 100)
     .map(episode => ({ season: season.number, episode })))
     .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
-  const titleCanResume = canPlayContent && Boolean((selected.videoUrl || selected.tmdbId) && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
+  const titleCanResume = canPlayContent && Boolean(selected.videoUrl && (selected.progress || 0) > 0 && (selected.progress || 0) < 100);
   const canResume = selected.kind === "Série" ? Boolean(resumableEpisode) : titleCanResume;
   const progressLabel = selected.kind === "Série" ? resumableEpisode?.episode.progress : selected.progress;
   const activeSeason = selected.seasons?.find(season => season.number === activeSeasonNumber) || selected.seasons?.[0];
@@ -104,7 +101,7 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
   const showDuration = hasDuration && !durationIsSeasonCount;
   const hasRating = typeof selected.rating === "number" && Number.isFinite(selected.rating) && selected.rating > 0;
   const play = (resume = false) => {
-    if (!playbackUrl && !canUseVidsrc) return;
+    if (!playbackUrl) return;
     if (resume && resumableEpisode) {
       onSelectEpisode(resumableEpisode.season, resumableEpisode.episode.number, resumableEpisode.episode.videoUrl || "");
     } else if (selected.kind === "Série" && !selectedEpisode && firstEpisode) {
@@ -118,10 +115,10 @@ export default function DetailModal({ selected, selectedEpisodeUrl, selectedEpis
     <motion.div className="modal-backdrop detail-page-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div ref={dialogRef} {...dialogProps} className="detail-modal detail-page-modal" aria-labelledby="detail-modal-title" initial={reduceMotion ? false : { y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={reduceMotion ? { opacity: 0 } : { y: 10, opacity: 0 }}>
         <button ref={closeButtonRef} className="close-btn detail-page-close" type="button" aria-label="Fermer les détails" onClick={onClose}><X/></button>
-        {playing && (playbackUrl || canUseVidsrc) ? <section className="episode-watch-page">
+        {playing && playbackUrl ? <section className="episode-watch-page">
           <div className="episode-watch-top">
             <div className="episode-watch-player">
-              {!playbackUrl && canUseVidsrc ? <VidsrcPlayer key={`vidsrc:${selected.tmdbId}:${selectedEpisode?.season ?? ""}:${selectedEpisode?.episode ?? ""}`} kind={selected.kind === "Film" ? "movie" : "tv"} id={selected.tmdbId!} season={selectedEpisode?.season} episode={selectedEpisode?.episode} resumeAt={playbackResumeAt} title={`${selected.name}${selectedEpisode ? ` · S${selectedEpisode.season}E${selectedEpisode.episode}` : ""}`} onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)}/> : playbackUrl ? <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt}
+              {playbackUrl ? <VideoPlayer key={playbackUrl} src={playbackUrl} resumeAt={playbackResumeAt}
                 onProgress={(second, progress) => onProgress(selected.id, selectedEpisode, second, progress)} onEnded={() => onEnded(selected, selectedEpisode)} onView={() => undefined}/> : null}
             </div>
             <aside className="episode-watch-sidebar">
