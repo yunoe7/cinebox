@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
-import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary } from "../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -412,7 +412,25 @@ export default function HomePage() {
     const library = createAccountLibrary(next, catalogTitlesRef.current);
     const operation = accountLibraryWriteRef.current.then(async () => {
       const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-      if (result.status !== "saved") throw new Error(result.status === "conflict" ? "La bibliothèque a été modifiée dans un autre onglet. Rechargez la page avant de continuer." : "Session expirée.");
+      if (result.status === "conflict") {
+        accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
+        if (result.library && isAccountLibrary(result.library)) {
+          catalogTitlesRef.current = result.library.titles as Title[];
+          const data = emptyAccountData();
+          data.favorites = result.library.favorites;
+          data.playback = result.library.playback as typeof data.playback;
+          data.history = result.library.history;
+          data.viewCounts = result.library.viewCounts;
+          data.preferences = result.library.preferences;
+          accountDataRef.current = data;
+          setAccountData(data);
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], data);
+          titlesRef.current = displayed;
+          setTitles(displayed);
+        }
+        throw new Error("Conflit de synchronisation : la version serveur a été chargée, réessayez votre modification.");
+      }
+      if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
       accountLibraryRevisionRef.current = result.revision;
     });
     accountLibraryWriteRef.current = operation.catch(() => {});
@@ -434,7 +452,22 @@ export default function HomePage() {
       const library = createAccountLibrary(accountDataRef.current, safeTitles);
       const operation = accountLibraryWriteRef.current.then(async () => {
         const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-        if (result.status !== "saved") throw new Error(result.status === "conflict" ? "Conflit de synchronisation : rechargez la page." : "Session expirée.");
+        if (result.status === "conflict") {
+          accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
+          if (result.library && isAccountLibrary(result.library)) {
+            catalogTitlesRef.current = result.library.titles as Title[];
+            const data = emptyAccountData();
+            data.favorites = result.library.favorites;
+            data.playback = result.library.playback as typeof data.playback;
+            data.history = result.library.history;
+            data.viewCounts = result.library.viewCounts;
+            data.preferences = result.library.preferences;
+            accountDataRef.current = data;
+            setAccountData(data);
+          }
+          throw new Error("Conflit de synchronisation : version serveur chargée, réessayez.");
+        }
+        if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
         accountLibraryRevisionRef.current = result.revision;
       });
       accountLibraryWriteRef.current = operation.catch(() => {});
