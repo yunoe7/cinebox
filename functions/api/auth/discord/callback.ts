@@ -30,7 +30,9 @@ export async function onRequestGet({request,env}:{request:Request;env:AccountEnv
       const current=await getAccount(request,env); if(!current) return fail("session");
       const linked=await env.DB.prepare("SELECT user_id FROM auth_identities WHERE provider='discord' AND provider_user_id=?").bind(profile.id).first<{user_id:string}>();
       if(linked && linked.user_id!==current.id) return fail("discord-already-linked");
-      await env.DB.prepare("INSERT INTO auth_identities (id,user_id,provider,provider_user_id,provider_username,provider_global_name,provider_avatar) VALUES (?,?,'discord',?,?,?,?) ON CONFLICT(provider,provider_user_id) DO UPDATE SET provider_username=excluded.provider_username,provider_global_name=excluded.provider_global_name,provider_avatar=excluded.provider_avatar").bind(crypto.randomUUID(),current.id,profile.id,profile.username,profile.global_name||null,profile.avatar||null).run();
+      const linkResult = await env.DB.prepare("INSERT INTO auth_identities (id,user_id,provider,provider_user_id,provider_username,provider_global_name,provider_avatar) VALUES (?, ?, 'discord', ?, ?, ?, ?) ON CONFLICT(provider,provider_user_id) DO UPDATE SET provider_username=excluded.provider_username,provider_global_name=excluded.provider_global_name,provider_avatar=excluded.provider_avatar WHERE auth_identities.user_id=excluded.user_id").bind(crypto.randomUUID(),current.id,profile.id,profile.username,profile.global_name||null,profile.avatar||null).run();
+      const linkChanges = linkResult && typeof linkResult === "object" && "meta" in linkResult && linkResult.meta && typeof linkResult.meta === "object" && "changes" in linkResult.meta ? linkResult.meta.changes : undefined;
+      if (linkResult && typeof linkResult === "object" && "success" in linkResult && linkResult.success === false || linkChanges === 0) return fail("discord-already-linked");
       userId=current.id;
     } else {
       const linked=await env.DB.prepare("SELECT user_id FROM auth_identities WHERE provider='discord' AND provider_user_id=?").bind(profile.id).first<{user_id:string}>();
