@@ -171,21 +171,63 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   const files: Obj[] = [];
   let page = 1;
   let inventoryComplete = false;
+  let inventoryIssue: string | null = null;
+  let expectedPages: number | null = null;
+  let expectedTotal: number | null = null;
+  let observedFiles = 0;
   while (page <= MAX_SYNC_PAGES) {
     const payload = await uqload("/file/list", uqloadApiKey, { per_page: String(MAX_FILES_PER_SYNC), page: String(page) });
+    const result = isObj(payload.result) ? payload.result : null;
+    const reportedPages = Number(result?.pages);
+    const reportedTotal = Number(result?.results_total);
+    const hasPageCount = Number.isSafeInteger(reportedPages) && reportedPages >= 1;
+    const hasTotal = Number.isSafeInteger(reportedTotal) && reportedTotal >= 0;
+    if (page === 1) {
+      if (hasPageCount) expectedPages = reportedPages;
+      if (hasTotal) expectedTotal = reportedTotal;
+      if (!hasPageCount || !hasTotal) inventoryIssue = "Pagination Uqload incomplète : métadonnées pages/results_total absentes.";
+      if (hasPageCount && reportedPages > MAX_SYNC_PAGES) inventoryIssue = `Inventaire Uqload trop volumineux : ${reportedPages} pages dépassent le plafond de ${MAX_SYNC_PAGES}.`;
+    } else if ((hasPageCount && expectedPages !== reportedPages) || (hasTotal && expectedTotal !== reportedTotal) || !hasPageCount || !hasTotal) {
+      inventoryIssue = "Les métadonnées de pagination Uqload ont changé pendant la synchronisation.";
+    }
     const batch = rows(payload).slice(0, MAX_FILES_PER_SYNC);
     files.push(...batch);
-    if (batch.length < MAX_FILES_PER_SYNC) { inventoryComplete = true; break; }
+    observedFiles += batch.length;
+
+    if (expectedPages !== null && page >= expectedPages) {
+      inventoryComplete = inventoryIssue === null;
+      break;
+    }
+    if (batch.length === 0) {
+      inventoryIssue ||= "Une page Uqload est vide avant la fin annoncée de l’inventaire.";
+      break;
+    }
+    if (page === MAX_SYNC_PAGES) {
+      inventoryIssue ||= "Plafond de pagination atteint : inventaire Uqload incomplet.";
+      break;
+    }
+    // Without trustworthy page metadata, continue only while the page is full.
+    // A short page ends discovery, but never authorizes destructive reconciliation.
+    if (expectedPages === null && batch.length < MAX_FILES_PER_SYNC) break;
     page++;
   }
+  if (inventoryComplete && expectedTotal !== observedFiles) {
+    inventoryComplete = false;
+    inventoryIssue = `Inventaire incohérent : ${observedFiles} fichiers reçus sur ${expectedTotal} annoncés.`;
+  }
+  const hasInvalidRemoteCode = files.some(file => !/^[A-Za-z0-9]{6,64}$/.test(clean(file.file_code || file.code, 64)));
+  if (inventoryComplete && hasInvalidRemoteCode) {
+    inventoryComplete = false;
+    inventoryIssue = "Inventaire distant contenant des fichiers sans code exploitable : aucune suppression effectuée.";
+  }
   let deleted = 0;
-  let deletionSkipped: string | null = null;
+  let deletionSkipped: string | null = inventoryIssue;
   // Reconcile only after reading the complete remote inventory. An empty or
   // suspicious inventory is never trusted: an account/key mismatch or an API
   // change must not wipe the catalogue's media sources.
   const liveCodes = new Set(files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code)));
   if (!inventoryComplete) {
-    deletionSkipped = "Inventaire distant incomplet : aucune suppression effectuée.";
+    deletionSkipped ||= "Inventaire distant incomplet : aucune suppression effectuée.";
   } else if (files.length === 0) {
     deletionSkipped = "Inventaire distant vide : aucune suppression effectuée.";
   } else if (liveCodes.size === 0) {
