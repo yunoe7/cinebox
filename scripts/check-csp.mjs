@@ -110,8 +110,8 @@ async function main() {
   expectDirective(
     directives,
     "frame-src",
-    (values) => ["https://vidsrc.sh", "https://uqload.vc", "https://vidmoly.to", "https://vidmoly.org", "https://vidmoly.biz"].every((origin) => values.includes(origin)),
-    "allow the Vidsrc, Uqload and Vidmoly player origins",
+    (values) => ["https://uqload.vc", "https://vidmoly.to", "https://vidmoly.org", "https://vidmoly.biz"].every((origin) => values.includes(origin)),
+    "allow the Uqload and Vidmoly player origins",
   );
   expectDirective(
     directives,
