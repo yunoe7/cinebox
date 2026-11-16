@@ -98,10 +98,26 @@ export async function revokeAccount(request: Request, env: AccountEnv) {
   const token=cookie(request);
   if(token) await env.DB.prepare("UPDATE account_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND revoked_at IS NULL").bind(await sha256(token)).run();
 }
+let lastRateLimitCleanupAt = 0;
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
+
+/** Opportunistically prune expired counters without making cleanup a dependency of authentication. */
+async function cleanupExpiredRateLimits(env: AccountEnv, now: number) {
+  if (now - lastRateLimitCleanupAt < RATE_LIMIT_CLEANUP_INTERVAL_MS) return;
+  lastRateLimitCleanupAt = now;
+  try {
+    await env.DB.prepare("DELETE FROM account_rate_limits WHERE expires_at<=?")
+      .bind(new Date(now).toISOString()).run();
+  } catch {
+    // Rate limiting must continue to work even if housekeeping temporarily fails.
+  }
+}
+
 export async function enforceRateLimit(env: AccountEnv, request: Request, action: string, limit: number, windowSeconds: number) {
   const ip=request.headers.get("cf-connecting-ip") || "unknown";
   const key=await sha256(action+":"+ip);
   const now=Date.now();
+  await cleanupExpiredRateLimits(env, now);
   const windowStart=new Date(Math.floor(now/(windowSeconds*1000))*windowSeconds*1000).toISOString();
   const expiresAt=new Date(now+windowSeconds*2000).toISOString();
   const row=await env.DB.prepare("INSERT INTO account_rate_limits (rate_key,window_start,attempts,expires_at) VALUES (?,?,1,?) ON CONFLICT(rate_key,window_start) DO UPDATE SET attempts=attempts+1,expires_at=excluded.expires_at RETURNING attempts").bind(key,windowStart,expiresAt).first<{attempts:number}>();
