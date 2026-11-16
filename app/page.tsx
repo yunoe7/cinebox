@@ -412,59 +412,68 @@ export default function HomePage() {
     const localLibrary = createAccountLibrary(next, catalogTitlesRef.current);
     const localAccountData = next;
 
-    const persist = async (libraryToSave: ReturnType<typeof createAccountLibrary>, accountDataToSave: typeof accountData, attempt: number): Promise<boolean> => {
-      const operation = accountLibraryWriteRef.current.then(async () => {
-        const result = await saveAccountLibrary(libraryToSave, accountLibraryRevisionRef.current);
-        if (result.status === "conflict") {
-          accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
-          // Merge server version with the pending local draft instead of discarding it.
-          const serverLibrary = result.library && isAccountLibrary(result.library) ? result.library : null;
-          const mergedLibrary = serverLibrary ? mergeLibraries(libraryToSave, serverLibrary) : libraryToSave;
-          const mergedAccountData = serverLibrary ? (() => {
-            const d = emptyAccountData();
-            d.favorites = mergedLibrary.favorites;
-            d.playback = mergedLibrary.playback as typeof d.playback;
-            d.history = mergedLibrary.history;
-            d.viewCounts = mergedLibrary.viewCounts;
-            d.preferences = mergedLibrary.preferences;
-            return d;
-          })() : accountDataToSave;
-
-          // Update local state to the merged version (preserve user changes).
-          catalogTitlesRef.current = mergedLibrary.titles as Title[];
-          accountDataRef.current = mergedAccountData;
-          setAccountData(mergedAccountData);
-          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], mergedAccountData);
-          titlesRef.current = displayed;
-          setTitles(displayed);
-
-          if (attempt < 2) {
-            // Controlled retry with the merged library and the fresh revision.
-            return persist(mergedLibrary, mergedAccountData, attempt + 1);
+    const persist = async (libraryToSave: ReturnType<typeof createAccountLibrary>, accountDataToSave: typeof accountData): Promise<boolean> => {
+      const previous = accountLibraryWriteRef.current;
+      const operation = (async () => {
+        await previous.catch(() => {});
+        let currentLibrary = libraryToSave;
+        let currentAccountData = accountDataToSave;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const result = await saveAccountLibrary(currentLibrary, accountLibraryRevisionRef.current);
+          if (result.status === "saved") {
+            accountLibraryRevisionRef.current = result.revision;
+            // Final state is exactly what was saved (merged or original).
+            accountDataRef.current = currentAccountData;
+            setAccountData(currentAccountData);
+            catalogTitlesRef.current = currentLibrary.titles as Title[];
+            const displayed = overlayAccountData(catalogTitlesRef.current as Title[], currentAccountData);
+            titlesRef.current = displayed;
+            setTitles(displayed);
+            return true;
           }
-          // Ambiguous or repeated conflict: keep the merged draft and inform.
-          setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
-          return false;
+          if (result.status === "conflict") {
+            accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
+            const serverLibrary = result.library && isAccountLibrary(result.library) ? result.library : null;
+            if (serverLibrary) {
+              const mergedLibrary = mergeLibraries(currentLibrary, serverLibrary);
+              const mergedAccountData = (() => {
+                const d = emptyAccountData();
+                d.favorites = mergedLibrary.favorites;
+                d.playback = mergedLibrary.playback as typeof d.playback;
+                d.history = mergedLibrary.history;
+                d.viewCounts = mergedLibrary.viewCounts;
+                d.preferences = mergedLibrary.preferences;
+                return d;
+              })();
+              // Preserve merged draft in state (no silent overwrite).
+              catalogTitlesRef.current = mergedLibrary.titles as Title[];
+              accountDataRef.current = mergedAccountData;
+              setAccountData(mergedAccountData);
+              const displayed = overlayAccountData(catalogTitlesRef.current as Title[], mergedAccountData);
+              titlesRef.current = displayed;
+              setTitles(displayed);
+              currentLibrary = mergedLibrary;
+              currentAccountData = mergedAccountData;
+              if (attempt < 2) continue; // retry inline (no re-queue)
+            }
+            setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
+            return false;
+          }
+          if (result.status === "unauthenticated") throw new Error("Session expirée.");
+          throw new Error("Sauvegarde impossible.");
         }
-        if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
-        accountLibraryRevisionRef.current = result.revision;
-        return true;
-      });
+        return false;
+      })();
       accountLibraryWriteRef.current = operation.catch(() => {});
       try {
-        const ok = await operation;
-        if (ok) {
-          accountDataRef.current = accountDataToSave;
-          setAccountData(accountDataToSave);
-        }
-        return ok;
+        return await operation;
       } catch (error) {
         setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
         return false;
       }
     };
 
-    return persist(localLibrary, localAccountData, 0);
+    return persist(localLibrary, localAccountData);
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
