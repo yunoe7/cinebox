@@ -89,6 +89,13 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}){
  if(!title.results?.length)return json({error:"Contenu introuvable."},404);
  const episodeId=typeof body.episodeId==="string"&&body.episodeId?body.episodeId:null;
  if(episodeId){const ep=await env.DB.prepare("SELECT id FROM catalog_episodes WHERE id=? AND title_id=?").bind(episodeId,body.titleId).all<{id:string}>();if(!ep.results?.length||title.results[0].kind!=="series")return json({error:"Épisode invalide pour cette série."},400);}
+ // A provider/file code identifies one unique remote video. Never let a
+ // routine manual import silently move a source to another title or episode.
+ const existing=await env.DB.prepare("SELECT id,title_id,episode_id FROM catalog_media_sources WHERE provider=? AND file_code=? LIMIT 1").bind(provider,fileCode).all<{id:string;title_id:string;episode_id:string|null}>();
+ const current=existing.results?.[0];
+ if(current&&(current.title_id!==body.titleId.trim()||current.episode_id!==(episodeId??null))){
+  return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED",existingTitleId:current.title_id,existingEpisodeId:current.episode_id},409);
+ }
  try{
   const info=provider==="uqload"?await upstream("/file/info",env.UQLOAD_API_KEY!,{file_code:fileCode}):null;
   const data=infoRecord(info);
