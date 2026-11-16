@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
-import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary } from "../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -367,7 +367,7 @@ export default function HomePage() {
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const accountDataRef = useRef(emptyAccountData());
   const accountLibraryRevisionRef = useRef(0);
-  const accountLibraryWriteRef = useRef(Promise.resolve());
+  const accountLibraryWriteRef = useRef<Promise<any>>(Promise.resolve());
   const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
@@ -409,33 +409,62 @@ export default function HomePage() {
   const saveAccountData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
     if (!accountLibraryReadyRef.current) return false;
     const next = updater(structuredClone(accountDataRef.current));
-    const library = createAccountLibrary(next, catalogTitlesRef.current);
-    const operation = accountLibraryWriteRef.current.then(async () => {
-      const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-      if (result.status === "conflict") {
-        accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
-        if (result.library && isAccountLibrary(result.library)) {
-          catalogTitlesRef.current = result.library.titles as Title[];
-          const data = emptyAccountData();
-          data.favorites = result.library.favorites;
-          data.playback = result.library.playback as typeof data.playback;
-          data.history = result.library.history;
-          data.viewCounts = result.library.viewCounts;
-          data.preferences = result.library.preferences;
-          accountDataRef.current = data;
-          setAccountData(data);
-          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], data);
+    const localLibrary = createAccountLibrary(next, catalogTitlesRef.current);
+    const localAccountData = next;
+
+    const persist = async (libraryToSave: ReturnType<typeof createAccountLibrary>, accountDataToSave: typeof accountData, attempt: number): Promise<boolean> => {
+      const operation = accountLibraryWriteRef.current.then(async () => {
+        const result = await saveAccountLibrary(libraryToSave, accountLibraryRevisionRef.current);
+        if (result.status === "conflict") {
+          accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
+          // Merge server version with the pending local draft instead of discarding it.
+          const serverLibrary = result.library && isAccountLibrary(result.library) ? result.library : null;
+          const mergedLibrary = serverLibrary ? mergeLibraries(libraryToSave, serverLibrary) : libraryToSave;
+          const mergedAccountData = serverLibrary ? (() => {
+            const d = emptyAccountData();
+            d.favorites = mergedLibrary.favorites;
+            d.playback = mergedLibrary.playback as typeof d.playback;
+            d.history = mergedLibrary.history;
+            d.viewCounts = mergedLibrary.viewCounts;
+            d.preferences = mergedLibrary.preferences;
+            return d;
+          })() : accountDataToSave;
+
+          // Update local state to the merged version (preserve user changes).
+          catalogTitlesRef.current = mergedLibrary.titles as Title[];
+          accountDataRef.current = mergedAccountData;
+          setAccountData(mergedAccountData);
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], mergedAccountData);
           titlesRef.current = displayed;
           setTitles(displayed);
+
+          if (attempt < 2) {
+            // Controlled retry with the merged library and the fresh revision.
+            return persist(mergedLibrary, mergedAccountData, attempt + 1);
+          }
+          // Ambiguous or repeated conflict: keep the merged draft and inform.
+          setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
+          return false;
         }
-        throw new Error("Conflit de synchronisation : la version serveur a été chargée, réessayez votre modification.");
+        if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
+        accountLibraryRevisionRef.current = result.revision;
+        return true;
+      });
+      accountLibraryWriteRef.current = operation.catch(() => {});
+      try {
+        const ok = await operation;
+        if (ok) {
+          accountDataRef.current = accountDataToSave;
+          setAccountData(accountDataToSave);
+        }
+        return ok;
+      } catch (error) {
+        setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
+        return false;
       }
-      if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
-      accountLibraryRevisionRef.current = result.revision;
-    });
-    accountLibraryWriteRef.current = operation.catch(() => {});
-    try { await operation; accountDataRef.current = next; setAccountData(next); return true; }
-    catch (error) { setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." }); return false; }
+    };
+
+    return persist(localLibrary, localAccountData, 0);
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
@@ -455,15 +484,23 @@ export default function HomePage() {
         if (result.status === "conflict") {
           accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
           if (result.library && isAccountLibrary(result.library)) {
-            catalogTitlesRef.current = result.library.titles as Title[];
+            const merged = mergeLibraries(library, result.library);
+            catalogTitlesRef.current = merged.titles as Title[];
             const data = emptyAccountData();
-            data.favorites = result.library.favorites;
-            data.playback = result.library.playback as typeof data.playback;
-            data.history = result.library.history;
-            data.viewCounts = result.library.viewCounts;
-            data.preferences = result.library.preferences;
+            data.favorites = merged.favorites;
+            data.playback = merged.playback as typeof data.playback;
+            data.history = merged.history;
+            data.viewCounts = merged.viewCounts;
+            data.preferences = merged.preferences;
             accountDataRef.current = data;
             setAccountData(data);
+            const displayed = overlayAccountData(catalogTitlesRef.current as Title[], data);
+            titlesRef.current = displayed;
+            setTitles(displayed);
+            // Retry once with merged data.
+            const retry = await saveAccountLibrary(merged, accountLibraryRevisionRef.current);
+            if (retry.status === "saved") { accountLibraryRevisionRef.current = retry.revision; return true; }
+            if (retry.status === "conflict") { accountLibraryRevisionRef.current = retry.revision ?? accountLibraryRevisionRef.current; }
           }
           throw new Error("Conflit de synchronisation : version serveur chargée, réessayez.");
         }
@@ -471,7 +508,7 @@ export default function HomePage() {
         accountLibraryRevisionRef.current = result.revision;
       });
       accountLibraryWriteRef.current = operation.catch(() => {});
-      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n’a pas été enregistrée sur votre compte." }));
+      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
     }
     return true;
   };
