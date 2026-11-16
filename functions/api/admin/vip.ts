@@ -1,4 +1,5 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { readJsonBody } from "../../_lib/account-auth.ts";
 
 interface Statement {
   bind(...values: (string | number | null)[]): Statement;
@@ -45,8 +46,10 @@ export async function onRequestGet({ request, env }: { request: Request; env: En
 export async function onRequestPost({ request, env }: { request: Request; env: Env }) {
   const denied = await authorize(request, env);
   if (denied) return denied;
-  let body: { userId?: unknown; expiresAt?: unknown };
-  try { body = await request.json() as typeof body; } catch { return json({ error: "JSON invalide." }, 400); }
+  const parsed = await readJsonBody(request, 16 * 1024);
+  if (!parsed.ok) return json({ error: parsed.reason === "too-large" ? "Requête trop volumineuse." : "JSON invalide." }, parsed.reason === "too-large" ? 413 : 400);
+  const body = parsed.value as { userId?: unknown; expiresAt?: unknown };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON invalide." }, 400);
   if (typeof body.userId !== "string" || !body.userId.trim() || body.userId.length > 128) {
     return json({ error: "Identifiant de compte invalide." }, 400);
   }
@@ -72,8 +75,10 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
 export async function onRequestDelete({ request, env }: { request: Request; env: Env }) {
   const denied = await authorize(request, env);
   if (denied) return denied;
-  let body: { userId?: unknown };
-  try { body = await request.json() as typeof body; } catch { return json({ error: "JSON invalide." }, 400); }
+  const parsed = await readJsonBody(request, 16 * 1024);
+  if (!parsed.ok) return json({ error: parsed.reason === "too-large" ? "Requête trop volumineuse." : "JSON invalide." }, parsed.reason === "too-large" ? 413 : 400);
+  const body = parsed.value as { userId?: unknown };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON invalide." }, 400);
   if (typeof body.userId !== "string" || !body.userId.trim() || body.userId.length > 128) {
     return json({ error: "Identifiant de compte invalide." }, 400);
   }
