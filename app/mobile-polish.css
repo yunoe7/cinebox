@@ -421,3 +421,26 @@
   .sidebar .topbar-inner { height: 56px !important; min-height: 56px !important; }
   .main-area { padding-top: calc(56px + env(safe-area-inset-top)) !important; }
 }
+
+
+/* Keep the favorites counter optically centered in its circular badge. */
+@media (max-width: 760px) {
+  .sidebar .primary-nav .nav-item {
+    align-items: center;
+  }
+  .sidebar .primary-nav .nav-item > small {
+    display: grid !important;
+    place-items: center !important;
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    margin: 0 0 0 auto !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    font-size: 10px !important;
+    font-variant-numeric: tabular-nums;
+    border-radius: 50%;
+  }
+}
