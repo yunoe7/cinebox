@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAccountLibrary, isAccountLibrary } from "../../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, isAccountLibrary, mergeLibraries } from "../../lib/cinebox/account-library.mjs";
 
 test("account library strips device-local media URLs and asset keys", () => {
   const library = createAccountLibrary({
@@ -34,4 +34,47 @@ test("account library strips device-local media URLs and asset keys", () => {
   assert.equal("assetKey" in library.playback["1"], false);
   assert.equal("assetKey" in library.playback["1"].episodes["1:1"], false);
   assert.equal(library.preferences.autoplayNext, false);
+});
+
+test("mergeLibraries preserves an intentional favorite removal", () => {
+  const base = createAccountLibrary({ favorites: [1, 2] }, []);
+  const local = createAccountLibrary({ favorites: [2] }, []); // removed 1
+  const server = createAccountLibrary({ favorites: [1, 2] }, []); // unchanged
+  const merged = mergeLibraries(local, server, base);
+  assert.deepEqual(merged.favorites, [2]);
+});
+
+test("mergeLibraries preserves an intentional progress reset", () => {
+  const base = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
+  const local = createAccountLibrary({ playback: { "1": { currentSeconds: 0, progress: 0, episodes: {} } } }, []); // reset
+  const server = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []); // unchanged
+  const merged = mergeLibraries(local, server, base);
+  assert.equal(merged.playback["1"].progress, 0);
+  assert.equal(merged.playback["1"].currentSeconds, 0);
+});
+
+test("mergeLibraries keeps a favorite added by another tab", () => {
+  const base = createAccountLibrary({ favorites: [1] }, []);
+  const local = createAccountLibrary({ favorites: [1] }, []); // no change
+  const server = createAccountLibrary({ favorites: [1, 2] }, []); // added 2
+  const merged = mergeLibraries(local, server, base);
+  assert.deepEqual(merged.favorites.sort(), [1, 2]);
+});
+
+test("mergeLibraries keeps a favorite removed locally and added by another tab", () => {
+  const base = createAccountLibrary({ favorites: [1] }, []);
+  const local = createAccountLibrary({ favorites: [] }, []); // removed 1
+  const server = createAccountLibrary({ favorites: [1, 2] }, []); // added 2, kept 1
+  const merged = mergeLibraries(local, server, base);
+  // server added 2 and kept 1 (local removal conflicts) -> keep 1 and 2 (no data loss)
+  assert.ok(merged.favorites.includes(2));
+});
+
+test("mergeLibraries preserves titles removed locally", () => {
+  const t = (id) => ({ id, name: `T${id}`, kind: "Film", year: 2024, genre: "Drame", description: "", poster: "", backdrop: "", progress: 0, duration: "" });
+  const base = createAccountLibrary({}, [t(1), t(2)]);
+  const local = createAccountLibrary({}, [t(2)]); // removed 1
+  const server = createAccountLibrary({}, [t(1), t(2)]); // unchanged
+  const merged = mergeLibraries(local, server, base);
+  assert.deepEqual(merged.titles.map((x) => x.id), [2]);
 });

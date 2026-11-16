@@ -367,6 +367,7 @@ export default function HomePage() {
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const accountDataRef = useRef(emptyAccountData());
   const accountLibraryRevisionRef = useRef(0);
+  const lastSavedLibraryRef = useRef<ReturnType<typeof createAccountLibrary> | null>(null);
   const accountLibraryWriteRef = useRef<Promise<any>>(Promise.resolve());
   const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
@@ -408,20 +409,20 @@ export default function HomePage() {
 
   const saveAccountData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
     if (!accountLibraryReadyRef.current) return false;
-    const next = updater(structuredClone(accountDataRef.current));
-    const localLibrary = createAccountLibrary(next, catalogTitlesRef.current);
-    const localAccountData = next;
-
-    const persist = async (libraryToSave: ReturnType<typeof createAccountLibrary>, accountDataToSave: typeof accountData): Promise<boolean> => {
+    const persist = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
       const previous = accountLibraryWriteRef.current;
       const operation = (async () => {
         await previous.catch(() => {});
-        let currentLibrary = libraryToSave;
-        let currentAccountData = accountDataToSave;
+        // Apply updater to the latest known state inside the queue, so rapid
+        // successive actions compose instead of overwriting each other.
+        const next = updater(structuredClone(accountDataRef.current));
+        let currentLibrary = createAccountLibrary(next, catalogTitlesRef.current);
+        let currentAccountData = next;
         for (let attempt = 0; attempt < 3; attempt++) {
           const result = await saveAccountLibrary(currentLibrary, accountLibraryRevisionRef.current);
           if (result.status === "saved") {
             accountLibraryRevisionRef.current = result.revision;
+            lastSavedLibraryRef.current = currentLibrary;
             // Final state is exactly what was saved (merged or original).
             accountDataRef.current = currentAccountData;
             setAccountData(currentAccountData);
@@ -435,7 +436,7 @@ export default function HomePage() {
             accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
             const serverLibrary = result.library && isAccountLibrary(result.library) ? result.library : null;
             if (serverLibrary) {
-              const mergedLibrary = mergeLibraries(currentLibrary, serverLibrary);
+              const mergedLibrary = mergeLibraries(currentLibrary, serverLibrary, lastSavedLibraryRef.current);
               const mergedAccountData = (() => {
                 const d = emptyAccountData();
                 d.favorites = mergedLibrary.favorites;
@@ -473,7 +474,7 @@ export default function HomePage() {
       }
     };
 
-    return persist(localLibrary, localAccountData);
+    return persist(updater);
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
@@ -493,7 +494,7 @@ export default function HomePage() {
         if (result.status === "conflict") {
           accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
           if (result.library && isAccountLibrary(result.library)) {
-            const merged = mergeLibraries(library, result.library);
+            const merged = mergeLibraries(library, result.library, lastSavedLibraryRef.current);
             catalogTitlesRef.current = merged.titles as Title[];
             const data = emptyAccountData();
             data.favorites = merged.favorites;
@@ -508,13 +509,14 @@ export default function HomePage() {
             setTitles(displayed);
             // Retry once with merged data.
             const retry = await saveAccountLibrary(merged, accountLibraryRevisionRef.current);
-            if (retry.status === "saved") { accountLibraryRevisionRef.current = retry.revision; return true; }
+            if (retry.status === "saved") { accountLibraryRevisionRef.current = retry.revision; lastSavedLibraryRef.current = merged; return true; }
             if (retry.status === "conflict") { accountLibraryRevisionRef.current = retry.revision ?? accountLibraryRevisionRef.current; }
           }
           throw new Error("Conflit de synchronisation : version serveur chargée, réessayez.");
         }
         if (result.status !== "saved") throw new Error(result.status === "unauthenticated" ? "Session expirée." : "Sauvegarde impossible.");
         accountLibraryRevisionRef.current = result.revision;
+        lastSavedLibraryRef.current = library;
       });
       accountLibraryWriteRef.current = operation.catch(() => {});
       void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
@@ -638,6 +640,7 @@ export default function HomePage() {
         if (remote.status !== "ready") throw new Error("Votre session a expiré. Reconnectez-vous.");
         if (cancelled) return;
         accountLibraryRevisionRef.current = remote.revision;
+        lastSavedLibraryRef.current = remote.library && isAccountLibrary(remote.library) ? remote.library : null;
         const library = remote.library;
         const data = emptyAccountData();
         if (library) {
