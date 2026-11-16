@@ -1,6 +1,6 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
 import { parseMediaSourceUrl, buildPlaybackUrl, normalizePlaybackUrl, encodingStatusFromCanplay } from "../../../lib/cinebox/media-sources.mjs";
-interface Statement { bind(...values:(string|number|null)[]):Statement; all<T>():Promise<{success:boolean;results:T[]}>; run():Promise<{success:boolean}>; }
+interface Statement { bind(...values:(string|number|null)[]):Statement; all<T>():Promise<{success:boolean;results:T[]}>; run():Promise<{success:boolean;meta?:{changes?:number}}>; }
 interface DB { prepare(sql:string):Statement; }
 interface Env extends AdminEnv { DB?:DB; UQLOAD_API_KEY?:string; }
 const API="https://uqload.vc/api";
@@ -96,8 +96,9 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}){
   // Uqload reports encoding state through `canplay`; Vidmoly links are direct.
   const encodingStatus=provider==="uqload"?encodingStatusFromCanplay(data.canplay):"ready";
   const quality=typeof data.file_quality==="string"?data.file_quality:typeof data.quality==="string"?data.quality:null;
-  await env.DB.prepare("INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,quality=excluded.quality,encoding_status=excluded.encoding_status,uploaded_at=excluded.uploaded_at,updated_at=CURRENT_TIMESTAMP")
-   .bind(crypto.randomUUID(),body.titleId,episodeId,provider,fileCode,fileCode,playbackUrl,quality,encodingStatus,uploadedAtFromInfo(data)).run();
-  return json({associated:true,provider,fileCode,titleId:body.titleId,episodeId,playbackUrl,encodingStatus});
+  const saved=await env.DB.prepare("INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,quality=excluded.quality,encoding_status=excluded.encoding_status,uploaded_at=excluded.uploaded_at,updated_at=CURRENT_TIMESTAMP")
+   .bind(crypto.randomUUID(),body.titleId.trim(),episodeId,provider,fileCode,fileCode,playbackUrl,quality,encodingStatus,uploadedAtFromInfo(data)).run();
+  if(!saved.success)return json({error:"D1 n’a pas enregistré l’association de la source vidéo."},503);
+  return json({associated:true,provider,fileCode,titleId:body.titleId.trim(),episodeId,playbackUrl,encodingStatus});
  }catch(e){return json({error:e instanceof Error?e.message:"Association Uqload impossible."},502);}
 }
