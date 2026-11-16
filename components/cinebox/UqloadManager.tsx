@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { RefreshCw, Link2, LoaderCircle, Search } from "lucide-react";
+import { RefreshCw, Link2, LoaderCircle, Search, CloudDownload, PlayCircle, Film } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { buildPlaybackUrl } from "../../lib/cinebox/media-sources.mjs";
 import { AdminSessionPanel, type AdminAuthState } from "./AdminSessionPanel";
@@ -195,8 +195,14 @@ export function UqloadManager() {
 
   
   return <section className="admin-shared-catalog admin-media-manager" aria-label="Gestion des lecteurs vidéo">
-    <header className="admin-shared-header"><div className="admin-shared-heading"><div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div><h3>Gérer les hébergeurs</h3><p>Deux lecteurs indépendants : Uqload pour tes fichiers synchronisés, Vidmoly pour tes liens ajoutés manuellement.</p></div>
-      {auth === "authenticated" && <button type="button" className="admin-shared-refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw size={14}/> Actualiser</button>}
+    <header className="admin-section-hero admin-media-hero">
+      <span className="admin-section-hero-icon" aria-hidden="true"><Film size={21}/></span>
+      <div className="admin-section-hero-copy">
+        <div className="eyebrow">CENTRE DES LECTEURS VIDÉO</div>
+        <h2>Gérer les hébergeurs</h2>
+        <p>Uqload pour tes fichiers synchronisés · Vidmoly pour tes liens ajoutés manuellement.</p>
+      </div>
+      {auth === "authenticated" && <button type="button" className="admin-shared-refresh admin-media-refresh" onClick={() => void refresh()} disabled={loading}>{loading ? <LoaderCircle size={14} className="admin-spin"/> : <RefreshCw size={14}/>} Actualiser</button>}
     </header>
     <AdminSessionPanel authState={auth} onLogin={login} onLogout={() => void logout()} description="Les deux espaces sont protégés par ta session administrateur Discord." status={auth === "authenticated" ? `${sources.length} source(s) liée(s) · ${remoteFiles.length} fichier(s) Uqload` : "Connexion requise"} className="admin-shared-session"/>
     {message && <p role={error ? "alert" : "status"} className={`admin-shared-message ${error ? "is-error" : "is-success"}`}>{message}</p>}
@@ -210,8 +216,15 @@ export function UqloadManager() {
           const selectedTarget = targets.find(t => t.id === selection.titleId);
           return <section className={`admin-provider-card ${isUqload ? "is-uqload" : "is-vidmoly"}`} key={provider}>
             <header className="admin-provider-heading">
-              <div><span className="admin-provider-kicker">{isUqload ? "LECTEUR 01 · DÉTECTION AUTOMATIQUE" : "LECTEUR 02 · AJOUT MANUEL"}</span><h4>{isUqload ? "Uqload" : "Vidmoly"}</h4><p>{isUqload ? "Fichiers de ton compte Uqload et association au catalogue." : "Ajoute tes liens Vidmoly séparément, sans dépendre de l’API Uqload."}</p></div>
-              <span className="admin-provider-count">{providerSources.length} source(s)</span>
+              <div className="admin-provider-identity">
+                <span className="admin-provider-icon" aria-hidden="true">{isUqload ? <CloudDownload size={20}/> : <PlayCircle size={20}/>}</span>
+                <div className="admin-provider-copy">
+                  <span className="admin-provider-kicker">{isUqload ? "LECTEUR 01 · DÉTECTION AUTOMATIQUE" : "LECTEUR 02 · AJOUT MANUEL"}</span>
+                  <h4>{isUqload ? "Uqload" : "Vidmoly"}</h4>
+                  <p>{isUqload ? "Fichiers de ton compte Uqload et association au catalogue." : "Ajoute tes liens Vidmoly séparément, sans dépendre de l’API Uqload."}</p>
+                </div>
+              </div>
+              <span className="admin-provider-count"><span className="admin-provider-count-dot"/> {providerSources.length} source(s)</span>
             </header>
             <form onSubmit={event => void importUrl(event, provider)} className="admin-provider-form">
               <label><span>URL {isUqload ? "UQLOAD" : "VIDMOLY"}</span><input type="url" required value={isUqload ? uqloadUrl : vidmolyUrl} onChange={e=>isUqload ? setUqloadUrl(e.target.value) : setVidmolyUrl(e.target.value)} disabled={uqloadUnavailable} placeholder={isUqload ? "https://uqload.vc/…" : "https://vidmoly.org/embed-…"}/></label>
@@ -240,13 +253,13 @@ export function UqloadManager() {
         })}
       </div>
       {remoteFiles.length>0 && <details className="admin-shared-list" open>
-        <summary>Fichiers détectés dans le compte Uqload ({remoteFiles.length})</summary>
+        <summary><span className="admin-detected-summary-icon"><CloudDownload size={16}/></span><span>Fichiers détectés dans le compte Uqload</span><span className="admin-detected-count">{remoteFiles.length}</span></summary>
         <div className="admin-remote-files">{remoteFiles.map(file => {
           const selection = fileSelections[file.file_code] || { titleId: "", episodeId: "" };
           const target = targets.find(item => item.id === selection.titleId);
           const fileBusy = busyFile === file.file_code;
           return <article key={file.file_code} className="admin-shared-row admin-remote-file">
-            <div className="admin-remote-file-info"><strong>{file.file_title || file.title || "Fichier sans titre"}</strong><p>Code {file.file_code} · {remoteFileStatus(file)}{file.size ? ` · ${file.size}` : ""}</p></div>
+            <div className="admin-remote-file-info"><div className="admin-remote-file-title"><span className="admin-remote-file-icon"><Film size={16}/></span><div><strong>{file.file_title || file.title || "Fichier sans titre"}</strong><p>Code {file.file_code} · {remoteFileStatus(file)}{file.size ? ` · ${file.size}` : ""}</p></div></div></div>
             <div className="admin-remote-file-actions">
               <label><span>Film ou série</span><select value={selection.titleId} onChange={e=>updateFileSelection(file.file_code,{titleId:e.target.value,episodeId:""})}><option value="">Choisir un contenu…</option>{targets.map(t=><option key={t.id} value={t.id}>{t.kind==="series"?"Série":t.kind==="movie"?"Film":"Vidéo"} · {t.title}{Number(t.published)!==1?" (non publié)":""}</option>)}</select></label>
               <label><span>Épisode</span><select value={selection.episodeId} onChange={e=>updateFileSelection(file.file_code,{episodeId:e.target.value})} disabled={!target || target.kind!=="series"}><option value="">Film / vidéo entière</option>{(target?.episodes||[]).map(ep=><option key={ep.id} value={ep.id}>S{ep.season_number} E{ep.episode_number} · {ep.title}</option>)}</select></label>

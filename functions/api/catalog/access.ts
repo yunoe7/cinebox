@@ -1,4 +1,4 @@
-import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { getAccount, enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
 import { isAdminAccount } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
 import { canAccessContent, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
@@ -45,6 +45,12 @@ const NOT_FOUND = { error: "Ce titre n’est pas disponible." };
  */
 export async function onRequestGet({ request, env }: { request: Request; env: AccessEnv }): Promise<Response> {
   if (!env.DB) return json({ error: "Le catalogue distant n'est pas configuré." }, 503);
+  try {
+    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-access", 60, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
   const url = new URL(request.url);
   const id = url.searchParams.get("id");
   if (!id || id.length > 240) return json({ error: "Identifiant de titre invalide." }, 400);
@@ -59,7 +65,8 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ac
       .bind(account.id, new Date(now).toISOString()).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
-    const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled: isVip || isAdmin };
+    // Administration permissions do not confer VIP playback rights.
+    const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled: isVip };
 
     const result = await env.DB.prepare(
       `SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,updated_at,

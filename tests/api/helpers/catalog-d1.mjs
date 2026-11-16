@@ -24,26 +24,21 @@ export function createCatalogD1({
   };
   const calls = [];
 
-  function isEntitled(sql, values) {
-    if (/\b1=1\b/.test(sql)) return () => true;
-    // The entitled predicate allows VIP-exclusive rows and binds `now + 48 h`;
-    // the public predicate forbids exclusive rows and binds `now`.
-    const entitled = /vip_exclusive\)?=1/.test(sql);
-    const cutoff = values.find((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value));
-    const cutoffMs = typeof cutoff === "string" ? Date.parse(cutoff) : NaN;
-    const visible = (row) => {
+  function isEntitled(sql) {
+    // Both VIP-exclusive and valid premiere rows are visible in the catalogue;
+    // /api/catalog/access and the response sanitiser enforce playback rights.
+    return (row) => {
       const exclusive = Number(row.vip_exclusive || 0) === 1;
-      if (exclusive) return entitled;
+      if (exclusive) return true;
       const early = Number(row.vip_early_access || 0) === 1;
       if (!early) return true;
       const publicAtMs = typeof row.public_at === "string" ? Date.parse(row.public_at) : NaN;
-      if (!Number.isFinite(publicAtMs) || !Number.isFinite(cutoffMs)) return false;
-      return publicAtMs <= cutoffMs;
+      return Number.isFinite(publicAtMs);
     };
-    return visible;
   }
 
   function query(sql, values) {
+    if (/INSERT INTO account_rate_limits/.test(sql)) return [{ attempts: 1 }];
     if (/FROM account_sessions s JOIN users u/.test(sql)) {
       return state.account ? [{ ...state.account }] : [];
     }
@@ -62,7 +57,7 @@ export function createCatalogD1({
     }
 
     if (/FROM catalog_episodes/.test(sql) && /COUNT\(\*\) AS episodes/.test(sql)) {
-      const predicate = isEntitled(sql, values);
+      const predicate = isEntitled(sql);
       const count = state.episodes.filter((episode) => {
         const title = state.titles.find((entry) => entry.id === episode.title_id);
         return title && Number(title.published) === 1 && predicate(title);
@@ -83,7 +78,7 @@ export function createCatalogD1({
     }
 
     if (/FROM catalog_titles/.test(sql) && /COUNT\(\*\) AS titles/.test(sql)) {
-      const predicate = isEntitled(sql, values);
+      const predicate = isEntitled(sql);
       const visible = state.titles.filter((title) => Number(title.published) === 1 && predicate(title));
       return [{
         titles: visible.length,

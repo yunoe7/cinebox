@@ -1,8 +1,8 @@
 import { isContentAllowedForAge } from "../../../lib/cinebox/age-rating.mjs";
-import { getAccount, type AccountEnv } from "../../_lib/account-auth.ts";
+import { getAccount, enforceRateLimit, type AccountEnv } from "../../_lib/account-auth.ts";
 import { isAdminAccount } from "../../_lib/admin-auth.ts";
 import { buildPlaybackUrl, normalizePlaybackUrl } from "../../../lib/cinebox/media-sources.mjs";
-import { canAccessContent, catalogListingSql, catalogVisibilitySql, promoTitleForViewer, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
+import { canAccessContent, catalogVisibilitySql, sanitizeTitleForViewer, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
 
 interface D1Result<T> { results: T[]; success: boolean; }
 interface D1Statement {
@@ -49,6 +49,13 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
   if (maxAge !== null && (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 18)) return json({ error: "La limite d’âge demandée est invalide." }, 400);
 
   try {
+    if (!await enforceRateLimit(env as unknown as AccountEnv, request, "catalog-list", 120, 60))
+      return json({ error: "Trop de requêtes. Réessayez dans une minute." }, 429);
+  } catch {
+    return json({ error: "Service temporairement indisponible." }, 503);
+  }
+
+  try {
     // VIP entitlement is derived only from the signed-in server session and the
     // current VIP membership, never from a client query parameter. Community
     // administrators (Fondateur/Admin/Modérateur) are entitled so they can
@@ -62,21 +69,22 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
       .bind(account.id, nowIso).first<{ active: number }>() : null;
     const isVip = Boolean(vip);
     const isAdmin = account ? await isAdminAccount(env as unknown as Parameters<typeof isAdminAccount>[0], account.id) : false;
-    const entitled = isVip || isAdmin;
+    // Admin tools can inspect restricted rows through /api/catalog/manage,
+    // but admin status alone must never unlock viewer playback.
+    const entitled = isVip;
     const viewer = { authenticated: Boolean(account), vip: isVip, admin: isAdmin, entitled };
-    // Listing and playback are distinct policies: the listing predicate keeps
-    // VIP-exclusive rows visible to everyone as a showcase, while the access
-    // predicate below decides which rows may carry media URLs.
-    const listing = catalogListingSql(entitled, { now: nowIso });
+    const visibility = catalogVisibilitySql(entitled, { now: nowIso });
+    const accessSql = visibility.sql;
+    const accessParams: (string | number | null)[] = [...visibility.params];
     const whereKind = kind ? " AND kind=?" : "";
-    const params = [...listing.params, ...(kind ? [kind] : [])];
+    const params = [...accessParams, ...(kind ? [kind] : [])];
     const queryLimit = maxAge === null ? rawLimit : 500;
     const queryOffset = maxAge === null ? rawOffset : 0;
     const result = await env.DB.prepare(
       `SELECT id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,updated_at,
               vip_exclusive,vip_early_access,public_at
        FROM catalog_titles
-       WHERE published=1 AND ${listing.sql}${whereKind}
+       WHERE published=1 AND ${accessSql}${whereKind}
        ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
     ).bind(...params, queryLimit, queryOffset).all<CatalogTitleRow>();
     if (!result.success) throw new Error("D1 query failed");
@@ -93,10 +101,10 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
     const rowFlags = (row: CatalogTitleRow) => ({ vipExclusive: row.vip_exclusive, vipEarlyAccess: row.vip_early_access, publicAt: row.public_at });
     const playableRows = pageRows.filter((entry) => canAccessContent(rowFlags(entry.row), viewer, now));
     const playableIds = playableRows.map((entry) => entry.row.id);
-    const episodeResult = playableIds.length ? await env.DB.prepare(
+    const episodeResult = pageRows.length ? await env.DB.prepare(
       `SELECT id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json
-       FROM catalog_episodes WHERE title_id IN (${playableIds.map(() => "?").join(",")}) ORDER BY season_number,episode_number`,
-    ).bind(...playableIds).all<CatalogEpisodeRow>() : { results: [], success: true };
+       FROM catalog_episodes WHERE title_id IN (${pageRows.map(() => "?").join(",")}) ORDER BY season_number,episode_number`,
+    ).bind(...pageRows.map(entry => entry.row.id)).all<CatalogEpisodeRow>() : { results: [], success: true };
     if (!episodeResult.success) throw new Error("D1 episode query failed");
     // Playback sources are part of the public catalogue response: without them,
     // an admin can associate a Uqload file but viewers never receive its URL.
@@ -134,24 +142,19 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         vipExclusive: Boolean(row.vip_exclusive), vipEarlyAccess: Boolean(row.vip_early_access),
         publicAt: row.public_at ?? null, access: vipAccessState(rowFlags(row), now), updatedAt: row.updated_at,
       };
-      // A locked showcase row is published in its promotional shape only: no
-      // seasons, no episodes and no media source. The access predicate decided
-      // this before any media query was issued.
-      if (!canPlay) return promoTitleForViewer({ ...base, vipLocked: true });
+      // Locked rows are still listed (main's teaser policy) but their media
+      // URLs are stripped; episodes are kept for the countdown/teaser.
       const seasons = new Map<number, { number: number; episodes: Array<Record<string, unknown>> }>();
       for (const episode of episodesByTitle.get(row.id) || []) {
         const season = seasons.get(episode.season_number) || { number: episode.season_number, episodes: [] };
         let episodeMetadata: Record<string, unknown> = {};
         try { const parsed = JSON.parse(episode.metadata_json); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) episodeMetadata = parsed; } catch {}
-        season.episodes.push({ number: episode.episode_number, title: episode.title, overview: episode.overview, runtime: episode.duration_seconds, thumbnailPath: episode.thumbnail_path, tmdbId: episodeMetadata.tmdbId ?? null, videoUrl: sourceByEpisode.get(episode.id) });
+        season.episodes.push({ number: episode.episode_number, title: episode.title, overview: episode.overview, runtime: episode.duration_seconds, thumbnailPath: episode.thumbnail_path, tmdbId: episodeMetadata.tmdbId ?? null, videoUrl: canPlay ? sourceByEpisode.get(episode.id) : undefined });
         seasons.set(episode.season_number, season);
       }
-      // The access predicate already vetted this row. This is a second,
-      // explicit guard so a future query regression can never leak a video URL.
       return sanitizeTitleForViewer({
         ...base,
-        vipLocked: false,
-        videoUrl: sourceByTitle.get(row.id),
+        videoUrl: canPlay ? sourceByTitle.get(row.id) : undefined,
         seasons: [...seasons.values()],
       }, viewer, now);
     });
@@ -160,8 +163,8 @@ export async function onRequestGet({ request, env }: { request: Request; env: Ca
         SUM(CASE WHEN kind='movie' THEN 1 ELSE 0 END) AS films,
         SUM(CASE WHEN kind='series' THEN 1 ELSE 0 END) AS series,
         SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) AS videos
-       FROM catalog_titles WHERE published=1 AND ${listing.sql}`,
-    ).bind(...listing.params).all<{ titles:number; films:number; series:number; videos:number }>();
+       FROM catalog_titles WHERE published=1 AND ${accessSql}`,
+    ).bind(...accessParams).all<{ titles:number; films:number; series:number; videos:number }>();
     const episodeVisibility = catalogVisibilitySql(entitled, { now: nowIso, prefix: "t." });
     const episodeStats = await env.DB.prepare(
       `SELECT COUNT(*) AS episodes FROM catalog_episodes e INNER JOIN catalog_titles t ON t.id=e.title_id

@@ -4,6 +4,11 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
+  CalendarClock,
+  Crown,
+  Globe2,
+  LockKeyhole,
+  ShieldCheck,
   Clock3,
   Database,
   Edit3,
@@ -18,6 +23,7 @@ import {
   ShieldAlert,
   Tv,
   Video,
+  X,
 } from "lucide-react";
 import { adminJson, getAdminSession, isAdminAuthError, loginAdmin, logoutAdmin } from "../../lib/cinebox/admin-session.mjs";
 import { resolveRuntime } from "../../lib/cinebox/catalog-metadata.mjs";
@@ -432,13 +438,18 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
       {authState === "authenticated" && (
         <div className="admin-shared-toolbar" role="group" aria-label={isMediaMode ? "Recherche et tri des médias D1" : `Recherche, filtres et tri des ${kindPlural} partagés`}>
           <label className="admin-shared-search">
-            <Search size={14} aria-hidden="true" />
+            <Search size={16} aria-hidden="true" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={isMediaMode ? "Rechercher un média…" : "Rechercher une fiche…"}
               aria-label={isMediaMode ? "Rechercher dans les médias D1" : "Rechercher dans le catalogue partagé"}
             />
+            {query && (
+              <button type="button" className="admin-shared-search-clear" aria-label="Effacer la recherche" onClick={() => setQuery("")}>
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
           </label>
           {!isMediaMode && (
             <label>
@@ -635,37 +646,59 @@ export function SharedCatalogManager({ kindFilter, mode = "catalog" }: { kindFil
                     <div className="admin-shared-editor">
                       <label><span>Titre</span><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} aria-label="Titre" maxLength={300} /></label>
                       <label><span>Synopsis</span><textarea value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} aria-label="Synopsis" rows={4} maxLength={12000} /></label>
-                      <fieldset className="admin-vip-access-fields"><legend>Accès VIP CinéBox</legend>
-                        <div className="admin-vip-mode-group" role="radiogroup" aria-label="Audience du titre">
-                          <label className={draftVipMode === "public" ? "is-selected" : ""}>
-                            <input type="radio" name={`vip-mode-${item.id}`} value="public" checked={draftVipMode === "public"} onChange={() => { setDraftVipMode("public"); setDraftPublicAt(""); }} />
-                            Public — visible par tous
-                          </label>
-                          <label className={draftVipMode === "vip-exclusive" ? "is-selected" : ""}>
-                            <input type="radio" name={`vip-mode-${item.id}`} value="vip-exclusive" checked={draftVipMode === "vip-exclusive"} onChange={() => { setDraftVipMode("vip-exclusive"); setDraftPublicAt(""); }} />
-                            Exclusif VIP — invisible pour les autres
-                          </label>
-                          <label className={draftVipMode === "early-access" ? "is-selected" : ""}>
-                            <input type="radio" name={`vip-mode-${item.id}`} value="early-access" checked={draftVipMode === "early-access"} onChange={() => setDraftVipMode("early-access")} />
-                            Avant-première VIP — visible immédiatement par les VIP
-                          </label>
+                      <section className="admin-access-panel" aria-labelledby={`access-heading-${item.id}`}>
+                        <div className="admin-access-heading">
+                          <span className="admin-access-icon"><ShieldCheck size={18} /></span>
+                          <div>
+                            <span className="admin-access-kicker">VISIBILITÉ & DIFFUSION</span>
+                            <h4 id={`access-heading-${item.id}`}>Qui peut accéder à ce titre ?</h4>
+                            <p>Choisissez une seule règle d’accès. Le mode public reste actif si aucune option VIP n’est sélectionnée.</p>
+                          </div>
+                          <span className={`admin-access-current ${draftVipMode === "vip-exclusive" ? "is-exclusive" : draftVipMode === "early-access" ? "is-premiere" : "is-public"}`}>
+                            {draftVipMode === "vip-exclusive" ? "Exclusif VIP" : draftVipMode === "early-access" ? "Avant-première" : "Public"}
+                          </span>
                         </div>
+
+                        <div className="admin-access-options">
+                          <button type="button" className={`admin-access-option ${draftVipMode === "public" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "public"} onClick={() => { setDraftVipMode("public"); setDraftPublicAt(""); }}>
+                            <span className="admin-access-option-icon"><Globe2 size={18}/></span>
+                            <span className="admin-access-option-copy"><strong>Accès public</strong><small>Tout le monde peut voir et lire ce titre dès sa publication.</small></span>
+                            <span className="admin-access-radio" />
+                          </button>
+                          <button type="button" className={`admin-access-option ${draftVipMode === "vip-exclusive" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "vip-exclusive"} onClick={() => { setDraftVipMode("vip-exclusive"); setDraftPublicAt(""); }}>
+                            <span className="admin-access-option-icon"><LockKeyhole size={18}/></span>
+                            <span className="admin-access-option-copy"><strong>Exclusivité VIP</strong><small>Réservé aux membres VIP actifs. Invisible pour les autres membres.</small></span>
+                            <span className="admin-access-radio" />
+                          </button>
+                          <button type="button" className={`admin-access-option ${draftVipMode === "early-access" ? "is-selected" : ""}`} aria-pressed={draftVipMode === "early-access"} onClick={() => setDraftVipMode("early-access")}>
+                            <span className="admin-access-option-icon"><Crown size={18}/></span>
+                            <span className="admin-access-option-copy"><strong>Avant-première VIP · 48 h</strong><small>Les VIP y accèdent 48 h avant l’ouverture au public.</small></span>
+                            <span className="admin-access-radio" />
+                          </button>
+                        </div>
+
                         {draftVipMode === "early-access" && (
-                          <label className="admin-vip-date">
-                            <span>Date et heure d’ouverture au public (obligatoire)</span>
-                            <input type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} required aria-required="true" />
-                          </label>
+                          <div className="admin-premiere-schedule">
+                            <div className="admin-premiere-schedule-icon"><CalendarClock size={18}/></div>
+                            <div className="admin-premiere-schedule-copy">
+                              <strong>Programmation de la sortie publique</strong>
+                              <span>Indiquez la date et l’heure auxquelles l’accès s’ouvrira à tous.</span>
+                              <label htmlFor={`public-at-${item.id}`}>OUVERTURE AU PUBLIC</label>
+                              <input id={`public-at-${item.id}`} type="datetime-local" value={draftPublicAt} onChange={(event) => setDraftPublicAt(event.target.value)} required aria-required="true" />
+                              <small>La période VIP commence automatiquement 48 heures avant cette date.</small>
+                              {draftPublicAt && Date.parse(draftPublicAt) <= Date.now() && (
+                                <small className="admin-vip-warning" role="status">Cette date est déjà passée : le titre est donc déjà public pour tous.</small>
+                              )}
+                            </div>
+                          </div>
                         )}
-                        <small>
-                          {draftVipMode === "public" && "Le titre est visible par tous les comptes dès maintenant."}
-                          {draftVipMode === "vip-exclusive" && "Seuls les membres VIP et les administrateurs voient ce titre, y compris son adresse vidéo."}
-                          {draftVipMode === "early-access" && "Les VIP voient le titre immédiatement. Les autres comptes le voient automatiquement à la date indiquée (heure locale)."}
-                        </small>
-                        {draftVipMode === "early-access" && draftPublicAt && Date.parse(draftPublicAt) <= Date.now() && (
-                          <small className="admin-vip-warning" role="status">Cette date est déjà passée : le titre est donc déjà public pour tous.</small>
-                        )}
-                      </fieldset>
-                      <div>
+
+                        <div className="admin-access-footnote">
+                          <ShieldCheck size={14}/>
+                          <span>Le choix est enregistré avec la fiche. Les droits d’accès sont appliqués côté serveur, pas seulement dans l’affichage.</span>
+                        </div>
+                      </section>
+                      <div className="admin-shared-editor-footer">
                         <button type="button" className="is-primary" disabled={busy === item.id || !draftTitle.trim() || (draftVipMode === "early-access" && !draftPublicAt)} onClick={() => void save(item)}>
                           {busy === item.id ? <LoaderCircle size={13} className="admin-spin" /> : <Save size={13} />} Enregistrer les modifications
                         </button>

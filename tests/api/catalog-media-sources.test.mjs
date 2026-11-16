@@ -27,6 +27,7 @@ function makeCatalogEnv({ title = TITLE, episodes = [], sources = [] } = {}) {
         calls.push(call);
         return {
           bind(...values) { call.values = values; return this; },
+          async first() { return /INSERT INTO account_rate_limits/.test(sql) ? { attempts: 1 } : null; },
           async all() {
             if (/COUNT\(\*\) AS titles/.test(sql)) {
               return { success: true, results: [{ titles: 1, films: 1, series: 0, videos: 0 }] };

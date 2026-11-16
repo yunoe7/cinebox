@@ -6,7 +6,9 @@ interface Statement {
   run(): Promise<{ success: boolean }>;
 }
 interface DB { prepare(sql: string): Statement; }
-interface Env extends AdminEnv { DB?: DB; }
+interface Env extends AdminEnv {
+  DB?: DB;
+}
 
 async function authorize(request: Request, env: Env) {
   const denied = await requireAdmin(request, env);
@@ -19,9 +21,19 @@ export async function onRequestGet({ request, env }: { request: Request; env: En
   const denied = await authorize(request, env);
   if (denied) return denied;
   try {
+    const search = (new URL(request.url).searchParams.get("search") || "").trim().replace(/[%_]/g, "").slice(0, 80);
+    if (search.length >= 2) {
+      const pattern = `%${search}%`;
+      const result = await env.DB!.prepare(
+        "SELECT u.id AS userId, u.display_name AS displayName, i.provider_username AS discordUsername, i.provider_global_name AS discordName, v.expires_at AS expiresAt FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' LEFT JOIN vip_memberships v ON v.user_id=u.id WHERE u.display_name LIKE ? OR i.provider_username LIKE ? OR i.provider_global_name LIKE ? ORDER BY u.display_name COLLATE NOCASE LIMIT 25",
+      ).bind(pattern, pattern, pattern).all<{ userId:string; displayName:string; discordUsername:string|null; discordName:string|null; expiresAt:string|null }>();
+      if (!result.success) throw new Error("search-failed");
+      const now = Date.now();
+      return json({ users: result.results.map(item => ({ ...item, active: Boolean(item.expiresAt && Date.parse(item.expiresAt) > now) })) });
+    }
     const result = await env.DB!.prepare(
       "SELECT v.user_id AS userId, u.display_name AS displayName, v.expires_at AS expiresAt, v.granted_by AS grantedBy, v.created_at AS createdAt FROM vip_memberships v JOIN users u ON u.id=v.user_id ORDER BY v.expires_at DESC LIMIT 500",
-    ).all<{ userId: string; displayName: string; expiresAt: string; grantedBy: string | null; createdAt: string }>();
+    ).all<{ userId:string; displayName:string; expiresAt:string; grantedBy:string|null; createdAt:string }>();
     if (!result.success) throw new Error("query-failed");
     const now = Date.now();
     return json({ memberships: result.results.map(item => ({ ...item, active: Date.parse(item.expiresAt) > now })) });
