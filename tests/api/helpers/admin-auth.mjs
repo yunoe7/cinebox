@@ -70,6 +70,11 @@ export function adminHeaders({
 export function withDiscordAdminDb(db) {
   return {
     prepare(sql) {
+      // Account-session housekeeping is orthogonal to the admin-route query
+      // assertions; keep it inside this auth fixture rather than the catalogue DB.
+      if (/DELETE FROM account_sessions WHERE expires_at<=\? OR revoked_at IS NOT NULL/.test(sql)) {
+        return { bind() { return this; }, run: async () => ({ success: true }) };
+      }
       if (/SELECT u\.id,u\.display_name,u\.role,u\.email,s\.expires_at FROM account_sessions/.test(sql)) {
         return { bind() { return this; }, first: async () => ({
           id: "test-admin-user", display_name: "Test Admin", role: "user", email: null,
