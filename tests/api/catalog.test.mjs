@@ -76,6 +76,7 @@ test("catalogue returns only published titles and maps metadata safely", async (
       vipEarlyAccess: false,
       publicAt: null,
       access: "public",
+      vipLocked: false,
       seasons: [],
       updatedAt: "2026-11-07 12:00:00",
     }],
@@ -253,9 +254,13 @@ function catalogRequest(options = {}) {
   });
 }
 
-test("a guest sees only public and already-released titles, never VIP rows", async () => {
+test("a guest sees public, released and locked VIP exclusives, never early access", async () => {
   const { body, response } = await fetchTitles(new Request("https://cinebox.test/api/catalog"), envFor({}));
-  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["exclusive", "public", "released"]);
+  const exclusive = body.titles.find((title) => title.id === "exclusive");
+  assert.equal(exclusive.vipLocked, true);
+  assert.ok(!exclusive.videoUrl);
+  assert.ok(!exclusive.seasons);
   assert.deepEqual(body.viewer, { authenticated: false, vip: false, admin: false, entitled: false });
   assert.equal(response.headers.get("vary"), "Cookie");
   // No video URL of a VIP title can be present in the payload.
@@ -267,7 +272,7 @@ test("an authenticated non-VIP account has the same rights as a guest", async ()
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: false, admin: false }),
   );
-  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["exclusive", "public", "released"]);
   assert.equal(body.viewer.authenticated, true);
   assert.equal(body.viewer.vip, false);
   assert.equal(body.viewer.entitled, false);
@@ -312,7 +317,9 @@ test("an expired VIP membership is treated as a non-entitled viewer", async () =
     catalogRequest({ account: ACCOUNT }),
     envFor({ account: ACCOUNT, vip: false }),
   );
-  assert.deepEqual(body.titles.map((title) => title.id), ["public", "released"]);
+  assert.deepEqual(body.titles.map((title) => title.id).sort(), ["exclusive", "public", "released"]);
+  const exclusive = body.titles.find((title) => title.id === "exclusive");
+  assert.equal(exclusive.vipLocked, true);
   assert.equal(body.viewer.vip, false);
 });
 
@@ -332,12 +339,12 @@ test("a scheduled premiere never leaks its playback URL to VIP members", async (
   assert.equal(payload.includes("earlyok"), true);
 });
 
-test("the guest SQL filters on the public date without any VIP early-access window", async () => {
+test("the guest listing SQL shows VIP exclusives and the public date without any 48h window", async () => {
   const db = createCatalogD1({ titles: vipRows });
   await onRequestGet({ request: new Request("https://cinebox.test/api/catalog"), env: { DB: db } });
   const titlesCall = db.calls.find((call) => /FROM catalog_titles/.test(call.sql) && call.sql.includes("ORDER BY"));
   assert.ok(titlesCall);
-  assert.match(titlesCall.sql, /vip_exclusive\)?=0/);
+  assert.match(titlesCall.sql, /vip_exclusive\)?=1/);
   assert.match(titlesCall.sql, /datetime\(public_at\)/);
   // No `now + 48h` window may exist for a non-entitled viewer.
   assert.equal(/48|hours|\+ ?86400000/.test(titlesCall.sql), false);
@@ -372,7 +379,7 @@ test("stats and episode counts follow the same audience as the listing", async (
     ],
   });
   const guest = await fetchTitles(new Request("https://cinebox.test/api/catalog?kind=movie"), { DB: db });
-  assert.equal(guest.body.stats.titles, 2);
+  assert.equal(guest.body.stats.titles, 3);
   assert.equal(guest.body.stats.episodes, 1);
 
   const vip = await fetchTitles(catalogRequest({ account: ACCOUNT }), { DB: createCatalogD1({

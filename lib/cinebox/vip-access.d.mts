@@ -31,7 +31,12 @@ export function vipAccessState(row?: VipFlagsInput, now?: number): VipAccessStat
 export function vipEarlyAccessStart(row?: VipFlagsInput): number | null;
 export function viewerIsEntitled(viewer: ViewerEntitlements | null | undefined): boolean;
 export function canAccessContent(row: VipFlagsInput, viewer: ViewerEntitlements | null | undefined, now?: number): boolean;
+export function canViewInCatalog(row: VipFlagsInput, viewer: ViewerEntitlements | null | undefined, now?: number): boolean;
 export function catalogVisibilitySql(
+  entitled: boolean,
+  options?: { now?: string; prefix?: string },
+): { sql: string; params: string[] };
+export function catalogListingSql(
   entitled: boolean,
   options?: { now?: string; prefix?: string },
 ): { sql: string; params: string[] };
@@ -44,6 +49,8 @@ export function vipStatusLabel(row?: VipFlagsInput, now?: number): {
   label: string;
 };
 export function sanitizeTitleForViewer<T>(title: T, viewer: ViewerEntitlements | null | undefined, now?: number): T;
+export function promoTitleForViewer<T>(title: T): T;
+export function filterVisibleTitles<T>(titles: T[], viewer: ViewerEntitlements | null | undefined, now?: number): T[];
 export function filterAccessibleTitles<T>(titles: T[], viewer: ViewerEntitlements | null | undefined, now?: number): T[];
 export function applySharedVipRestrictions<T extends Title, S extends Title>(
   localTitles: T[],

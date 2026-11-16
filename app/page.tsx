@@ -33,7 +33,8 @@ import { emptyAccountData, overlayAccountData, addAccountView } from "../lib/cin
 import { favoriteTypeCounts as computeFavoriteTypeCounts, visibleFavoriteIds } from "../lib/cinebox/favorites.mjs";
 import { matchesTitleQuery, mergeCatalogTitles } from "../lib/cinebox/catalog-search.mjs";
 import { loadSharedCatalog, sharedCatalogItemToTitle } from "../lib/cinebox/shared-catalog.mjs";
-import { applySharedVipRestrictions, filterAccessibleTitles } from "../lib/cinebox/vip-access.mjs";
+import { applySharedVipRestrictions, filterVisibleTitles } from "../lib/cinebox/vip-access.mjs";
+import { VipShowcaseModal } from "../components/cinebox/VipShowcaseModal";
 import { resolveSharedId } from "../lib/cinebox/shared-id.mjs";
 import { adminJson, getAdminSession } from "../lib/cinebox/admin-session.mjs";
 
@@ -41,7 +42,8 @@ import {
   Clapperboard, Film, Heart, Home, Play, Plus, Search, Settings,
   Tv, X, ChevronRight, Trash2, ShieldCheck,
   LayoutDashboard, Image as ImageIcon, Database, Pencil,
-  HardDrive, Library, Star, LoaderCircle, RefreshCw, ShieldAlert
+  HardDrive, Library, Star, LoaderCircle, RefreshCw, ShieldAlert,
+  Crown, Lock
 } from "lucide-react";
 
 const { stageAssets } = mediaLifecycle;
@@ -329,6 +331,7 @@ export default function HomePage() {
   const [videoSortBy, setVideoSortBy] = useState("recent");
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]["id"]>("overview");
   const [selected, setSelected] = useState<Title | null>(null);
+  const [showcase, setShowcase] = useState<Title | null>(null);
   const [selectedEpisodeUrl, setSelectedEpisodeUrl] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<{ season: number; episode: number } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -360,7 +363,7 @@ export default function HomePage() {
     // Personal copies of a shared title inherit the authoritative VIP rights,
     // then the whole catalogue is filtered with the same policy as the API.
     const localWithRights = applySharedVipRestrictions(titles, sharedCatalogTitles);
-    const entitled = filterAccessibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess, accessClock);
+    const entitled = filterVisibleTitles(mergeCatalogTitles(localWithRights, sharedCatalogTitles), viewerAccess, accessClock);
     return overlayAccountData(entitled, accountData);
   }, [titles, sharedCatalogTitles, accountData, viewerAccess, accessClock]);
   const visibleFavorites = useMemo(() => {
@@ -655,6 +658,15 @@ export default function HomePage() {
     const timer = window.setInterval(() => setAccessClock(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+  // Revalidate the catalogue periodically so an expired VIP membership or a
+  // reached public date updates the showcase without requiring a tab reload.
+  // The server remains the authority; this only refreshes the client view.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") setSharedCatalogRetryKey((key) => key + 1);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Revalidate one title against the server before opening it or starting a
   // video. A stale right (downgrade, expiry, revocation) closes the detail or
@@ -678,16 +690,30 @@ export default function HomePage() {
   };
 
   // If the catalogue refreshes after a downgrade/expiry, a still-open detail
-  // for a now-hidden title must close immediately.
+  // for a now-locked or removed title must close immediately.
   useEffect(() => {
-    if (!selected?.sharedId || selected.source !== "shared" || sharedCatalogStatus.status !== "success") return;
-    const stillAvailable = sharedCatalogTitles.some(item => item.sharedId === selected.sharedId);
-    if (stillAvailable) return;
-    setSelected(null);
-    setSelectedEpisodeUrl(null);
-    setSelectedEpisode(null);
-    setNotice({ title: "Accès modifié", message: "Ce titre n’est plus accessible avec ton compte actuel." });
-  }, [sharedCatalogTitles, sharedCatalogStatus.status, selected]);
+    if (!selected) return;
+    const current = selected.sharedId
+      ? browseTitles.find((item) => item.sharedId === selected.sharedId)
+      : browseTitles.find((item) => item.id === selected.id);
+    if (!current) {
+      // Wait until the catalogue is authoritative before closing a shared title.
+      if (selected.source === "shared" && sharedCatalogStatus.status !== "success") return;
+      setSelected(null);
+      setSelectedEpisodeUrl(null);
+      setSelectedEpisode(null);
+      setNotice({ title: "Accès modifié", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      return;
+    }
+    if (current.vipLocked && !selected.vipLocked) {
+      setSelected(null);
+      setSelectedEpisodeUrl(null);
+      setSelectedEpisode(null);
+      setShowcase(current);
+      setNotice({ title: "Accès VIP expiré", message: "Ce titre est désormais réservé aux membres VIP." });
+      setSharedCatalogRetryKey((key) => key + 1);
+    }
+  }, [browseTitles, sharedCatalogStatus.status, selected]);
 
   const filmTitles = useMemo(() => browseTitles.filter((item) => item.kind === "Film"), [browseTitles]);
   const filmGenres = useMemo(() => Array.from(new Set(filmTitles.map((item) => item.genre).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fr")), [filmTitles]);
@@ -803,24 +829,30 @@ export default function HomePage() {
   const withAccountPlayback = (item: Title): Title => overlayAccountData([item], accountDataRef.current)[0];
 
   const openTitle = async (item: Title) => {
+    if (item.vipLocked) { setShowcase(item); return; }
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
+      if (item.vipExclusive) { setShowcase(item); setSharedCatalogRetryKey((key) => key + 1); return; }
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
-      setSharedCatalogRetryKey(key => key + 1);
+      setSharedCatalogRetryKey((key) => key + 1);
       return;
     }
+    if (resolved.vipLocked) { setShowcase(resolved); return; }
     setSelectedEpisodeUrl(null);
     setSelectedEpisode(null);
     setSelected(withAccountPlayback(resolved));
   };
 
   const resumeTitle = async (item: Title) => {
+    if (item.vipLocked) { setShowcase(item); return; }
     const resolved = await revalidateTitleAccess(item);
     if (!resolved) {
+      if (item.vipExclusive) { setShowcase(item); setSharedCatalogRetryKey((key) => key + 1); return; }
       setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
-      setSharedCatalogRetryKey(key => key + 1);
+      setSharedCatalogRetryKey((key) => key + 1);
       return;
     }
+    if (resolved.vipLocked) { setShowcase(resolved); return; }
     const episode = (resolved.seasons || []).flatMap(season => season.episodes.map(entry => ({ season: season.number, episode: entry })))
       .filter(entry => Boolean(entry.episode.videoUrl) && (entry.episode.progress || 0) > 0 && (entry.episode.progress || 0) < 100)
       .sort((a, b) => (b.episode.currentTime || 0) - (a.episode.currentTime || 0))[0];
@@ -833,6 +865,21 @@ export default function HomePage() {
       setSelectedEpisodeUrl(null);
     }
   };
+  const resumeEpisode = async (item: Title, season: number, episode: number) => {
+    if (item.vipLocked) { setShowcase(item); return; }
+    const resolved = await revalidateTitleAccess(item);
+    if (!resolved || resolved.vipLocked) {
+      if (item.vipExclusive) { setShowcase(item); setSharedCatalogRetryKey((key) => key + 1); return; }
+      setNotice({ title: "Accès refusé", message: "Ce titre n’est plus accessible avec ton compte actuel." });
+      setSharedCatalogRetryKey((key) => key + 1);
+      return;
+    }
+    const url = resolved.seasons?.find((s) => s.number === season)?.episodes.find((e) => e.number === episode)?.videoUrl;
+    setSelected(withAccountPlayback(resolved));
+    setSelectedEpisode({ season, episode });
+    setSelectedEpisodeUrl(url || null);
+  };
+
   const toggleFavorite = async (id: number) => {
     const current = favoritesRef.current;
     const next = current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id];
@@ -1162,19 +1209,21 @@ export default function HomePage() {
           )}
           {activePage !== "Accueil" && <div className="welcome welcome-redesign"><div><div className="eyebrow">{activePage === "Films" ? "VOTRE BIBLIOTHÈQUE CINÉMA" : activePage === "Séries" ? "VOTRE COLLECTION DE SÉRIES" : activePage === "Vidéos" ? "VOTRE MÉDIATHÈQUE" : activePage === "Ma liste" ? "VOS FAVORIS" : activePage === "VIP" ? "LE CERCLE PRIVILÉGIÉ" : activePage === "Administration" ? "CONSOLE DE GESTION" : "VOTRE COLLECTION PERSONNELLE"}</div><h1>{pageTitle}</h1><p className="welcome-subtitle">{activePage === "Films" ? `${filmTitles.length} film${filmTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Séries" ? `${seriesTitles.length} série${seriesTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Vidéos" ? `${videoTitles.length} vidéo${videoTitles.length === 1 ? "" : "s"} dans votre collection` : activePage === "Ma liste" ? `${visibleFavorites.count} favori${visibleFavorites.count === 1 ? "" : "s"} dans votre liste` : activePage === "VIP" ? `${visibleTitles.length} contenu${visibleTitles.length === 1 ? "" : "s"} VIP disponible${visibleTitles.length === 1 ? "" : "s"}` : activePage === "Administration" ? `${titles.length} contenu${titles.length === 1 ? "" : "s"} · ${favorites.length} favori${favorites.length === 1 ? "" : "s"}` : "Votre cinéma privé, soigneusement composé."}</p></div><p className="welcome-quote">Un espace à vous.<span>Des histoires à l’infini.</span></p></div>}
           {activePage === "VIP" && <section className="vip-intro" aria-labelledby="vip-intro-title"><div className="vip-intro-mark"><Star size={19} fill="currentColor"/></div><div><span className="eyebrow">CINÉBOX · ACCÈS PRIVILÉGIÉ</span><h2 id="vip-intro-title">{viewerVip ? "Bienvenue dans votre espace VIP." : "Le cinéma en avant-première."}</h2><p>{viewerVip ? "Retrouvez ici les exclusivités et les avant-premières réservées aux membres VIP." : "Découvrez les avantages VIP : des contenus exclusifs et jusqu’à 48 heures d’avance sur certaines sorties."}</p></div><span className={`vip-status-pill ${viewerVip ? "is-active" : ""}`}>{viewerVip ? "MEMBRE VIP" : "ESPACE VIP"}</span></section>}
+{activePage === "VIP" && !viewerVip && <section className="vip-benefits" aria-labelledby="vip-benefits-title"><div className="vip-benefits-mark"><Crown size={19} /></div><div><span className="eyebrow">CINÉBOX VIP</span><h3 id="vip-benefits-title">Devenir membre VIP</h3><p>Les contenus exclusifs et les avant-premières 48 h sont réservés aux membres actifs. Rejoignez le serveur Discord CinéBox et contactez un administrateur pour activer votre accès.</p><a className="vip-join-link" href="https://discord.gg/tsuAJFyTMj" target="_blank" rel="noreferrer">Rejoindre le Discord</a></div></section>}
           {activePage === "Accueil" && (activeFeatured ? <section className={`hero-cinema ${activeFeatured.backdrop ? "has-backdrop" : activeFeatured.poster ? "has-poster" : "is-empty"}`} aria-label="Sélection à la une">
             <AnimatedGridPattern className="hero-cinema-grid" numSquares={8} maxOpacity={0.06} duration={6} />
             <div className={`hero-cinema-bg ${activeFeatured.backdrop ? "hero-bg-landscape" : "hero-bg-poster"}`} style={{ backgroundImage: activeFeatured.backdrop || activeFeatured.poster ? `url("${activeFeatured.backdrop || activeFeatured.poster}")` : "none" }}/>
             <div className="hero-cinema-overlay"/>
             <BlurFade className="hero-cinema-copy" key={activeFeatured.id} direction="up" offset={14} duration={0.55}>
               <div className="hero-cinema-kicker"><AnimatedShinyText shimmerWidth={140}>À LA UNE · SÉLECTION CINÉBOX</AnimatedShinyText></div>
+              {activeFeatured.vipLocked && <div className="hero-vip-mention"><Crown size={13} /> EXCLUSIVITÉ VIP — Accessible uniquement aux membres VIP</div>}
               <div className="hero-cinema-tag">{activeFeatured.kind.toUpperCase()} À DÉCOUVRIR</div>
               <h1 className="hero-cinema-title"><TextAnimate by="word" animation="blurInUp" duration={0.7} delay={0.05} once>{activeFeatured.name}</TextAnimate></h1>
               <div className="hero-cinema-meta">{activeFeatured.year} <span>·</span> {activeFeatured.genre} <span>·</span> {activeFeatured.duration}</div>
               <p className="hero-cinema-desc">{activeFeatured.description}</p>
               <div className="hero-cinema-actions">
-                <ShimmerButton className="hero-cinema-play" onClick={() => void openTitle(activeFeatured)}><Play size={15} fill="currentColor"/> Lecture</ShimmerButton>
-                <button className="hero-cinema-info" onClick={() => void openTitle(activeFeatured)}>Détails</button>
+                <ShimmerButton className="hero-cinema-play" onClick={() => void openTitle(activeFeatured)}>{activeFeatured.vipLocked ? <><Lock size={15} /> Découvrir l’exclusivité</> : <><Play size={15} fill="currentColor" /> Lecture</>}</ShimmerButton>
+                <button className="hero-cinema-info" onClick={() => void openTitle(activeFeatured)}>{activeFeatured.vipLocked ? "Avantages VIP" : "Détails"}</button>
               </div>
             </BlurFade>
             {featuredTitles.length > 1 && <div className="hero-cinema-controls">
@@ -1209,7 +1258,7 @@ export default function HomePage() {
               <div className="discovery-grid">
                 {personalizedPicks.map(item => <SpotlightSurface className="discovery-spotlight" key={item.id}><button className="discovery-card" onClick={() => openTitle(item)}>
                   {item.poster ? <img src={item.poster} alt="" loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}
-                  <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong><i>{item.year}</i></span>
+                  <span className="discovery-copy"><small>{item.kind.toUpperCase()} · {item.genre}</small><strong>{item.name}</strong>{item.vipLocked && <em className="vip-inline-flag"><Crown size={10} /> VIP</em>}<i>{item.year}</i></span>
                   <Play className="discovery-play" size={16}/>
                 </button></SpotlightSurface>)}
               </div>
@@ -1229,7 +1278,7 @@ export default function HomePage() {
             {upNext.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOTRE PROCHAINE ÉTAPE</div><h2>À <em>suivre</em></h2></div></div>
-                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => { setSelected(item); setSelectedEpisode({ season, episode: episode.number }); setSelectedEpisodeUrl(episode.videoUrl || null); }}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
+                <div className="streaming-row">{upNext.map(({ item, season, episode }) => <button className="streaming-card" key={`${item.id}-${season}-${episode.number}`} onClick={() => void resumeEpisode(item, season, episode.number)}><StreamingArtwork src={episode.thumbnailUrl || item.poster}/><span className="streaming-card-info"><small>{item.name} · S{season} E{episode.number}</small><strong>{episode.title}</strong></span></button>)}</div>
               </section>
             </BlurFade>}
             {collections.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
@@ -1237,26 +1286,26 @@ export default function HomePage() {
                 <div className="section-head"><div><div className="eyebrow">À RETROUVER ENSEMBLE</div><h2>Collections & <em>sagas</em></h2></div><span className="subtle">{collections.length} collection{collections.length > 1 ? "s" : ""}</span></div>
                 {collections.map(([name, items]) => <div className="collection-saga" key={name}>
                   <div className="collection-saga-heading"><strong>{name}</strong><span>{items.length} titre{items.length > 1 ? "s" : ""}</span></div>
-                  <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                  <div className="streaming-row">{[...items].sort((a, b) => a.year - b.year).map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year}</small><strong>{item.name}</strong>{item.vipLocked && <em className="vip-inline-flag"><Crown size={10} /> VIP</em>}</span></button>)}</div>
                 </div>)}
               </section>
             </BlurFade>}
             {topTenFilms.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOS FILMS LES PLUS REGARDÉS</div><h2>Top 10 <em>Films</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-                <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row top-ten-row">{topTenFilms.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong>{item.vipLocked && <em className="vip-inline-flag"><Crown size={10} /> VIP</em>}</span></button>)}</div>
               </section>
             </BlurFade>}
             {topTenSeries.length > 0 && <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap">
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">VOS SÉRIES LES PLUS REGARDÉES</div><h2>Top 10 <em>Séries</em></h2></div><span className="subtle">Selon vos lectures</span></div>
-                <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row top-ten-row">{topTenSeries.map((item, index) => <button className="streaming-card top-ten-card" key={item.id} onClick={() => openTitle(item)}><span className="top-ten-number">{index + 1}</span><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.year}</small><strong>{item.name}</strong>{item.vipLocked && <em className="vip-inline-flag"><Crown size={10} /> VIP</em>}</span></button>)}</div>
               </section>
             </BlurFade>}
             {homeRows.map(row => <BlurFade inView direction="up" offset={12} duration={0.45} className="section-block-wrap" key={row.title}>
               <section className="section-block streaming-row-section">
                 <div className="section-head"><div><div className="eyebrow">{row.kicker}</div><h2>{row.title}</h2></div><span className="subtle">{row.items.length} contenu{row.items.length > 1 ? "s" : ""}</span></div>
-                <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong></span></button>)}</div>
+                <div className="streaming-row">{row.items.map(item => <button className="streaming-card" key={item.id} onClick={() => openTitle(item)}><StreamingArtwork src={item.poster}/><span className="streaming-card-info"><small>{item.kind} · {item.year} · {item.genre}</small><strong>{item.name}</strong>{item.vipLocked && <em className="vip-inline-flag"><Crown size={10} /> VIP</em>}</span></button>)}</div>
               </section>
             </BlurFade>)}
           </>}
@@ -1351,7 +1400,7 @@ export default function HomePage() {
             </div>}
             <div className={`poster-grid ${activePage === "Films" || activePage === "Séries" ? "films-poster-grid" : activePage === "Vidéos" ? "video-library-grid" : activePage === "Ma liste" ? "ma-list-poster-grid" : ""} ${(activePage === "Films" || activePage === "Séries") && visibleTitles.length > 4 && visibleTitles.length % 4 === 1 ? "films-poster-grid-balanced" : ""}`}>
               {visibleTitles.map((item, index) => <motion.article layout key={item.id} className={`poster-card ${activePage === "Vidéos" ? "video-library-card" : activePage === "Ma liste" ? "favorite-card" : ""}`} initial={{ opacity: 0, y: 16, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} whileHover={{ y: -6, scale: 1.018 }} whileTap={{ scale: .992 }} transition={{ layout: { duration: .28 }, opacity: { duration: .32, delay: Math.min(index * .035, .25) }, y: { type: "spring", stiffness: 280, damping: 22 }, scale: { type: "spring", stiffness: 300, damping: 24 } }}>
-                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{activePage === "VIP" && <span className="vip-card-chip"><Star size={11} fill="currentColor"/>{item.vipExclusive ? "EXCLUSIF VIP" : "AVANT-PREMIÈRE"}</span>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play"><Play size={20} fill="currentColor"/></span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
+                <button className="poster-open" onClick={() => openTitle(item)} aria-label={`Ouvrir ${item.name}`}><div className={`poster-image ${activePage === "Vidéos" ? "video-thumbnail" : ""}`}>{(activePage === "Vidéos" ? item.backdrop || item.poster : item.poster) ? <img src={activePage === "Vidéos" ? item.backdrop || item.poster : item.poster} alt={item.name} loading="lazy"/> : <span className="artwork-empty" aria-hidden="true"/>}<span className="kind-chip">{item.kind}</span>{item.vipLocked && <span className="vip-showcase-flag"><Crown size={11} /> EXCLUSIVITÉ VIP</span>}{activePage === "VIP" && <span className="vip-card-chip"><Star size={11} fill="currentColor"/>{item.vipExclusive ? "EXCLUSIF VIP" : "AVANT-PREMIÈRE"}</span>}{activePage === "Vidéos" && item.duration && <span className="video-duration-chip">{item.duration}</span>}<span className="poster-play">{item.vipLocked ? <Lock size={18} /> : <Play size={20} fill="currentColor" />}</span></div>{activePage === "Vidéos" ? <><div className="video-card-meta"><span>{item.genre || "Vidéo"}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.progress > 0 && <div className="video-card-progress"><div className="video-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, item.progress))}><i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}/></div><small>{Math.round(item.progress)} % regardé</small></div>}</> : <><div className="poster-meta"><span>{item.genre}</span><span>{item.year}</span></div><strong>{item.name}</strong>{item.vipLocked && <span className="vip-showcase-mention"><Crown size={12} /> EXCLUSIVITÉ VIP — Accessible uniquement aux membres VIP</span>}{activePage === "VIP" && item.publicAt && <small className="vip-release-date">Sortie publique : {new Date(item.publicAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</small>}{activePage === "Séries" && (item.seasons?.length || getSeriesProgress(item) > 0) && <div className="series-card-details">{Boolean(item.seasons?.length) && <span>{item.seasons!.length} saison{item.seasons!.length === 1 ? "" : "s"} · {item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0)} épisode{item.seasons!.reduce((sum, season) => sum + season.episodes.length, 0) === 1 ? "" : "s"}</span>}{getSeriesProgress(item) > 0 && <><div className="series-progress-track" role="progressbar" aria-label={`Progression de ${item.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={getSeriesProgress(item)}><i style={{ width: `${getSeriesProgress(item)}%` }}/></div><small>{getSeriesProgress(item)} % visionné</small></>}</div>}</>}</button>
                 <button type="button" className={`heart-btn ${favorites.includes(item.id) ? "is-fav" : ""}`} onClick={() => toggleFavorite(item.id)} aria-label={favorites.includes(item.id) ? `Retirer ${item.name} des favoris` : `Ajouter ${item.name} aux favoris`} aria-pressed={favorites.includes(item.id)}><Heart size={16} fill={favorites.includes(item.id) ? "currentColor" : "none"}/></button>
               </motion.article>)}
               {!visibleTitles.length && activePage === "Films" && filmTitles.length === 0 && <div className="empty-state films-empty"><strong>Aucun film dans le catalogue</strong><span>Les films publiés dans le catalogue partagé apparaîtront ici.</span></div>}
@@ -1567,6 +1616,12 @@ export default function HomePage() {
               setSelectedEpisodeUrl(next.url);
             }
           }}
+        />
+        <VipShowcaseModal
+          title={showcase}
+          onClose={() => setShowcase(null)}
+          onDiscover={() => { setShowcase(null); setActivePage("VIP"); }}
+          onJoin={() => { setShowcase(null); setActivePage("VIP"); }}
         />
       </AnimatePresence>
       <nav className="mobile-bottom-nav" aria-label="Navigation mobile">{navItems.map(({ label, icon: Icon }) => <button key={label} type="button" aria-current={activePage === label ? "page" : undefined} className={activePage === label ? "active" : ""} onClick={() => { setActivePage(label); setFilter("Tout"); }}><Icon size={18}/><span>{label === "Administration" ? "Admin" : label}</span>{label === "Ma liste" && visibleFavorites.count > 0 && <i>{visibleFavorites.count}</i>}</button>)}</nav>
