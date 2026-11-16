@@ -104,6 +104,8 @@ test("TMDB refuse de déplacer une source déjà associée à un autre titre", a
   assert.equal(result.status, 409);
   assert.equal((await result.json()).code, "SOURCE_ALREADY_ASSOCIATED");
   assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+  assert.equal(calls.some((call) => /INSERT INTO catalog_titles/.test(call.sql)), false);
+  assert.equal(calls.some((call) => /INSERT INTO catalog_episodes/.test(call.sql)), false);
 });
 
 test("l'UPSERT TMDB ne peut pas déplacer la source en cas de concurrence", async () => {
@@ -118,4 +120,20 @@ test("l'UPSERT TMDB ne peut pas déplacer la source en cas de concurrence", asyn
   assert.equal((await result.json()).code, "SOURCE_ALREADY_ASSOCIATED");
   const insert = calls.find((call) => /INSERT INTO catalog_media_sources/.test(call.sql));
   assert.match(insert.sql, /WHERE catalog_media_sources\.title_id=excluded\.title_id AND catalog_media_sources\.episode_id IS excluded\.episode_id/);
+});
+
+test("une sélection TMDB trop volumineuse est refusée avant tout appel D1", async () => {
+  const { db, calls } = makeDb();
+  const request = new Request("https://cinebox.test/api/uqload/tmdb-select", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": "20000",
+      ...discordAdminHeaders(),
+    },
+    body: JSON.stringify({ fileCode: CODE, tmdbId: 123, kind: "movie", fileTitle: "x".repeat(17000) }),
+  });
+  const result = await onRequestPost({ request, env: makeEnv(db) });
+  assert.equal(result.status, 413);
+  assert.equal(calls.length, 0);
 });
