@@ -5,7 +5,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 
 const CODE = "abc123def456";
 
-function makeDb({ existing = [], changes = 1 } = {}) {
+function makeDb({ existing = [], changes = 1, failRun = null } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -14,7 +14,7 @@ function makeDb({ existing = [], changes = 1 } = {}) {
       return {
         bind(...values) { call.values = values; return this; },
         async all() { return { success: true, results: /SELECT title_id,episode_id FROM catalog_media_sources/.test(sql) ? existing : [] }; },
-        async run() { return { success: true, meta: { changes } }; },
+        async run() { return failRun && failRun.test(sql) ? { success: false, meta: { changes: 0 } } : { success: true, meta: { changes } }; },
       };
     },
     batch: async () => [],
@@ -136,4 +136,34 @@ test("une sélection TMDB trop volumineuse est refusée avant tout appel D1", as
   const result = await onRequestPost({ request, env: makeEnv(db) });
   assert.equal(result.status, 413);
   assert.equal(calls.length, 0);
+});
+
+
+test("un échec D1 à la création du titre renvoie 503 et arrête les écritures suivantes", async () => {
+  const { db, calls } = makeDb({ failRun: /^INSERT INTO catalog_titles/ });
+  const result = await withTmdbDetail(MOVIE, () => onRequestPost({
+    request: makeRequest({ fileCode: CODE, tmdbId: 123, kind: "movie" }),
+    env: makeEnv(db),
+  }));
+  assert.equal(result.status, 503);
+  assert.equal(calls.some(call => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+test("un échec D1 à la création de l’épisode empêche l’association de la source", async () => {
+  const { db, calls } = makeDb({ failRun: /^INSERT INTO catalog_episodes/ });
+  const result = await withTmdbDetail({ ...MOVIE, name: "Série de test" }, () => onRequestPost({
+    request: makeRequest({ fileCode: CODE, fileTitle: "Série S01E02", season: 1, episode: 2, tmdbId: 123, kind: "series" }),
+    env: makeEnv(db),
+  }));
+  assert.equal(result.status, 503);
+  assert.equal(calls.some(call => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+test("un échec D1 à l’association finale renvoie 503", async () => {
+  const { db } = makeDb({ failRun: /^INSERT INTO catalog_media_sources/ });
+  const result = await withTmdbDetail(MOVIE, () => onRequestPost({
+    request: makeRequest({ fileCode: CODE, tmdbId: 123, kind: "movie" }),
+    env: makeEnv(db),
+  }));
+  assert.equal(result.status, 503);
 });
