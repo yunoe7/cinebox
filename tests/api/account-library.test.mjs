@@ -239,3 +239,43 @@ test("persistLibrary serializes two rapid saves via a queue", async () => {
   assert.ok(savedLibraries[1].favorites.includes(1));
   assert.ok(savedLibraries[1].favorites.includes(2));
 });
+
+
+test("enqueueLibraryWrite serializes real queued tasks and survives a rejection", async () => {
+  const { enqueueLibraryWrite } = await import("../../lib/cinebox/account-library.mjs");
+  const queue = { current: Promise.resolve() };
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const started = [];
+  const first = enqueueLibraryWrite(queue, async () => {
+    started.push("first");
+    await firstGate;
+    throw new Error("expected failure");
+  });
+  const second = enqueueLibraryWrite(queue, async () => {
+    started.push("second");
+    return "saved";
+  });
+  await Promise.resolve();
+  assert.deepEqual(started, ["first"]);
+  releaseFirst();
+  await assert.rejects(first, /expected failure/);
+  assert.equal(await second, "saved");
+  assert.deepEqual(started, ["first", "second"]);
+});
+
+test("mergeTitleEdits applies an intentional field deletion when server is unchanged", () => {
+  const base = { id: 1, name: "Base", tagline: "old" };
+  const latest = { id: 1, name: "Base", tagline: "old" };
+  const edited = { id: 1, name: "Base" };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(Object.hasOwn(merged, "tagline"), false);
+});
+
+test("mergeTitleEdits keeps a server field when local did not change it", () => {
+  const base = { id: 1, name: "Base", tagline: "old" };
+  const latest = { id: 1, name: "Base", tagline: "server edit" };
+  const edited = { id: 1, name: "Base" };
+  const merged = mergeTitleEdits(base, latest, edited);
+  assert.equal(merged.tagline, "server edit");
+});
