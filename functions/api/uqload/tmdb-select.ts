@@ -1,4 +1,5 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
+import { readJsonBody } from "../../_lib/account-auth.ts";
 import { buildPlaybackUrl, encodingStatusFromCanplay } from "../../../lib/cinebox/media-sources.mjs";
 interface Statement{bind(...values:(string|number|null)[]):Statement;all<T>():Promise<{success:boolean;results:T[]}>;run():Promise<{success:boolean;meta?:{changes?:number}}>;}
 interface DB{prepare(sql:string):Statement;}
@@ -15,7 +16,8 @@ async function tmdb(path:string,token:string):Promise<Obj>{
 export async function onRequestPost({request,env}:{request:Request;env:Env}):Promise<Response>{
  const denied=await requireAdmin(request,env);if(denied)return denied;
  if(!env.DB||!env.TMDB_READ_ACCESS_TOKEN)return json({error:"Base D1 ou jeton TMDB indisponible."},503);
- let body:unknown;try{body=await request.json();}catch{return json({error:"Requête invalide."},400);}
+ const parsed=await readJsonBody(request,16*1024);if(!parsed.ok)return json({error:parsed.reason==="too-large"?"Requête trop volumineuse.":"Requête invalide."},parsed.reason==="too-large"?413:400);
+ const body=parsed.value;
  if(!isObj(body)||typeof body.fileCode!=="string"||typeof body.tmdbId!=="number"||(body.kind!=="movie"&&body.kind!=="series"))return json({error:"Sélection TMDB invalide."},400);
  const code=body.fileCode.trim(),tmdbId=body.tmdbId,kind=body.kind;
  if(!/^[A-Za-z0-9]{6,64}$/.test(code)||!Number.isSafeInteger(tmdbId)||tmdbId<=0)return json({error:"Code Uqload ou identifiant TMDB invalide."},400);
@@ -35,29 +37,28 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  const genres=Array.isArray(detail.genres)?detail.genres.filter(isObj).map(g=>clean(g.name,80)).filter(Boolean):[];
  const releaseDate=clean(detail.release_date||detail.first_air_date,20)||null;
  const metadata=JSON.stringify({tmdbId,originalTitle:clean(detail.original_title||detail.original_name),manualTmdbSelection:true});
+ let episodeId:string|null=null;
+ if(kind==="series"&&Number.isInteger(seasonNumber)&&seasonNumber>=0&&Number.isInteger(episodeNumber)&&episodeNumber>0)
+  episodeId=`${id}:s${seasonNumber}:e${episodeNumber}`;
+ const existing=await env.DB.prepare("SELECT title_id,episode_id FROM catalog_media_sources WHERE provider=? AND file_code=? LIMIT 1").bind("uqload",code).all<{title_id:string;episode_id:string|null}>();
+ if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
+ const current=existing.results?.[0];
+ if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
  await env.DB.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,0,CURRENT_TIMESTAMP)
  ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,release_date=excluded.release_date,
  poster_path=COALESCE(catalog_titles.poster_path,excluded.poster_path),backdrop_path=COALESCE(catalog_titles.backdrop_path,excluded.backdrop_path),
  genres_json=excluded.genres_json,metadata_json=json_patch(CASE WHEN json_valid(catalog_titles.metadata_json) THEN catalog_titles.metadata_json ELSE '{}' END,excluded.metadata_json),updated_at=CURRENT_TIMESTAMP`)
  .bind(id,kind,title,clean(detail.overview),releaseDate,clean(detail.poster_path,180)||null,clean(detail.backdrop_path,180)||null,JSON.stringify(genres),metadata).run();
- let episodeId:string|null=null;
- if(kind==="series"){
-  const season=seasonNumber,episode=episodeNumber;
-  if(Number.isInteger(season)&&season>=0&&Number.isInteger(episode)&&episode>0){
-   const seasonData=await tmdb(`/tv/${tmdbId}/season/${season}`,env.TMDB_READ_ACCESS_TOKEN).catch(()=>({} as Obj));
-   const list=Array.isArray(seasonData.episodes)?seasonData.episodes.filter(isObj):[];
-   const ep=list.find(x=>Number(x.episode_number)===episode);
-   episodeId=`${id}:s${season}:e${episode}`;
-   await env.DB.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,duration_seconds=excluded.duration_seconds,thumbnail_path=excluded.thumbnail_path,metadata_json=excluded.metadata_json,updated_at=CURRENT_TIMESTAMP`)
-    .bind(episodeId,id,season,episode,clean(ep?.name)||`Épisode ${episode}`,clean(ep?.overview,8000),Number.isFinite(Number(ep?.runtime))?Number(ep?.runtime)*60:null,clean(ep?.still_path,180)||null,JSON.stringify({tmdbId:ep?.id??null,airDate:clean(ep?.air_date,20)})).run();
-  }
+ if(episodeId){
+  const seasonData=await tmdb(`/tv/${tmdbId}/season/${seasonNumber}`,env.TMDB_READ_ACCESS_TOKEN).catch(()=>({} as Obj));
+  const list=Array.isArray(seasonData.episodes)?seasonData.episodes.filter(isObj):[];
+  const ep=list.find(x=>Number(x.episode_number)===episodeNumber);
+  await env.DB.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
+   VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,duration_seconds=excluded.duration_seconds,thumbnail_path=excluded.thumbnail_path,metadata_json=excluded.metadata_json,updated_at=CURRENT_TIMESTAMP`)
+   .bind(episodeId,id,seasonNumber,episodeNumber,clean(ep?.name)||`Épisode ${episodeNumber}`,clean(ep?.overview,8000),Number.isFinite(Number(ep?.runtime))?Number(ep?.runtime)*60:null,clean(ep?.still_path,180)||null,JSON.stringify({tmdbId:ep?.id??null,airDate:clean(ep?.air_date,20)})).run();
  }
- const existing=await env.DB.prepare("SELECT title_id,episode_id FROM catalog_media_sources WHERE provider=? AND file_code=? LIMIT 1").bind("uqload",code).all<{title_id:string;episode_id:string|null}>();
- if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
- const current=existing.results?.[0];
- if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
+
  const saved=await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO UPDATE SET title_id=excluded.title_id,episode_id=excluded.episode_id,video_id=excluded.video_id,playback_url=excluded.playback_url,
  encoding_status=CASE WHEN excluded.encoding_status='pending' THEN catalog_media_sources.encoding_status ELSE excluded.encoding_status END,updated_at=CURRENT_TIMESTAMP WHERE catalog_media_sources.title_id=excluded.title_id AND catalog_media_sources.episode_id IS excluded.episode_id`)
