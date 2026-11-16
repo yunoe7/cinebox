@@ -65,17 +65,28 @@ export async function onRequestPut({ request, env }: { request: Request; env: Ac
     if (!validLibrary(body.library) || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0)
       return json({ error: "invalid-library" }, 400);
     const serialized = JSON.stringify(body.library);
-    const result = await env.DB.prepare(
-      "INSERT INTO account_libraries (user_id,library_json,revision,updated_at) SELECT ?,?,1,CURRENT_TIMESTAMP WHERE ?=0 ON CONFLICT(user_id) DO UPDATE SET library_json=excluded.library_json,revision=account_libraries.revision+1,updated_at=CURRENT_TIMESTAMP WHERE account_libraries.revision=?",
-    ).bind(user.id, serialized, body.revision, body.revision).run() as { meta?: { changes?: number } };
-    if (result.meta?.changes === 0) {
-      const current = await env.DB.prepare("SELECT library_json, revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{library_json:string;revision:number}>();
-      let library = null;
-      if (current?.library_json) { try { library = JSON.parse(current.library_json); } catch {} }
-      return json({ error: "revision-conflict", revision: current?.revision ?? 0, library }, 409);
+    // First update an existing row only when the caller's revision is current.
+    const update = await env.DB.prepare(
+      "UPDATE account_libraries SET library_json=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND revision=?",
+    ).bind(serialized, user.id, body.revision).run() as { meta?: { changes?: number } };
+
+    if (update.meta?.changes === 1) {
+      return json({ saved: true, revision: Number(body.revision) + 1 });
     }
-    const current = await env.DB.prepare("SELECT revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{revision:number}>();
-    return json({ saved: true, revision: current?.revision ?? 1 });
+
+    // Revision zero represents a library that has never been created.
+    // INSERT OR IGNORE makes this safe if another request creates it concurrently.
+    if (body.revision === 0) {
+      const insert = await env.DB.prepare(
+        "INSERT OR IGNORE INTO account_libraries (user_id,library_json,revision,updated_at) VALUES (?,?,1,CURRENT_TIMESTAMP)",
+      ).bind(user.id, serialized).run() as { meta?: { changes?: number } };
+      if (insert.meta?.changes === 1) return json({ saved: true, revision: 1 });
+    }
+
+    const current = await env.DB.prepare("SELECT library_json, revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{library_json:string;revision:number}>();
+    let library = null;
+    if (current?.library_json) { try { library = JSON.parse(current.library_json); } catch {} }
+    return json({ error: "revision-conflict", revision: current?.revision ?? 0, library }, 409);
   } catch {
     return json({ error: "library-save-failed" }, 503);
   }
