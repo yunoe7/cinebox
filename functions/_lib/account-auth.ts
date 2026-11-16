@@ -104,9 +104,9 @@ const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now
   return {cookie:cookieHeader(request,ACCOUNT_COOKIE,token,ACCOUNT_TTL),expiresAt};
 }
 export async function getAccount(request: Request, env: AccountEnv) {
-  await cleanupAccountSessions(env, Date.now());
   const token=cookie(request);
   if(!token) return null;
+  await cleanupAccountSessions(env, Date.now());
   const row=await env.DB.prepare("SELECT u.id,u.display_name,u.role,u.email,s.expires_at FROM account_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? LIMIT 1").bind(await sha256(token),new Date().toISOString()).first<{id:string;display_name:string;role:string;email:string|null;expires_at:string}>();
   return row;
 }
