@@ -5,7 +5,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 
 const CODE = "abc123def456";
 
-function makeDb() {
+function makeDb({ existing = [], changes = 1 } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -13,8 +13,8 @@ function makeDb() {
       calls.push(call);
       return {
         bind(...values) { call.values = values; return this; },
-        async all() { return { success: true, results: [] }; },
-        async run() { return { success: true, meta: { changes: 1 } }; },
+        async all() { return { success: true, results: /SELECT title_id,episode_id FROM catalog_media_sources/.test(sql) ? existing : [] }; },
+        async run() { return { success: true, meta: { changes } }; },
       };
     },
     batch: async () => [],
@@ -91,4 +91,31 @@ test("canplay=1 marque la source TMDB comme prête", async () => {
     }),
   );
   assert.equal((await result.json()).encodingStatus, "ready");
+});
+
+test("TMDB refuse de déplacer une source déjà associée à un autre titre", async () => {
+  const { db, calls } = makeDb({ existing: [{ title_id: "tmdb:movie:999", episode_id: null }] });
+  const result = await withTmdbDetail(MOVIE, () =>
+    onRequestPost({
+      request: makeRequest({ fileCode: CODE, tmdbId: 123, kind: "movie" }),
+      env: makeEnv(db),
+    }),
+  );
+  assert.equal(result.status, 409);
+  assert.equal((await result.json()).code, "SOURCE_ALREADY_ASSOCIATED");
+  assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+test("l'UPSERT TMDB ne peut pas déplacer la source en cas de concurrence", async () => {
+  const { db, calls } = makeDb({ changes: 0 });
+  const result = await withTmdbDetail(MOVIE, () =>
+    onRequestPost({
+      request: makeRequest({ fileCode: CODE, tmdbId: 123, kind: "movie" }),
+      env: makeEnv(db),
+    }),
+  );
+  assert.equal(result.status, 409);
+  assert.equal((await result.json()).code, "SOURCE_ALREADY_ASSOCIATED");
+  const insert = calls.find((call) => /INSERT INTO catalog_media_sources/.test(call.sql));
+  assert.match(insert.sql, /WHERE catalog_media_sources\.title_id=excluded\.title_id AND catalog_media_sources\.episode_id IS excluded\.episode_id/);
 });
