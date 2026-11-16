@@ -439,6 +439,8 @@ export default function HomePage() {
       } else {
         accountDataRef.current = res.accountData;
         setAccountData(res.accountData);
+        favoritesRef.current = res.accountData.favorites;
+        setFavorites(res.accountData.favorites);
         catalogTitlesRef.current = res.library.titles as Title[];
         const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
         titlesRef.current = displayed;
@@ -519,7 +521,12 @@ export default function HomePage() {
     return false;
   };
 
-  const commitFavorites = async (next: number[]) => saveAccountData((data) => ({ ...data, favorites: next }));
+  const commitFavorites = async (next: number[]) => {
+    // Update immediately so the heart responds even while the remote save is queued.
+    favoritesRef.current = next;
+    setFavorites(next);
+    return saveAccountData((data) => ({ ...data, favorites: next }));
+  };
 
   const savePlaybackForActive = (titleId: number, episodeSelection: { season: number; episode: number } | null, second: number, progress: number) => saveAccountData((data) => {
     const id = String(titleId);
