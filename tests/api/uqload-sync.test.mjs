@@ -43,12 +43,15 @@ function makeRequest() {
 }
 
 /** Replaces global fetch with a scripted Uqload `/file/list` response. */
-async function withUqloadList(files, run) {
+async function withUqloadList(files, run, { metadata = true } = {}) {
   const original = globalThis.fetch;
   const requests = [];
+  const result = metadata
+    ? { files, pages: 1, results_total: files.length, results: files.length }
+    : { files };
   globalThis.fetch = async (input) => {
     requests.push(String(input));
-    return new Response(JSON.stringify({ status: 200, result: files }), {
+    return new Response(JSON.stringify({ status: 200, result }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -153,4 +156,38 @@ test("une source réellement absente du compte complet est supprimée", async ()
   const deletions = calls.filter((call) => /^DELETE FROM catalog_media_sources/.test(call.sql));
   assert.equal(deletions.length, 1);
   assert.equal(deletions[0].values[0], OTHER_CODE);
+});
+
+
+test("des métadonnées de pagination absentes n'autorisent jamais les suppressions", async () => {
+  const { db, calls } = makeDb({ existingCodes: [CODE, OTHER_CODE] });
+  const { result } = await withUqloadList(
+    [{ file_code: CODE, file_title: "Film 2024", canplay: 1 }],
+    () => onRequestPost({ request: makeRequest(), env: makeEnv(db) }),
+    { metadata: false },
+  );
+  const body = await result.json();
+  assert.equal(body.inventoryComplete, false);
+  assert.equal(body.deleted, 0);
+  assert.match(body.deletionSkipped, /métadonnées pages\/results_total absentes/);
+  assert.equal(calls.some((call) => /^DELETE FROM catalog_media_sources/.test(call.sql)), false);
+});
+
+test("un nombre de fichiers différent du total annoncé bloque la réconciliation", async () => {
+  const { db, calls } = makeDb({ existingCodes: [CODE, OTHER_CODE] });
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    status: 200,
+    result: { files: [{ file_code: CODE, file_title: "Film 2024", canplay: 1 }], pages: 1, results_total: 2, results: 1 },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    const result = await onRequestPost({ request: makeRequest(), env: makeEnv(db) });
+    const body = await result.json();
+    assert.equal(body.inventoryComplete, false);
+    assert.equal(body.deleted, 0);
+    assert.match(body.deletionSkipped, /1 fichiers reçus sur 2 annoncés/);
+    assert.equal(calls.some((call) => /^DELETE FROM catalog_media_sources/.test(call.sql)), false);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
