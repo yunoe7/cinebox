@@ -145,6 +145,9 @@ export async function onRequestDelete({ request, env }: { request: Request; env:
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON invalide." }, 400);
   if (typeof body?.id !== "string" || !body.id.trim()) return json({ error: "Identifiant manquant." }, 400);
   const id = body.id.trim();
+  if (body.permanent !== undefined && typeof body.permanent !== "boolean") {
+    return json({ error: "Le champ permanent doit être booléen." }, 400);
+  }
   try {
     const exists = await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(id).all<{ id: string }>();
     if (!exists.success) return json({ error: "Impossible de vérifier le titre dans D1." }, 503);
