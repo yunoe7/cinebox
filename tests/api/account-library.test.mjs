@@ -172,3 +172,70 @@ test("persistLibrary returns conflict after max attempts", async () => {
   assert.equal(res.ok, false);
   assert.equal(res.conflict, true);
 });
+
+test("persistLibrary serializes two rapid saves via a queue", async () => {
+  // Simulate the queue pattern used in app/page.tsx: each save waits for the previous.
+  let chain = Promise.resolve();
+  const revisions = [];
+  const savedLibraries = [];
+  const makeSaveFn = (deferred) => async (lib, rev) => {
+    // defer resolution until the test resolves it
+    await deferred.promise;
+    revisions.push(rev);
+    savedLibraries.push(lib);
+    return { status: "saved", revision: rev + 1 };
+  };
+
+  const deferred1 = { promise: null, resolve: null };
+  deferred1.promise = new Promise((r) => { deferred1.resolve = r; });
+  const deferred2 = { promise: null, resolve: null };
+  deferred2.promise = new Promise((r) => { deferred2.resolve = r; });
+
+  let rev = 1;
+  const baseLib = createAccountLibrary({ favorites: [] }, []);
+
+  // First save queued
+  const p1 = (async () => {
+    const prev = chain;
+    const op = (async () => {
+      await prev.catch(() => {});
+      const lib = createAccountLibrary({ favorites: [1] }, []);
+      const res = await persistLibrary({ saveFn: makeSaveFn(deferred1), initialLibrary: lib, initialAccountData: { favorites: [1] }, initialRevision: rev, baseLibrary: null, maxAttempts: 1 });
+      if (res.ok) rev = res.revision;
+      return res;
+    })();
+    chain = op.catch(() => {});
+    return op;
+  })();
+
+  // Second save queued before first resolves
+  const p2 = (async () => {
+    const prev = chain;
+    const op = (async () => {
+      await prev.catch(() => {});
+      const lib = createAccountLibrary({ favorites: [1, 2] }, []);
+      const res = await persistLibrary({ saveFn: makeSaveFn(deferred2), initialLibrary: lib, initialAccountData: { favorites: [1, 2] }, initialRevision: rev, baseLibrary: null, maxAttempts: 1 });
+      if (res.ok) rev = res.revision;
+      return res;
+    })();
+    chain = op.catch(() => {});
+    return op;
+  })();
+
+  // Resolve first, then second
+  deferred1.resolve();
+  const r1 = await p1;
+  assert.equal(r1.ok, true);
+  // second should not have started yet
+  assert.equal(revisions.length, 1);
+
+  deferred2.resolve();
+  const r2 = await p2;
+  assert.equal(r2.ok, true);
+  assert.equal(revisions.length, 2);
+  // second started after first (revision incremented)
+  assert.ok(revisions[1] > revisions[0] || revisions[1] === revisions[0] + 1);
+  // both modifications preserved: second library contains both 1 and 2
+  assert.ok(savedLibraries[1].favorites.includes(1));
+  assert.ok(savedLibraries[1].favorites.includes(2));
+});
