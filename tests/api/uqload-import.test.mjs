@@ -5,7 +5,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 
 const CODE = "abc123def456";
 
-function makeDb({ titleKind = "movie", existingSource = null, runChanges = 1 } = {}) {
+function makeDb({ titleKind = "movie", existingSource = null, runChanges = 1, failAll = null } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -194,4 +194,25 @@ test("un conflit apparu après la vérification préalable est bloqué atomiquem
   const insert = calls.find((call) => /INSERT INTO catalog_media_sources/.test(call.sql));
   assert.ok(insert, "the atomic upsert must be attempted");
   assert.match(insert.sql, /episode_id IS excluded\.episode_id/);
+});
+
+
+test("un échec D1 sur la lecture du titre renvoie 503, pas 404", async () => {
+  const { db, calls } = makeDb({ failAll: /FROM catalog_titles WHERE id=\\?/ });
+  const env = { DB: withDiscordAdminDb(db), UQLOAD_API_KEY: "unit-test-key" };
+  const { result } = await withUqloadFetch({}, () => onRequestPost({
+    request: makeRequest({ url: `https://uqload.vc/embed-${CODE}.html`, titleId: "t1" }), env,
+  }));
+  assert.equal(result.status, 503);
+  assert.equal(calls.some(call => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+test("un échec D1 sur la lecture de l'association renvoie 503 sans écriture", async () => {
+  const { db, calls } = makeDb({ failAll: /FROM catalog_media_sources WHERE provider=/ });
+  const env = { DB: withDiscordAdminDb(db), UQLOAD_API_KEY: "unit-test-key" };
+  const { result } = await withUqloadFetch({ status: 200, result: [{}] }, () => onRequestPost({
+    request: makeRequest({ url: `https://uqload.vc/embed-${CODE}.html`, titleId: "t1" }), env,
+  }));
+  assert.equal(result.status, 503);
+  assert.equal(calls.some(call => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
 });
