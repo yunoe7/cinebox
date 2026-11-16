@@ -491,14 +491,64 @@ export default function HomePage() {
       const previous = accountLibraryWriteRef.current;
       const operation = accountLibraryWriteRef.current.then(async () => {
         await previous.catch(() => {});
-        // Apply the title update to the latest known catalog inside the queue,
-        // without overwriting titles changed by a more recent operation.
+        // Merge title updates into the latest known catalog without overwriting
+        // more recent changes to the same title (field-level three-way merge).
+        const baseTitles = lastSavedLibraryRef.current?.titles || [];
         const latestTitles = catalogTitlesRef.current;
         const mergedTitles = [...latestTitles];
+        const mergeTitle = (baseT: any, latestT: any, editedT: any) => {
+          const result = { ...latestT };
+          for (const key of Object.keys(editedT)) {
+            const baseVal = baseT ? baseT[key] : undefined;
+            const latestVal = latestT[key];
+            const editedVal = editedT[key];
+            const localChanged = JSON.stringify(editedVal) !== JSON.stringify(baseVal);
+            const serverChanged = JSON.stringify(latestVal) !== JSON.stringify(baseVal);
+            if (key === "seasons" && Array.isArray(editedVal) && Array.isArray(latestVal)) {
+              // Merge seasons/episodes by number.
+              const mergedSeasons = [...latestVal];
+              for (const es of editedVal) {
+                const si = mergedSeasons.findIndex((s: any) => s.number === es.number);
+                if (si < 0) { mergedSeasons.push(es); continue; }
+                const baseSeason = baseT?.seasons?.find((s: any) => s.number === es.number);
+                const mergedEpisodes = [...(mergedSeasons[si].episodes || [])];
+                for (const ee of es.episodes || []) {
+                  const ei = mergedEpisodes.findIndex((e: any) => e.number === ee.number);
+                  if (ei < 0) { mergedEpisodes.push(ee); continue; }
+                  const baseEp = baseSeason?.episodes?.find((e: any) => e.number === ee.number);
+                  const le = mergedEpisodes[ei];
+                  const mergedEp = { ...le };
+                  for (const k of Object.keys(ee)) {
+                    const bv = baseEp ? baseEp[k] : undefined;
+                    const lv = le[k];
+                    const ev = ee[k];
+                    const lc = JSON.stringify(ev) !== JSON.stringify(bv);
+                    const sc = JSON.stringify(lv) !== JSON.stringify(bv);
+                    mergedEp[k] = (lc && !sc) ? ev : (sc && !lc) ? lv : (lc && sc) ? lv : lv;
+                  }
+                  mergedEpisodes[ei] = mergedEp;
+                }
+                mergedSeasons[si] = { ...mergedSeasons[si], ...es, episodes: mergedEpisodes };
+              }
+              result[key] = mergedSeasons;
+            } else {
+              if (localChanged && !serverChanged) result[key] = editedVal;
+              else if (serverChanged && !localChanged) result[key] = latestVal;
+              else if (localChanged && serverChanged) result[key] = latestVal; // recent wins, no silent overwrite
+              else result[key] = latestVal;
+            }
+          }
+          for (const key of Object.keys(latestT)) {
+            if (!(key in result)) result[key] = latestT[key];
+          }
+          return result;
+        };
         for (const t of safeTitles) {
           const idx = mergedTitles.findIndex((x) => x.id === t.id);
-          if (idx >= 0) mergedTitles[idx] = t;
-          else mergedTitles.push(t);
+          const baseT = baseTitles.find((x) => x.id === t.id);
+          const latestT = idx >= 0 ? mergedTitles[idx] : null;
+          if (idx < 0) mergedTitles.push(t);
+          else mergedTitles[idx] = mergeTitle(baseT, latestT, t);
         }
         const library = createAccountLibrary(accountDataRef.current, mergedTitles);
         const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
