@@ -469,3 +469,28 @@
     right: calc(50% - 31px) !important;
   }
 }
+
+
+/* Desktop sidebar: make the favorites count a balanced, centered badge. */
+@media (min-width: 761px) {
+  .sidebar .primary-nav .nav-item > small {
+    box-sizing: border-box;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 22px;
+    width: 22px;
+    min-width: 22px;
+    height: 22px;
+    margin: 0 0 0 auto;
+    padding: 0;
+    border: 1px solid rgba(211, 177, 125, .2);
+    border-radius: 50%;
+    background: rgba(211, 177, 125, .1);
+    color: var(--gold2);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+}
