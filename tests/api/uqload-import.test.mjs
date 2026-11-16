@@ -5,7 +5,7 @@ import { withDiscordAdminDb, discordAdminHeaders } from "./helpers/admin-auth.mj
 
 const CODE = "abc123def456";
 
-function makeDb({ titleKind = "movie" } = {}) {
+function makeDb({ titleKind = "movie", existingSource = null } = {}) {
   const calls = [];
   const db = {
     prepare(sql) {
@@ -16,6 +16,9 @@ function makeDb({ titleKind = "movie" } = {}) {
         async all() {
           if (/FROM catalog_titles WHERE id=\?/.test(sql)) {
             return { success: true, results: [{ id: call.values[0], kind: titleKind }] };
+          }
+          if (/FROM catalog_media_sources WHERE provider=\? AND file_code=\?/.test(sql)) {
+            return { success: true, results: existingSource ? [existingSource] : [] };
           }
           return { success: true, results: [] };
         },
@@ -156,4 +159,24 @@ test("un refus de l'API Uqload n'écrit aucune source", async () => {
   );
   assert.equal(result.status, 502);
   assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+
+test("une source déjà associée à un autre contenu est refusée sans écriture", async () => {
+  const { db, calls } = makeDb({ existingSource: { id: "source-1", title_id: "other-title", episode_id: null } });
+  const env = { DB: withDiscordAdminDb(db), UQLOAD_API_KEY: "unit-test-key" };
+  const { result } = await withUqloadFetch({ status: 200, result: [{ canplay: 1 }] }, () => onRequestPost({ request: makeRequest({ url: "https://uqload.vc/embed-" + CODE + ".html", titleId: "t1" }), env }));
+  assert.equal(result.status, 409);
+  const body = await result.json();
+  assert.equal(body.code, "SOURCE_ALREADY_ASSOCIATED");
+  assert.equal(body.existingTitleId, "other-title");
+  assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), false);
+});
+
+test("une source déjà liée au même contenu peut être actualisée", async () => {
+  const { db, calls } = makeDb({ existingSource: { id: "source-1", title_id: "t1", episode_id: null } });
+  const env = { DB: withDiscordAdminDb(db), UQLOAD_API_KEY: "unit-test-key" };
+  const { result } = await withUqloadFetch({ status: 200, result: [{ canplay: 1 }] }, () => onRequestPost({ request: makeRequest({ url: "https://uqload.vc/embed-" + CODE + ".html", titleId: "t1" }), env }));
+  assert.equal(result.status, 200);
+  assert.equal(calls.some((call) => /INSERT INTO catalog_media_sources/.test(call.sql)), true);
 });
