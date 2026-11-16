@@ -61,13 +61,31 @@ test("mergeLibraries keeps a favorite added by another tab", () => {
   assert.deepEqual(merged.favorites.sort(), [1, 2]);
 });
 
-test("mergeLibraries keeps a favorite removed locally and added by another tab", () => {
+test("mergeLibraries handles concurrent modification of the same favorite", () => {
+  // base: favorite 1 present
   const base = createAccountLibrary({ favorites: [1] }, []);
-  const local = createAccountLibrary({ favorites: [] }, []); // removed 1
-  const server = createAccountLibrary({ favorites: [1, 2] }, []); // added 2, kept 1
+  // local removes 1, server keeps 1 (unchanged) -> removal wins
+  const local = createAccountLibrary({ favorites: [] }, []);
+  const server = createAccountLibrary({ favorites: [1] }, []);
   const merged = mergeLibraries(local, server, base);
-  // server added 2 and kept 1 (local removal conflicts) -> keep 1 and 2 (no data loss)
-  assert.ok(merged.favorites.includes(2));
+  assert.deepEqual(merged.favorites, []);
+});
+
+test("mergeLibraries keeps server-added favorite when local unchanged", () => {
+  const base = createAccountLibrary({ favorites: [1] }, []);
+  const local = createAccountLibrary({ favorites: [1] }, []);
+  const server = createAccountLibrary({ favorites: [1, 2] }, []);
+  const merged = mergeLibraries(local, server, base);
+  assert.deepEqual(merged.favorites.sort(), [1, 2]);
+});
+
+test("mergeLibraries preserves a voluntary progress reset to zero", () => {
+  const base = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
+  const local = createAccountLibrary({ playback: { "1": { currentSeconds: 0, progress: 0, episodes: {} } } }, []);
+  const server = createAccountLibrary({ playback: { "1": { currentSeconds: 100, progress: 50, episodes: {} } } }, []);
+  const merged = mergeLibraries(local, server, base);
+  assert.equal(merged.playback["1"].progress, 0);
+  assert.equal(merged.playback["1"].currentSeconds, 0);
 });
 
 test("mergeLibraries preserves titles removed locally", () => {

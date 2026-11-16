@@ -488,8 +488,11 @@ export default function HomePage() {
     titlesRef.current = displayed;
     setTitles(displayed);
     if (accountLibraryReadyRef.current) {
-      const library = createAccountLibrary(accountDataRef.current, safeTitles);
+      const previous = accountLibraryWriteRef.current;
       const operation = accountLibraryWriteRef.current.then(async () => {
+        await previous.catch(() => {});
+        // Build the library from the latest known state inside the queue.
+        const library = createAccountLibrary(accountDataRef.current, safeTitles);
         const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
         if (result.status === "conflict") {
           accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
@@ -507,7 +510,6 @@ export default function HomePage() {
             const displayed = overlayAccountData(catalogTitlesRef.current as Title[], data);
             titlesRef.current = displayed;
             setTitles(displayed);
-            // Retry once with merged data.
             const retry = await saveAccountLibrary(merged, accountLibraryRevisionRef.current);
             if (retry.status === "saved") { accountLibraryRevisionRef.current = retry.revision; lastSavedLibraryRef.current = merged; return true; }
             if (retry.status === "conflict") { accountLibraryRevisionRef.current = retry.revision ?? accountLibraryRevisionRef.current; }
