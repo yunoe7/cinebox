@@ -85,7 +85,8 @@ export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boo
   if (!env.DB) return false;
   const db = env.DB as AccountEnv["DB"];
   try {
-    // Keep existing explicit grants (owner ID, database admin role, allowlist).
+    // Explicit grants are limited to the configured owner Discord ID and the admin allowlist.
+    // The users.role column is not consulted for admin authorization.
     const explicit = await db.prepare(
       "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
     ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
