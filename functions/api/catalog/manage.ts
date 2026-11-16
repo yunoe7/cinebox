@@ -71,7 +71,7 @@ export async function onRequestPatch({ request, env }: { request: Request; env: 
       return json({ error: `Le champ ${field} doit être une chaîne ou null.` }, 400);
     }
     if (typeof body[field] === "string" &&
-      (!/^\/[a-zA-Z0-9_./-]{1,240}$/.test(body[field]) || body[field].includes(".."))) {
+      (!/^\\/[a-zA-Z0-9_./-]{1,240}$/.test(body[field]) || body[field].includes(".."))) {
       return json({ error: `Le chemin ${field} est invalide.` }, 400);
     }
   }
