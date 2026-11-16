@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
-import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits } from "../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits, persistLibrary } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -409,72 +409,46 @@ export default function HomePage() {
 
   const saveAccountData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
     if (!accountLibraryReadyRef.current) return false;
-    const persist = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
-      const previous = accountLibraryWriteRef.current;
-      const operation = (async () => {
-        await previous.catch(() => {});
-        // Apply updater to the latest known state inside the queue, so rapid
-        // successive actions compose instead of overwriting each other.
-        const next = updater(structuredClone(accountDataRef.current));
-        let currentLibrary = createAccountLibrary(next, catalogTitlesRef.current);
-        let currentAccountData = next;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const result = await saveAccountLibrary(currentLibrary, accountLibraryRevisionRef.current);
-          if (result.status === "saved") {
-            accountLibraryRevisionRef.current = result.revision;
-            lastSavedLibraryRef.current = currentLibrary;
-            // Final state is exactly what was saved (merged or original).
-            accountDataRef.current = currentAccountData;
-            setAccountData(currentAccountData);
-            catalogTitlesRef.current = currentLibrary.titles as Title[];
-            const displayed = overlayAccountData(catalogTitlesRef.current as Title[], currentAccountData);
-            titlesRef.current = displayed;
-            setTitles(displayed);
-            return true;
-          }
-          if (result.status === "conflict") {
-            accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
-            const serverLibrary = result.library && isAccountLibrary(result.library) ? result.library : null;
-            if (serverLibrary) {
-              const mergedLibrary = mergeLibraries(currentLibrary, serverLibrary, lastSavedLibraryRef.current);
-              const mergedAccountData = (() => {
-                const d = emptyAccountData();
-                d.favorites = mergedLibrary.favorites;
-                d.playback = mergedLibrary.playback as typeof d.playback;
-                d.history = mergedLibrary.history;
-                d.viewCounts = mergedLibrary.viewCounts;
-                d.preferences = mergedLibrary.preferences;
-                return d;
-              })();
-              // Preserve merged draft in state (no silent overwrite).
-              catalogTitlesRef.current = mergedLibrary.titles as Title[];
-              accountDataRef.current = mergedAccountData;
-              setAccountData(mergedAccountData);
-              const displayed = overlayAccountData(catalogTitlesRef.current as Title[], mergedAccountData);
-              titlesRef.current = displayed;
-              setTitles(displayed);
-              currentLibrary = mergedLibrary;
-              currentAccountData = mergedAccountData;
-              if (attempt < 2) continue; // retry inline (no re-queue)
-            }
-            setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
-            return false;
-          }
-          if (result.status === "unauthenticated") throw new Error("Session expirée.");
-          throw new Error("Sauvegarde impossible.");
-        }
-        return false;
-      })();
-      accountLibraryWriteRef.current = operation.catch(() => {});
-      try {
-        return await operation;
-      } catch (error) {
-        setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
-        return false;
+    const previous = accountLibraryWriteRef.current;
+    const operation = (async () => {
+      await previous.catch(() => {});
+      const next = updater(structuredClone(accountDataRef.current));
+      const library = createAccountLibrary(next, catalogTitlesRef.current);
+      const res = await persistLibrary({
+        saveFn: saveAccountLibrary,
+        initialLibrary: library,
+        initialAccountData: next,
+        initialRevision: accountLibraryRevisionRef.current,
+        baseLibrary: lastSavedLibraryRef.current as any,
+        maxAttempts: 3,
+      });
+      accountLibraryRevisionRef.current = res.revision;
+      if (res.ok) {
+        lastSavedLibraryRef.current = res.library;
+        accountDataRef.current = res.accountData;
+        setAccountData(res.accountData);
+        catalogTitlesRef.current = res.library.titles as Title[];
+        const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+        titlesRef.current = displayed;
+        setTitles(displayed);
+      } else {
+        accountDataRef.current = res.accountData;
+        setAccountData(res.accountData);
+        catalogTitlesRef.current = res.library.titles as Title[];
+        const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+        titlesRef.current = displayed;
+        setTitles(displayed);
+        setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
       }
-    };
-
-    return persist(updater);
+      return res.ok;
+    })();
+    accountLibraryWriteRef.current = operation.catch(() => {});
+    try {
+      return await operation;
+    } catch (error) {
+      setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
+      return false;
+    }
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
@@ -508,7 +482,7 @@ export default function HomePage() {
         if (result.status === "conflict") {
           accountLibraryRevisionRef.current = result.revision ?? accountLibraryRevisionRef.current;
           if (result.library && isAccountLibrary(result.library)) {
-            const merged = mergeLibraries(library, result.library, lastSavedLibraryRef.current);
+            const merged = mergeLibraries(library, result.library, lastSavedLibraryRef.current as any);
             catalogTitlesRef.current = merged.titles as Title[];
             const data = emptyAccountData();
             data.favorites = merged.favorites;
