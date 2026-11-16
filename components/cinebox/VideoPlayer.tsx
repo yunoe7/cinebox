@@ -44,7 +44,6 @@ export default function VideoPlayer({ src, resumeAt, onProgress, onEnded, onView
         src={src}
         title="Lecteur vidéo hébergé"
         allow="autoplay; fullscreen; picture-in-picture"
-        allowFullScreen
         referrerPolicy="strict-origin-when-cross-origin"
       />
       <div className="uqload-playback-fallback" role="note">
