@@ -12,12 +12,13 @@ const EPISODE = {
   episode_number: 1,
 };
 
-function makeDb() {
+function makeDb(failSql = null) {
   return {
     prepare(sql) {
       return {
         bind() { return this; },
         async all() {
+          if (failSql && failSql.test(sql)) return { success: false, results: [] };
           if (/FROM catalog_titles WHERE/.test(sql) || /SELECT id,kind,title,published FROM catalog_titles/.test(sql)) {
             return { success: true, results: [SERIES] };
           }
@@ -69,4 +70,11 @@ test("une panne Uqload conserve les cibles D1 et les sources Vidmoly", async () 
   } finally {
     globalThis.fetch = original;
   }
+});
+
+
+test("une lecture D1 en échec ne renvoie pas un catalogue vide", async () => {
+  const response = await onRequestGet({ request: makeRequest(), env: { DB: withDiscordAdminDb(makeDb(/SELECT id,kind,title,published FROM catalog_titles/)) } });
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /D1/);
 });
