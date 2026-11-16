@@ -45,7 +45,10 @@ Renseigner ensuite les valeurs. Ne jamais committer `.env.local`, `.dev.vars` ni
 | `CINEBOX_DISCORD_ROLE_FONDA_ID` | Identifiant du rôle Fondateur | Pour les rôles automatiques |
 | `CINEBOX_DISCORD_ROLE_ADMIN_ID` | Identifiant du rôle Admin | Pour les rôles automatiques |
 | `CINEBOX_DISCORD_ROLE_MODO_ID` | Identifiant du rôle Modérateur | Pour les rôles automatiques |
-| `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |\n| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |\n| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |\n| `DB` | Binding D1 Cloudflare Pages (configuré dans les paramètres du projet, pas dans `.env`) | Pour les comptes, bibliothèques et catalogue partagé |
+| `DISCORD_CLIENT_ID` | Identifiant de l’application OAuth Discord | Pour la connexion membre |
+| `DISCORD_CLIENT_SECRET` | Secret OAuth Discord (secret Cloudflare) | Pour la connexion membre |
+| `DISCORD_REDIRECT_URI` | URL HTTPS exacte de `/api/auth/discord/callback` | Pour la connexion membre |
+| `DB` | Binding D1 Cloudflare Pages (configuré dans les paramètres du projet, pas dans `.env`) | Pour les comptes, bibliothèques et catalogue partagé |
 
 Pour activer l'autorisation automatique, configurer le token du bot, l'identifiant du serveur et les trois identifiants de rôles Fondateur/Admin/Modérateur dans Cloudflare Pages Production et Preview. Le bot doit appartenir au serveur et l'intent privilégié **Server Members Intent** doit être activé dans le portail Discord. Les identifiants de rôles sont vérifiés côté serveur via l'API Discord à chaque contrôle d'accès (cache court de 30 secondes). L'identifiant `CINEBOX_ADMIN_DISCORD_USER_ID`, le rôle D1 `admin` et `admin_allowlist` restent des accès explicites de secours. La session est celle du compte Discord connecté ; le cookie de session est HttpOnly et les jetons OAuth restent côté serveur.
 
@@ -118,7 +121,15 @@ Les Pages Functions sont détectées automatiquement dans `functions/`.
 
 **Rate limiting** : le démarrage OAuth Discord (`GET /api/auth/discord/start`) est limité côté serveur à 12 tentatives par adresse IP sur 15 minutes via la table D1 `account_rate_limits` (migration `0005_account_rate_limits.sql`). Une règle Cloudflare WAF complémentaire peut aussi protéger les routes `/api/auth/*` et `/api/catalog/manage`.
 
-### Connexion des membres avec Discord\n\n- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.\n- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.\n- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.\n- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre et administrateur est partagée dans le même cookie HttpOnly ; l’accès admin dépend d’une autorisation Discord vérifiée côté serveur.\n- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.\n\n### Bibliothèque personnelle et API de compte
+### Connexion des membres avec Discord
+
+- La connexion Discord est obligatoire pour accéder à CinéBox. L’écran principal reste masqué tant qu’une session membre valide n’est pas établie.
+- Le flux OAuth utilise uniquement le scope `identify` : il récupère l’identité et l’avatar publics du compte Discord. Il ne demande ni rôle, ni accès aux serveurs, ni appartenance au serveur CinéBox.
+- Rejoindre le serveur Discord via le bouton d’invitation est entièrement facultatif.
+- Le callback `/api/auth/discord/callback` vérifie le cookie `state`, échange le code côté serveur, récupère `/users/@me` et crée ou retrouve le compte D1. La session membre et administrateur est partagée dans le même cookie HttpOnly ; l’accès admin dépend d’une autorisation Discord vérifiée côté serveur.
+- L’avatar est chargé directement depuis le CDN officiel `cdn.discordapp.com`, autorisé par la CSP. Aucun jeton OAuth n’est exposé au navigateur.
+
+### Bibliothèque personnelle et API de compte
 
 - La session Discord identifie le compte ; chaque bibliothèque est isolée par `user_id` dans la table D1 `account_libraries`.
 - `GET /api/account/library` lit la bibliothèque du compte connecté. `PUT /api/account/library` enregistre le document avec une révision optimiste : une révision obsolète renvoie `409 revision-conflict` afin que le client puisse fusionner/réessayer plutôt que d’écraser une modification concurrente.
