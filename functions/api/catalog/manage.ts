@@ -1,8 +1,8 @@
 import { json, requireAdmin, type AdminEnv } from "../../_lib/admin-auth.ts";
 import { validateVipSettings, vipAccessState } from "../../../lib/cinebox/vip-access.mjs";
 
-interface Statement { bind(...values: (string | number | null)[]): Statement; all<T>(): Promise<{ results: T[]; success: boolean }>; run(): Promise<{ success: boolean }>; }
-interface DB { prepare(sql: string): Statement; }
+interface Statement { bind(...values: (string | number | null)[]): Statement; all<T>(): Promise<{ results: T[]; success: boolean }>; run(): Promise<{ success: boolean; meta?: { changes?: number } }>; }
+interface DB { prepare(sql: string): Statement; batch<T = unknown>(statements: Statement[]): Promise<Array<{ success: boolean; results?: T[] }>>; }
 interface Env extends AdminEnv { DB?: DB; }
 interface TitleRow { id: string; kind: "movie" | "series" | "video"; title: string; overview: string; release_date: string | null; poster_path: string | null; backdrop_path: string | null; genres_json: string; metadata_json: string; published: number; updated_at: string; vip_exclusive: number; vip_early_access: number; public_at: string | null; }
 interface EpisodeRow { id: string; title_id: string; season_number: number; episode_number: number; title: string; overview: string; duration_seconds: number | null; thumbnail_path: string | null; metadata_json: string; }
@@ -99,9 +99,11 @@ export async function onRequestPatch({ request, env }: { request: Request; env: 
       : null;
     const published = hasPublished ? (body.published ? 1 : 0) : current.published;
 
-    await env.DB.prepare(
+    const write = await env.DB.prepare(
       "UPDATE catalog_titles SET title=?,overview=?,release_date=?,poster_path=?,backdrop_path=?,published=?,vip_exclusive=?,vip_early_access=?,public_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
     ).bind(title, overview, releaseDate, posterPath, backdropPath, published, vipExclusive ? 1 : 0, vipEarlyAccess ? 1 : 0, publicAt, id).run();
+    if (!write.success) throw new Error("D1 update failed");
+    if (write.meta?.changes === 0) return json({ error: "Le titre a été supprimé avant l’enregistrement." }, 409);
 
     // Always answer with the stored values, not with an echo of the request.
     const updated = await readTitle(env.DB, id);
@@ -121,24 +123,21 @@ export async function onRequestDelete({ request, env }: { request: Request; env:
     if (!exists.success) return json({ error: "Impossible de vérifier le titre dans D1." }, 503);
     if (!exists.results.length) return json({ deleted: true, id, alreadyDeleted: true });
     if (body.permanent === true) {
-      // Delete every dependent record explicitly, then verify the parent row is gone.
+      // D1 batch is transactional: either every dependent row and the title
+      // are deleted, or none of the statements are committed.
       const cleanup = [
-        ["catalog_media_sources", "DELETE FROM catalog_media_sources WHERE title_id=?"],
-        ["media_assets", "DELETE FROM media_assets WHERE title_id=? OR episode_id IN (SELECT id FROM catalog_episodes WHERE title_id=?)"],
-        ["user_favorites", "DELETE FROM user_favorites WHERE title_id=?"],
-        ["user_progress", "DELETE FROM user_progress WHERE title_id=?"],
-        ["watch_history", "DELETE FROM watch_history WHERE title_id=?"],
-        ["catalog_episodes", "DELETE FROM catalog_episodes WHERE title_id=?"]
-      ] as const;
-      for (const [table, sql] of cleanup) {
-        const statement = table === "media_assets"
-          ? env.DB.prepare(sql).bind(id, id)
-          : env.DB.prepare(sql).bind(id);
-        const result = await statement.run();
-        if (!result.success) return json({ error: "Suppression interrompue pendant le nettoyage de " + table + "." }, 503);
+        env.DB.prepare("DELETE FROM catalog_media_sources WHERE title_id=?").bind(id),
+        env.DB.prepare("DELETE FROM media_assets WHERE title_id=? OR episode_id IN (SELECT id FROM catalog_episodes WHERE title_id=?)").bind(id, id),
+        env.DB.prepare("DELETE FROM user_favorites WHERE title_id=?").bind(id),
+        env.DB.prepare("DELETE FROM user_progress WHERE title_id=?").bind(id),
+        env.DB.prepare("DELETE FROM watch_history WHERE title_id=?").bind(id),
+        env.DB.prepare("DELETE FROM catalog_episodes WHERE title_id=?").bind(id),
+        env.DB.prepare("DELETE FROM catalog_titles WHERE id=?").bind(id),
+      ];
+      const results = await env.DB.batch(cleanup);
+      if (results.length !== cleanup.length || results.some(result => !result.success)) {
+        return json({ error: "La suppression transactionnelle a échoué. Aucune confirmation de réussite n'a été envoyée." }, 503);
       }
-      const deleted = await env.DB.prepare("DELETE FROM catalog_titles WHERE id=?").bind(id).run();
-      if (!deleted.success) return json({ error: "D1 a refusé la suppression de la fiche." }, 503);
       const remaining = await env.DB.prepare("SELECT id FROM catalog_titles WHERE id=?").bind(id).all<{ id: string }>();
       if (!remaining.success || remaining.results.length) return json({ error: "La fiche existe encore dans D1 après la suppression. Vérifie les contraintes de la base." }, 503);
       return json({ deleted: true, id, verified: true });
