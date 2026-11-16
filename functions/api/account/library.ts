@@ -108,7 +108,7 @@ export function validLibrary(value: unknown): value is LibraryDocument {
   if (!isRecord(value) || value.version !== 1 ||
       !Array.isArray(value.titles) || value.titles.length > MAX_TITLES || !value.titles.every(validTitle) ||
       !Array.isArray(value.favorites) || value.favorites.length > MAX_FAVORITES ||
-      !value.favorites.every((id) => Number.isSafeInteger(id) && Number(id) > 0) ||
+      !value.favorites.every((id) => Number.isSafeInteger(id)) ||
       !validPlayback(value.playback) ||
       !Array.isArray(value.history) || value.history.length > MAX_HISTORY ||
       !value.history.every((entry) => isRecord(entry) && Number.isSafeInteger(entry.titleId) &&
