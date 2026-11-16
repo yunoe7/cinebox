@@ -131,3 +131,20 @@ test("mergeTitleEdits merges seasons and episodes by number", () => {
   assert.equal(merged.seasons[0].episodes[0].title, "Ep1 renamed");
   assert.equal(merged.seasons[0].episodes[0].progress, 10);
 });
+
+test("mergeTitleEdits handles two rapid edits to different titles", () => {
+  const base1 = { id: 1, name: "A", description: "d1" };
+  const base2 = { id: 2, name: "B", description: "d2" };
+  const v1 = mergeTitleEdits(base1, base1, { id: 1, name: "A1", description: "d1" });
+  const v2 = mergeTitleEdits(base2, base2, { id: 2, name: "B2", description: "d2" });
+  assert.equal(v1.name, "A1");
+  assert.equal(v2.name, "B2");
+});
+
+test("mergeTitleEdits preserves both sequential edits", () => {
+  const base = { id: 1, name: "Base", description: "desc", rating: 5 };
+  const v1 = mergeTitleEdits(base, base, { id: 1, name: "V1", description: "desc", rating: 5 });
+  const v2 = mergeTitleEdits(base, v1, { id: 1, name: "V1", description: "V2", rating: 5 });
+  assert.equal(v2.name, "V1");
+  assert.equal(v2.description, "V2");
+});
