@@ -46,7 +46,7 @@ function isBoundedJson(value: unknown, depth = 0, budget = { nodes: 0 }): boolea
 
 function validEpisode(value: unknown): boolean {
   if (!isRecord(value) || !Number.isSafeInteger(value.number) || Number(value.number) < 0 ||
-      !isBoundedString(value.title, 500)) return false;
+      (value.title !== undefined && !isBoundedString(value.title, 500))) return false;
   for (const key of ["currentTime", "progress", "runtime"] as const) {
     if (value[key] !== undefined && !isNonnegativeFinite(value[key])) return false;
   }
@@ -67,12 +67,16 @@ function validSeason(value: unknown): boolean {
 function validTitle(value: unknown): boolean {
   if (!isRecord(value) || !Number.isSafeInteger(value.id) || Number(value.id) <= 0 ||
       typeof value.name !== "string" || !isBoundedString(value.name, 500) || !value.name.trim() ||
-      !["Film", "Série", "Vidéo"].includes(String(value.kind)) ||
-      !Number.isSafeInteger(value.year) || Number(value.year) < 1800 || Number(value.year) > 3000 ||
-      !isBoundedString(value.genre, 500) || !isBoundedString(value.description) ||
-      !isBoundedString(value.poster, 4_000) || !isBoundedString(value.backdrop, 4_000) ||
-      !isBoundedString(value.duration, 200) ||
-      !isNonnegativeFinite(value.progress) || Number(value.progress) > 100) return false;
+      !["Film", "Série", "Vidéo"].includes(String(value.kind))) return false;
+  // Older account libraries may predate some display/progress metadata. Keep
+  // those records readable; validate every optional field when it is present.
+  if (value.year !== undefined && (!Number.isSafeInteger(value.year) || Number(value.year) < 0 || Number(value.year) > 3000)) return false;
+  if (value.genre !== undefined && !isBoundedString(value.genre, 500)) return false;
+  if (value.description !== undefined && !isBoundedString(value.description)) return false;
+  if (value.poster !== undefined && !isBoundedString(value.poster, 4_000)) return false;
+  if (value.backdrop !== undefined && !isBoundedString(value.backdrop, 4_000)) return false;
+  if (value.duration !== undefined && !isBoundedString(value.duration, 200)) return false;
+  if (value.progress !== undefined && (!isNonnegativeFinite(value.progress) || Number(value.progress) > 100)) return false;
   if (value.seasons !== undefined && (!Array.isArray(value.seasons) ||
       value.seasons.length > MAX_SEASONS_PER_TITLE || !value.seasons.every(validSeason))) return false;
   return true;
