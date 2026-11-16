@@ -420,7 +420,7 @@ export default function HomePage() {
         initialAccountData: next,
         initialRevision: accountLibraryRevisionRef.current,
         baseLibrary: lastSavedLibraryRef.current as any,
-        maxAttempts: 3,
+        maxAttempts: 8,
       });
       accountLibraryRevisionRef.current = res.revision;
       if (res.ok) {
@@ -480,7 +480,7 @@ export default function HomePage() {
           initialAccountData: accountDataRef.current,
           initialRevision: accountLibraryRevisionRef.current,
           baseLibrary: lastSavedLibraryRef.current as any,
-          maxAttempts: 3,
+          maxAttempts: 8,
         });
         accountLibraryRevisionRef.current = res.revision;
         if (res.ok) {
