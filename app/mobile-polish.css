@@ -329,12 +329,10 @@
   .poster-play { display: none; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  @media (max-width: 760px) {
-    .mobile-bottom-nav,
-    .topbar,
-    .poster-image img { scroll-behavior: auto; transition: none !important; }
-  }
+@media (prefers-reduced-motion: reduce) and (max-width: 760px) {
+  .mobile-bottom-nav,
+  .topbar,
+  .poster-image img { scroll-behavior: auto; transition: none !important; }
 }
 
 
