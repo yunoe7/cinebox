@@ -66,7 +66,7 @@ function validSeason(value: unknown): boolean {
 
 function validTitle(value: unknown): boolean {
   if (!isRecord(value) || !Number.isSafeInteger(value.id) || Number(value.id) <= 0 ||
-      !isBoundedString(value.name, 500) || !value.name.trim() ||
+      typeof value.name !== "string" || !isBoundedString(value.name, 500) || !value.name.trim() ||
       !["Film", "Série", "Vidéo"].includes(String(value.kind)) ||
       !Number.isSafeInteger(value.year) || Number(value.year) < 1800 || Number(value.year) > 3000 ||
       !isBoundedString(value.genre, 500) || !isBoundedString(value.description) ||
