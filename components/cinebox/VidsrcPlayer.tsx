@@ -43,6 +43,6 @@ export default function VidsrcPlayer({ kind, id, season, episode, resumeAt = 0, 
 
   return <div className={styles.shell}>
     {!frameLoaded && <div className={styles.loading}><LoaderCircle size={22} className={styles.spinner}/><span>Chargement du lecteur…</span></div>}
-    <iframe ref={frameRef} className={styles.frame} src={src} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" onLoad={() => setFrameLoaded(true)}/>
+    <iframe ref={frameRef} className={styles.frame} src={src} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerPolicy="strict-origin-when-cross-origin" onLoad={() => setFrameLoaded(true)}/>
   </div>;
 }

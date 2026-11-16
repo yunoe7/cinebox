@@ -69,8 +69,10 @@ export async function onRequestPut({ request, env }: { request: Request; env: Ac
       "INSERT INTO account_libraries (user_id,library_json,revision,updated_at) SELECT ?,?,1,CURRENT_TIMESTAMP WHERE ?=0 ON CONFLICT(user_id) DO UPDATE SET library_json=excluded.library_json,revision=account_libraries.revision+1,updated_at=CURRENT_TIMESTAMP WHERE account_libraries.revision=?",
     ).bind(user.id, serialized, body.revision, body.revision).run() as { meta?: { changes?: number } };
     if (result.meta?.changes === 0) {
-      const current = await env.DB.prepare("SELECT revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{revision:number}>();
-      return json({ error: "revision-conflict", revision: current?.revision ?? 0 }, 409);
+      const current = await env.DB.prepare("SELECT library_json, revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{library_json:string;revision:number}>();
+      let library = null;
+      if (current?.library_json) { try { library = JSON.parse(current.library_json); } catch {} }
+      return json({ error: "revision-conflict", revision: current?.revision ?? 0, library }, 409);
     }
     const current = await env.DB.prepare("SELECT revision FROM account_libraries WHERE user_id=?").bind(user.id).first<{revision:number}>();
     return json({ saved: true, revision: current?.revision ?? 1 });

@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { deleteAssetKeys, readAsset, saveVersionedAsset } from "../lib/cinebox/storage";
 import { initialValueFor, readLocalJson, writeLocalJson } from "../lib/cinebox/local-storage.mjs";
-import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary } from "../lib/cinebox/account-library.mjs";
+import { createAccountLibrary, fetchAccountLibrary, saveAccountLibrary, isAccountLibrary, mergeLibraries, mergeTitleEdits, persistLibrary, enqueueLibraryWrite } from "../lib/cinebox/account-library.mjs";
 import * as mediaLifecycle from "../lib/cinebox/media-lifecycle.mjs";
 import { processMediaCleanupJobs, publishWithMediaCleanupJournal, withMediaReferencesLock } from "../lib/cinebox/media-cleanup.mjs";
 import { buildSeasonEditDraft } from "../lib/cinebox/series-edit.mjs";
@@ -367,7 +367,8 @@ export default function HomePage() {
   const sharedCatalogTitlesRef = useRef<Title[]>([]);
   const accountDataRef = useRef(emptyAccountData());
   const accountLibraryRevisionRef = useRef(0);
-  const accountLibraryWriteRef = useRef(Promise.resolve());
+  const lastSavedLibraryRef = useRef<ReturnType<typeof createAccountLibrary> | null>(null);
+  const accountLibraryWriteRef = useRef<Promise<any>>(Promise.resolve());
   const accountLibraryReadyRef = useRef(false);
   const canWriteTitlesRef = useRef(false);
   const canWriteFavoritesRef = useRef(false);
@@ -408,16 +409,46 @@ export default function HomePage() {
 
   const saveAccountData = async (updater: (data: typeof accountData) => typeof accountData): Promise<boolean> => {
     if (!accountLibraryReadyRef.current) return false;
-    const next = updater(structuredClone(accountDataRef.current));
-    const library = createAccountLibrary(next, catalogTitlesRef.current);
-    const operation = accountLibraryWriteRef.current.then(async () => {
-      const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-      if (result.status !== "saved") throw new Error(result.status === "conflict" ? "La bibliothèque a été modifiée dans un autre onglet. Rechargez la page avant de continuer." : "Session expirée.");
-      accountLibraryRevisionRef.current = result.revision;
-    });
+    const previous = accountLibraryWriteRef.current;
+    const operation = (async () => {
+      await previous.catch(() => {});
+      const next = updater(structuredClone(accountDataRef.current));
+      const library = createAccountLibrary(next, catalogTitlesRef.current);
+      const res = await persistLibrary({
+        saveFn: saveAccountLibrary,
+        initialLibrary: library,
+        initialAccountData: next,
+        initialRevision: accountLibraryRevisionRef.current,
+        baseLibrary: lastSavedLibraryRef.current as any,
+        maxAttempts: 3,
+      });
+      accountLibraryRevisionRef.current = res.revision;
+      if (res.ok) {
+        lastSavedLibraryRef.current = res.library;
+        accountDataRef.current = res.accountData;
+        setAccountData(res.accountData);
+        catalogTitlesRef.current = res.library.titles as Title[];
+        const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+        titlesRef.current = displayed;
+        setTitles(displayed);
+      } else {
+        accountDataRef.current = res.accountData;
+        setAccountData(res.accountData);
+        catalogTitlesRef.current = res.library.titles as Title[];
+        const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+        titlesRef.current = displayed;
+        setTitles(displayed);
+        setNotice({ title: "Bibliothèque non synchronisée", message: "Conflit persistant : vos modifications sont conservées localement. Réessayez dans un instant." });
+      }
+      return res.ok;
+    })();
     accountLibraryWriteRef.current = operation.catch(() => {});
-    try { await operation; accountDataRef.current = next; setAccountData(next); return true; }
-    catch (error) { setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." }); return false; }
+    try {
+      return await operation;
+    } catch (error) {
+      setNotice({ title: "Bibliothèque non synchronisée", message: error instanceof Error ? error.message : "La sauvegarde distante a échoué." });
+      return false;
+    }
   };
 
   const commitTitlesUnlocked = (next: Title[]) => {
@@ -431,14 +462,47 @@ export default function HomePage() {
     titlesRef.current = displayed;
     setTitles(displayed);
     if (accountLibraryReadyRef.current) {
-      const library = createAccountLibrary(accountDataRef.current, safeTitles);
-      const operation = accountLibraryWriteRef.current.then(async () => {
-        const result = await saveAccountLibrary(library, accountLibraryRevisionRef.current);
-        if (result.status !== "saved") throw new Error(result.status === "conflict" ? "Conflit de synchronisation : rechargez la page." : "Session expirée.");
-        accountLibraryRevisionRef.current = result.revision;
+      const operation = enqueueLibraryWrite(accountLibraryWriteRef, async () => {
+        const baseTitles = lastSavedLibraryRef.current?.titles || [];
+        const latestTitles = catalogTitlesRef.current;
+        const mergedTitles = [...latestTitles];
+        for (const t of safeTitles) {
+          const idx = mergedTitles.findIndex((x) => x.id === t.id);
+          const baseT = baseTitles.find((x) => x.id === t.id);
+          const latestT = idx >= 0 ? mergedTitles[idx] : null;
+          if (idx < 0) mergedTitles.push(t);
+          else mergedTitles[idx] = mergeTitleEdits(baseT, latestT, t);
+        }
+        const library = createAccountLibrary(accountDataRef.current, mergedTitles);
+        const res = await persistLibrary({
+          saveFn: saveAccountLibrary,
+          initialLibrary: library,
+          initialAccountData: accountDataRef.current,
+          initialRevision: accountLibraryRevisionRef.current,
+          baseLibrary: lastSavedLibraryRef.current as any,
+          maxAttempts: 3,
+        });
+        accountLibraryRevisionRef.current = res.revision;
+        if (res.ok) {
+          lastSavedLibraryRef.current = res.library;
+          accountDataRef.current = res.accountData;
+          setAccountData(res.accountData);
+          catalogTitlesRef.current = res.library.titles as Title[];
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+          titlesRef.current = displayed;
+          setTitles(displayed);
+        } else {
+          accountDataRef.current = res.accountData;
+          setAccountData(res.accountData);
+          catalogTitlesRef.current = res.library.titles as Title[];
+          const displayed = overlayAccountData(catalogTitlesRef.current as Title[], res.accountData);
+          titlesRef.current = displayed;
+          setTitles(displayed);
+          setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." });
+        }
+        return res.ok;
       });
-      accountLibraryWriteRef.current = operation.catch(() => {});
-      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n’a pas été enregistrée sur votre compte." }));
+      void operation.catch(() => setNotice({ title: "Synchronisation impossible", message: "La fiche est visible dans cette session mais n'a pas été enregistrée sur votre compte." }));
     }
     return true;
   };
@@ -559,6 +623,7 @@ export default function HomePage() {
         if (remote.status !== "ready") throw new Error("Votre session a expiré. Reconnectez-vous.");
         if (cancelled) return;
         accountLibraryRevisionRef.current = remote.revision;
+        lastSavedLibraryRef.current = remote.library && isAccountLibrary(remote.library) ? remote.library : null;
         const library = remote.library;
         const data = emptyAccountData();
         if (library) {
