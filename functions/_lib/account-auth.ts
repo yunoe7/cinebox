@@ -112,7 +112,13 @@ export async function getAccount(request: Request, env: AccountEnv) {
 }
 export async function revokeAccount(request: Request, env: AccountEnv) {
   const token=cookie(request);
-  if(token) await env.DB.prepare("UPDATE account_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND revoked_at IS NULL").bind(await sha256(token)).run();
+  if(token) {
+    const result = await env.DB.prepare("UPDATE account_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND revoked_at IS NULL")
+      .bind(await sha256(token)).run();
+    if (result && typeof result === "object" && "success" in result && result.success === false) {
+      throw new Error("Account session revocation failed");
+    }
+  }
 }
 let lastRateLimitCleanupAt = 0;
 const RATE_LIMIT_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
