@@ -220,6 +220,12 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     inventoryComplete = false;
     inventoryIssue = "Inventaire distant contenant des fichiers sans code exploitable : aucune suppression effectuée.";
   }
+  const remoteCodes = files.map(file => clean(file.file_code || file.code, 64)).filter(code => /^[A-Za-z0-9]{6,64}$/.test(code));
+  const hasDuplicateRemoteCode = new Set(remoteCodes).size !== remoteCodes.length;
+  if (inventoryComplete && hasDuplicateRemoteCode) {
+    inventoryComplete = false;
+    inventoryIssue = "Inventaire distant contenant des codes Uqload en double : aucune suppression effectuée.";
+  }
   let deleted = 0;
   let deletionSkipped: string | null = inventoryIssue;
   // Reconcile only after reading the complete remote inventory. An empty or

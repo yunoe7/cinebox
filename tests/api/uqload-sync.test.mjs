@@ -191,3 +191,27 @@ test("un nombre de fichiers différent du total annoncé bloque la réconciliati
     globalThis.fetch = original;
   }
 });
+
+
+test("des codes Uqload dupliqués bloquent la réconciliation même si le total correspond", async () => {
+  const { db, calls } = makeDb({ existingCodes: [CODE, OTHER_CODE] });
+  const duplicateInventory = [
+    { file_code: CODE, file_title: "Film 2024", canplay: 1 },
+    { file_code: CODE, file_title: "Film 2024 copie", canplay: 1 },
+  ];
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    status: 200,
+    result: { files: duplicateInventory, pages: 1, results_total: 2, results: 2 },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    const result = await onRequestPost({ request: makeRequest(), env: makeEnv(db) });
+    const body = await result.json();
+    assert.equal(body.inventoryComplete, false);
+    assert.equal(body.deleted, 0);
+    assert.match(body.deletionSkipped, /codes Uqload en double/);
+    assert.equal(calls.some((call) => /^DELETE FROM catalog_media_sources/.test(call.sql)), false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
