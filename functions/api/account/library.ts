@@ -111,8 +111,7 @@ export function validLibrary(value: unknown): value is LibraryDocument {
       !value.favorites.every((id) => Number.isSafeInteger(id)) ||
       !validPlayback(value.playback) ||
       !Array.isArray(value.history) || value.history.length > MAX_HISTORY ||
-      !value.history.every((entry) => isRecord(entry) && Number.isSafeInteger(entry.titleId) &&
-        Number(entry.titleId) > 0 && isNonnegativeFinite(entry.viewedAt)) ||
+      !value.history.every((entry) => isRecord(entry) && Number.isSafeInteger(entry.titleId) && isNonnegativeFinite(entry.viewedAt)) ||
       !isRecord(value.viewCounts) || Object.keys(value.viewCounts).length > MAX_VIEW_COUNTS ||
       !Object.entries(value.viewCounts).every(([id, count]) =>
         /^-?\d{1,16}$/.test(id) && Number.isSafeInteger(count) && Number(count) >= 0) ||
