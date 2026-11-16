@@ -80,11 +80,21 @@ function rows(payload: Obj): Obj[] {
   if (isObj(payload.result)) for (const k of ["files", "results", "list"]) if (Array.isArray(payload.result[k])) return (payload.result[k] as unknown[]).filter(isObj);
   return [];
 }
+async function checkedAll<T>(statement: Statement): Promise<{ success: boolean; results: T[] }> {
+  const result = await statement.all<T>();
+  if (!result?.success) throw new Error("D1 n’a pas pu lire les données de synchronisation.");
+  return result;
+}
+async function checkedRun(statement: Statement): Promise<{ success: boolean; meta?: { changes?: number } }> {
+  const result = await statement.run();
+  if (!result?.success) throw new Error("D1 n’a pas confirmé l’écriture demandée.");
+  return result;
+}
 async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbToken: string): Promise<{status:"created"|"skipped"|"existing";reason?:string}> {
   const fileCode = clean(file.file_code || file.code, 64);
   const filename = clean(file.file_title || file.title || file.name, 300);
   if (!/^[A-Za-z0-9]{6,64}$/.test(fileCode) || !filename) return {status:"skipped",reason:"Le fichier Uqload ne contient pas de code ou de nom exploitable."};
-  const already = await db.prepare("SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(fileCode).all<{id:string}>();
+  const already = await checkedAll<{id:string}>(db.prepare("SELECT id FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(fileCode));
   const encodingStatus = encodingStatusFromCanplay(file.canplay);
   const quality = clean(file.file_quality ?? file.quality, 40) || null;
   const uploadedAt = clean(file.uploaded || file.uploaded_at || file.created, 40) || null;
@@ -92,8 +102,8 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
     // The file is already associated: refresh its real state instead of
     // returning early, otherwise a file stuck in "processing" would never
     // become playable after Uqload finishes encoding it.
-    await db.prepare("UPDATE catalog_media_sources SET encoding_status=?, quality=COALESCE(?, quality), uploaded_at=COALESCE(?, uploaded_at), updated_at=CURRENT_TIMESTAMP WHERE provider='uqload' AND file_code=?")
-      .bind(encodingStatus, quality, uploadedAt, fileCode).run();
+    await checkedRun(db.prepare("UPDATE catalog_media_sources SET encoding_status=?, quality=COALESCE(?, quality), uploaded_at=COALESCE(?, uploaded_at), updated_at=CURRENT_TIMESTAMP WHERE provider='uqload' AND file_code=?")
+      .bind(encodingStatus, quality, uploadedAt, fileCode));
     return {status:"existing"};
   }
   const parsed = parseFilename(filename);
@@ -124,12 +134,12 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
   const backdrop = clean(detail.backdrop_path, 180) || null;
   const overview = clean(detail.overview, 12000);
   const metadata = JSON.stringify({ tmdbId, originalTitle: clean(detail.original_title || detail.original_name), autoImported: true });
-  await db.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
+  await checkedRun(db.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,0,CURRENT_TIMESTAMP)
     ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,release_date=excluded.release_date,
     poster_path=COALESCE(catalog_titles.poster_path,excluded.poster_path),backdrop_path=COALESCE(catalog_titles.backdrop_path,excluded.backdrop_path),
     genres_json=excluded.genres_json,metadata_json=json_patch(CASE WHEN json_valid(catalog_titles.metadata_json) THEN catalog_titles.metadata_json ELSE '{}' END,excluded.metadata_json),updated_at=CURRENT_TIMESTAMP`)
-    .bind(id, kind, title, overview, releaseDate, poster, backdrop, JSON.stringify(genres), metadata).run();
+    .bind(id, kind, title, overview, releaseDate, poster, backdrop, JSON.stringify(genres), metadata));
 
   let episodeId: string | null = null;
   if (kind === "series" && parsed.season !== undefined && parsed.episode !== undefined) {
@@ -137,19 +147,21 @@ async function createDraftAndAssociate(db: DB, file: Obj, uqKey: string, tmdbTok
     const episodes = Array.isArray(season.episodes) ? season.episodes.filter(isObj) : [];
     const remoteEpisode = episodes.find(e => Number(e.episode_number) === parsed.episode);
     episodeId = `${id}:s${parsed.season}:e${parsed.episode}`;
-    await db.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
+    await checkedRun(db.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,duration_seconds=excluded.duration_seconds,thumbnail_path=excluded.thumbnail_path,metadata_json=excluded.metadata_json,updated_at=CURRENT_TIMESTAMP`)
       .bind(episodeId, id, parsed.season, parsed.episode, clean(remoteEpisode?.name) || `Épisode ${parsed.episode}`,
         clean(remoteEpisode?.overview, 8000), Number.isFinite(Number(remoteEpisode?.runtime)) ? Number(remoteEpisode?.runtime) * 60 : null,
-        clean(remoteEpisode?.still_path, 180) || null, JSON.stringify({ tmdbId: remoteEpisode?.id ?? null, airDate: clean(remoteEpisode?.air_date, 20) })).run();
+        clean(remoteEpisode?.still_path, 180) || null, JSON.stringify({ tmdbId: remoteEpisode?.id ?? null, airDate: clean(remoteEpisode?.air_date, 20) })));
   }
   const playbackUrl = buildPlaybackUrl(fileCode, "uqload");
-  await db.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
+  const saved = await checkedRun(db.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider,file_code) DO NOTHING`)
     .bind(crypto.randomUUID(), id, episodeId, "uqload", fileCode, fileCode, playbackUrl, quality, encodingStatus,
-      uploadedAt).run();
-  return {status:"created"};
+      uploadedAt));
+  // Another sync/import may have claimed this unique remote code after our
+  // initial lookup. Do not report a creation when the conflict made this a no-op.
+  return saved.meta?.changes === 0 ? {status:"existing"} : {status:"created"};
 }
 
 export async function onRequestPost({ request, env }: { request: Request; env: Env }): Promise<Response> {
@@ -239,14 +251,24 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   } else if (liveCodes.size === 0) {
     deletionSkipped = "Inventaire distant sans fichier exploitable : aucune suppression effectuée.";
   } else {
-    const stored = await db.prepare("SELECT file_code FROM catalog_media_sources WHERE provider='uqload'").all<{file_code:string}>();
+    let stored: {success:boolean;results:{file_code:string}[]};
+    try {
+      stored = await checkedAll<{file_code:string}>(db.prepare("SELECT file_code FROM catalog_media_sources WHERE provider='uqload'"));
+    } catch {
+      return json({error:"D1 n’a pas permis de lire les sources Uqload : synchronisation interrompue sans réconciliation."},503);
+    }
     const stale = (stored.results || []).filter(source => !liveCodes.has(source.file_code));
     if (stale.length > MAX_SYNC_DELETIONS) {
       deletionSkipped = `${stale.length} sources absentes du compte dépassent le plafond de ${MAX_SYNC_DELETIONS} : vérifie le compte Uqload avant de relancer.`;
     } else {
       for (const source of stale) {
-        const result = await db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(source.file_code).run();
-        deleted += Number(result.meta?.changes || 0);
+        try {
+          const result = await checkedRun(db.prepare("DELETE FROM catalog_media_sources WHERE provider='uqload' AND file_code=?").bind(source.file_code));
+          deleted += Number(result.meta?.changes || 0);
+        } catch {
+          deletionSkipped = "Échec d’une suppression D1 : la réconciliation a été interrompue. Vérifie les sources restantes avant de relancer.";
+          break;
+        }
       }
     }
   }
