@@ -38,9 +38,17 @@ export async function onRequestGet({ request, env }: { request: Request; env: En
     if (!titles.success) throw new Error("titles");
     const episodes = await env.DB.prepare("SELECT id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json FROM catalog_episodes ORDER BY title_id,season_number,episode_number").all<EpisodeRow>();
     if (!episodes.success) throw new Error("episodes");
+    // Group episodes once instead of scanning the full episode list for every title.
+    // This keeps the admin catalogue close to O(titles + episodes), even as it grows.
+    const episodesByTitle = new Map<string, EpisodeRow[]>();
+    for (const episode of episodes.results) {
+      const group = episodesByTitle.get(episode.title_id);
+      if (group) group.push(episode);
+      else episodesByTitle.set(episode.title_id, [episode]);
+    }
     const items = titles.results.map(t => ({
       ...adminTitle(t),
-      episodes: episodes.results.filter(e => e.title_id === t.id).map(e => ({ ...e, metadata: parseMetadata(e.metadata_json) })),
+      episodes: (episodesByTitle.get(t.id) ?? []).map(e => ({ ...e, metadata: parseMetadata(e.metadata_json) })),
     }));
     return json({ titles: items });
   } catch { return json({ error: "Impossible de charger les titres administrés." }, 503); }
@@ -52,6 +60,24 @@ export async function onRequestPatch({ request, env }: { request: Request; env: 
   let body: any; try { body = await request.json(); } catch { return json({ error: "JSON invalide." }, 400); }
   if (typeof body?.id !== "string" || !body.id.trim()) return json({ error: "Identifiant manquant." }, 400);
   const id = body.id.trim();
+  const stringFields = ["title", "overview", "release_date"] as const;
+  for (const field of stringFields) {
+    if (body[field] !== undefined && typeof body[field] !== "string") {
+      return json({ error: `Le champ ${field} doit être une chaîne de caractères.` }, 400);
+    }
+  }
+  for (const field of ["poster_path", "backdrop_path"] as const) {
+    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== "string") {
+      return json({ error: `Le champ ${field} doit être une chaîne ou null.` }, 400);
+    }
+    if (typeof body[field] === "string" &&
+      (!/^\/[a-zA-Z0-9_./-]{1,240}$/.test(body[field]) || body[field].includes(".."))) {
+      return json({ error: `Le chemin ${field} est invalide.` }, 400);
+    }
+  }
+  if (body.published !== undefined && typeof body.published !== "boolean") {
+    return json({ error: "Le champ published doit être booléen." }, 400);
+  }
   const hasVipInput = body.vip_exclusive !== undefined || body.vip_early_access !== undefined || body.public_at !== undefined
     || body.vipExclusive !== undefined || body.vipEarlyAccess !== undefined || body.publicAt !== undefined;
   const hasPublished = typeof body.published === "boolean";
@@ -89,14 +115,8 @@ export async function onRequestPatch({ request, env }: { request: Request; env: 
     if (body.title !== undefined && !title) return json({ error: "Le titre ne peut pas être vide." }, 400);
     const overview = body.overview !== undefined ? (typeof body.overview === "string" ? body.overview.slice(0, 12000) : current.overview) : current.overview;
     const releaseDate = body.release_date !== undefined ? (typeof body.release_date === "string" ? body.release_date.slice(0, 20) : current.release_date) : current.release_date;
-    const posterPath = body.poster_path === null ? null
-      : typeof body.poster_path === "string" && /^\/[a-zA-Z0-9_./-]{1,240}$/.test(body.poster_path) && !body.poster_path.includes("..") ? body.poster_path
-      : body.poster_path === undefined ? current.poster_path
-      : null;
-    const backdropPath = body.backdrop_path === null ? null
-      : typeof body.backdrop_path === "string" && /^\/[a-zA-Z0-9_./-]{1,240}$/.test(body.backdrop_path) && !body.backdrop_path.includes("..") ? body.backdrop_path
-      : body.backdrop_path === undefined ? current.backdrop_path
-      : null;
+    const posterPath = body.poster_path === null ? null : body.poster_path === undefined ? current.poster_path : body.poster_path;
+    const backdropPath = body.backdrop_path === null ? null : body.backdrop_path === undefined ? current.backdrop_path : body.backdrop_path;
     const published = hasPublished ? (body.published ? 1 : 0) : current.published;
 
     const write = await env.DB.prepare(
