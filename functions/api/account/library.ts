@@ -85,7 +85,7 @@ function validTitle(value: unknown): boolean {
 function validPlayback(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value) || Object.keys(value).length > MAX_PLAYBACK_ITEMS) return false;
   return Object.entries(value).every(([titleId, entry]) => {
-    if (!/^\d{1,16}$/.test(titleId) || !isRecord(entry)) return false;
+    if (!/^-?\d{1,16}$/.test(titleId) || !isRecord(entry)) return false;
     for (const key of ["currentTime", "progress"] as const) {
       if (entry[key] !== undefined && !isNonnegativeFinite(entry[key])) return false;
     }
@@ -115,7 +115,7 @@ export function validLibrary(value: unknown): value is LibraryDocument {
         Number(entry.titleId) > 0 && isNonnegativeFinite(entry.viewedAt)) ||
       !isRecord(value.viewCounts) || Object.keys(value.viewCounts).length > MAX_VIEW_COUNTS ||
       !Object.entries(value.viewCounts).every(([id, count]) =>
-        /^\d{1,16}$/.test(id) && Number.isSafeInteger(count) && Number(count) >= 0) ||
+        /^-?\d{1,16}$/.test(id) && Number.isSafeInteger(count) && Number(count) >= 0) ||
       !isRecord(value.preferences) || typeof value.preferences.autoplayNext !== "boolean") return false;
   return isBoundedJson(value);
 }
