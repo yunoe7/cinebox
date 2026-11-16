@@ -61,3 +61,25 @@ test("rejects excessive object depth and oversized collection counts", () => {
   }
   assert.equal(validLibrary(tooDeep), false);
 });
+
+
+test("accepts legacy titles with omitted optional display metadata", () => {
+  const legacy = structuredClone(valid);
+  const title = legacy.titles[0];
+  delete title.year;
+  delete title.genre;
+  delete title.description;
+  delete title.poster;
+  delete title.backdrop;
+  delete title.duration;
+  delete title.progress;
+  delete title.seasons[0].episodes[0].title;
+  assert.equal(validLibrary(legacy), true);
+});
+
+test("still rejects invalid optional metadata when it is present", () => {
+  const invalid = structuredClone(valid);
+  delete invalid.titles[0].progress;
+  invalid.titles[0].poster = { unexpected: true };
+  assert.equal(validLibrary(invalid), false);
+});
