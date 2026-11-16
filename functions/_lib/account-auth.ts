@@ -99,9 +99,16 @@ async function cleanupAccountSessions(env: AccountEnv, now: number) {
 }
 
 export async function createAccountSession(request: Request, env: AccountEnv, userId: string) {
-const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now()+ACCOUNT_TTL*1000).toISOString();
-  await env.DB.prepare("INSERT INTO account_sessions (id,user_id,token_hash,expires_at) VALUES (?,?,?,?)").bind(id,userId,await sha256(token),expiresAt).run();
-  return {cookie:cookieHeader(request,ACCOUNT_COOKIE,token,ACCOUNT_TTL),expiresAt};
+  const token = randomToken(32);
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + ACCOUNT_TTL * 1000).toISOString();
+  const result = await env.DB.prepare(
+    "INSERT INTO account_sessions (id,user_id,token_hash,expires_at) VALUES (?,?,?,?)",
+  ).bind(id, userId, await sha256(token), expiresAt).run();
+  if (result && typeof result === "object" && "success" in result && result.success === false) {
+    throw new Error("Account session creation failed");
+  }
+  return { cookie: cookieHeader(request, ACCOUNT_COOKIE, token, ACCOUNT_TTL), expiresAt };
 }
 export async function getAccount(request: Request, env: AccountEnv) {
   const token=cookie(request);
@@ -131,7 +138,7 @@ async function cleanupExpiredRateLimits(env: AccountEnv, now: number) {
     await env.DB.prepare("DELETE FROM account_rate_limits WHERE expires_at<=?")
       .bind(new Date(now).toISOString()).run();
   } catch {
-    // Rate limiting must continue to work even if housekeeping temporarily fails.
+    // Rate limiting must continue to work even if cleanup temporarily fails.
   }
 }
 
