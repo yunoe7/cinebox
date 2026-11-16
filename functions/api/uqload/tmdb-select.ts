@@ -44,19 +44,21 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
  const current=existing.results?.[0];
  if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
- await env.DB.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
+ const titleSaved=await env.DB.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,0,CURRENT_TIMESTAMP)
  ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,release_date=excluded.release_date,
  poster_path=COALESCE(catalog_titles.poster_path,excluded.poster_path),backdrop_path=COALESCE(catalog_titles.backdrop_path,excluded.backdrop_path),
  genres_json=excluded.genres_json,metadata_json=json_patch(CASE WHEN json_valid(catalog_titles.metadata_json) THEN catalog_titles.metadata_json ELSE '{}' END,excluded.metadata_json),updated_at=CURRENT_TIMESTAMP`)
  .bind(id,kind,title,clean(detail.overview),releaseDate,clean(detail.poster_path,180)||null,clean(detail.backdrop_path,180)||null,JSON.stringify(genres),metadata).run();
+ if(!titleSaved.success)return json({error:"D1 n’a pas enregistré le brouillon du titre."},503);
  if(episodeId){
   const seasonData=await tmdb(`/tv/${tmdbId}/season/${seasonNumber}`,env.TMDB_READ_ACCESS_TOKEN).catch(()=>({} as Obj));
   const list=Array.isArray(seasonData.episodes)?seasonData.episodes.filter(isObj):[];
   const ep=list.find(x=>Number(x.episode_number)===episodeNumber);
-  await env.DB.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
+  const episodeSaved=await env.DB.prepare(`INSERT INTO catalog_episodes (id,title_id,season_number,episode_number,title,overview,duration_seconds,thumbnail_path,metadata_json,updated_at)
    VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,duration_seconds=excluded.duration_seconds,thumbnail_path=excluded.thumbnail_path,metadata_json=excluded.metadata_json,updated_at=CURRENT_TIMESTAMP`)
-   .bind(episodeId,id,seasonNumber,episodeNumber,clean(ep?.name)||`Épisode ${episodeNumber}`,clean(ep?.overview,8000),Number.isFinite(Number(ep?.runtime))?Number(ep?.runtime)*60:null,clean(ep?.still_path,180)||null,JSON.stringify({tmdbId:ep?.id??null,airDate:clean(ep?.air_date,20)})).run();
+    .bind(episodeId,id,seasonNumber,episodeNumber,clean(ep?.name)||`Épisode ${episodeNumber}`,clean(ep?.overview,8000),Number.isFinite(Number(ep?.runtime))?Number(ep?.runtime)*60:null,clean(ep?.still_path,180)||null,JSON.stringify({tmdbId:ep?.id??null,airDate:clean(ep?.air_date,20)})).run();
+  if(!episodeSaved.success)return json({error:"D1 n’a pas enregistré l’épisode du brouillon."},503);
  }
 
  const saved=await env.DB.prepare(`INSERT INTO catalog_media_sources (id,title_id,episode_id,provider,file_code,video_id,playback_url,quality,encoding_status,uploaded_at,updated_at)
