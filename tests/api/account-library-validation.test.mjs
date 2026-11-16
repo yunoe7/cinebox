@@ -36,7 +36,7 @@ test("rejects malformed title and nested season/episode data", () => {
 
 test("rejects malformed account activity and playback values", () => {
   for (const mutate of [
-    (value) => { value.favorites = [0]; },
+    (value) => { value.favorites = [1.5]; },
     (value) => { value.history[0].viewedAt = -1; },
     (value) => { value.viewCounts["1"] = -1; },
     (value) => { value.playback["1"].progress = 101; },
@@ -82,4 +82,14 @@ test("still rejects invalid optional metadata when it is present", () => {
   delete invalid.titles[0].progress;
   invalid.titles[0].poster = { unexpected: true };
   assert.equal(validLibrary(invalid), false);
+});
+
+
+test("accepts signed catalogue IDs used by legacy account activity", () => {
+  const legacy = structuredClone(valid);
+  legacy.favorites = [-73223];
+  legacy.history = [{ titleId: -73223, viewedAt: 1794801138137 }];
+  legacy.playback = { "-73223": { currentTime: 12, progress: 3, episodes: {} } };
+  legacy.viewCounts = { "-73223": 2 };
+  assert.equal(validLibrary(legacy), true);
 });
