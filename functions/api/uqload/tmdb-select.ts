@@ -44,9 +44,6 @@ export async function onRequestPost({request,env}:{request:Request;env:Env}):Pro
  if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
  const current=existing.results?.[0];
  if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
- if(!existing.success)return json({error:"Impossible de vérifier l’association de cette source vidéo."},503);
- const current=existing.results?.[0];
- if(current&&(current.title_id!==id||current.episode_id!==(episodeId??null)))return json({error:"Cette source vidéo est déjà associée à un autre contenu ou épisode. Aucun changement n’a été effectué.",code:"SOURCE_ALREADY_ASSOCIATED"},409);
  await env.DB.prepare(`INSERT INTO catalog_titles (id,kind,title,overview,release_date,poster_path,backdrop_path,genres_json,metadata_json,published,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,0,CURRENT_TIMESTAMP)
  ON CONFLICT(id) DO UPDATE SET title=excluded.title,overview=excluded.overview,release_date=excluded.release_date,
