@@ -10,10 +10,9 @@ const directives = new Map(
   }),
 );
 
-test("frame-src autorise les lecteurs Vidsrc, Uqload et Vidmoly", () => {
+test("frame-src autorise Uqload et Vidmoly sans Vidsrc", () => {
   const frame = directives.get("frame-src") || [];
   for (const origin of [
-    "https://vidsrc.sh",
     "https://uqload.vc",
     "https://uqload.com",
     "https://uqload.is",
@@ -27,6 +26,7 @@ test("frame-src autorise les lecteurs Vidsrc, Uqload et Vidmoly", () => {
   ]) {
     assert.ok(frame.includes(origin), `frame-src must include ${origin}`);
   }
+  assert.ok(!frame.includes("https://vidsrc.sh"), "frame-src must not allow the retired Vidsrc player");
   assert.ok(!frame.includes("*"), "frame-src must not use a wildcard");
   assert.ok(!frame.includes("https:"), "frame-src must not allow every HTTPS origin");
   assert.ok(!frame.includes("http:"), "frame-src must not allow plain HTTP");
