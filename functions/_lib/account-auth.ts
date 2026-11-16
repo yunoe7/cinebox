@@ -83,12 +83,28 @@ export async function readJsonBody(
 
 export function randomToken(bytes=32) { const value=new Uint8Array(bytes); crypto.getRandomValues(value); return b64(value); }
 export async function sha256(value: string) { return b64(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))); }
+let lastAccountSessionCleanupAt = 0;
+const ACCOUNT_SESSION_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
+
+/** Best-effort pruning of sessions that can no longer authenticate. */
+async function cleanupAccountSessions(env: AccountEnv, now: number) {
+  if (now - lastAccountSessionCleanupAt < ACCOUNT_SESSION_CLEANUP_INTERVAL_MS) return;
+  lastAccountSessionCleanupAt = now;
+  try {
+    await env.DB.prepare("DELETE FROM account_sessions WHERE expires_at<=? OR revoked_at IS NOT NULL")
+      .bind(new Date(now).toISOString()).run();
+  } catch {
+    // Session validation must remain available if housekeeping temporarily fails.
+  }
+}
+
 export async function createAccountSession(request: Request, env: AccountEnv, userId: string) {
 const token=randomToken(32), id=crypto.randomUUID(), expiresAt=new Date(Date.now()+ACCOUNT_TTL*1000).toISOString();
   await env.DB.prepare("INSERT INTO account_sessions (id,user_id,token_hash,expires_at) VALUES (?,?,?,?)").bind(id,userId,await sha256(token),expiresAt).run();
   return {cookie:cookieHeader(request,ACCOUNT_COOKIE,token,ACCOUNT_TTL),expiresAt};
 }
 export async function getAccount(request: Request, env: AccountEnv) {
+  await cleanupAccountSessions(env, Date.now());
   const token=cookie(request);
   if(!token) return null;
   const row=await env.DB.prepare("SELECT u.id,u.display_name,u.role,u.email,s.expires_at FROM account_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? LIMIT 1").bind(await sha256(token),new Date().toISOString()).first<{id:string;display_name:string;role:string;email:string|null;expires_at:string}>();
