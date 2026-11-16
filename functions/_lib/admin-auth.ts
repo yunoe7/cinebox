@@ -37,6 +37,15 @@ export function rejectInvalidOrigin(): Response {
  */
 const roleCache = new Map<string, { allowed: boolean; expiresAt: number }>();
 const ROLE_CACHE_TTL_MS = 30_000;
+const ROLE_CACHE_MAX_ENTRIES = 256;
+
+function setRoleCache(key: string, value: { allowed: boolean; expiresAt: number }) {
+  if (roleCache.size >= ROLE_CACHE_MAX_ENTRIES && !roleCache.has(key)) {
+    const firstKey = roleCache.keys().next().value;
+    if (firstKey !== undefined) roleCache.delete(firstKey);
+  }
+  roleCache.set(key, value);
+}
 
 async function hasPrivilegedDiscordRole(env: AdminEnv, discordUserId: string): Promise<boolean> {
   const roleIds = [
@@ -57,13 +66,13 @@ async function hasPrivilegedDiscordRole(env: AdminEnv, discordUserId: string): P
       { headers: { authorization: `Bot ${env.CINEBOX_DISCORD_BOT_TOKEN}`, accept: "application/json" } },
     );
     if (!response.ok) {
-      if (response.status === 404) roleCache.set(cacheKey, { allowed: false, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+      if (response.status === 404) setRoleCache(cacheKey, { allowed: false, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
       return false;
     }
     const member = await response.json() as { roles?: unknown };
     const memberRoles = Array.isArray(member.roles) ? member.roles.filter((id): id is string => typeof id === "string") : [];
     const allowed = roleIds.some(roleId => memberRoles.includes(roleId));
-    roleCache.set(cacheKey, { allowed, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+    setRoleCache(cacheKey, { allowed, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
     return allowed;
   } catch {
     // Fail closed if Discord cannot confirm the member's current roles.
@@ -78,7 +87,7 @@ export async function isAdminAccount(env: AdminEnv, userId: string): Promise<boo
   try {
     // Keep existing explicit grants (owner ID, database admin role, allowlist).
     const explicit = await db.prepare(
-      "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (u.role='admin' OR i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
+      "SELECT 1 AS allowed FROM users u LEFT JOIN auth_identities i ON i.user_id=u.id AND i.provider='discord' WHERE u.id=? AND (i.provider_user_id=? OR EXISTS (SELECT 1 FROM admin_allowlist a WHERE a.discord_user_id=i.provider_user_id)) LIMIT 1",
     ).bind(userId, env.CINEBOX_ADMIN_DISCORD_USER_ID || "").first<{ allowed: number }>();
     if (explicit?.allowed) return true;
 

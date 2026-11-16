@@ -37,6 +37,8 @@ export type Title = {
   vipExclusive?: boolean;
   vipEarlyAccess?: boolean;
   publicAt?: string;
+  /** Promotional showcase only: visible in the catalogue, not openable. */
+  vipLocked?: boolean;
   /** Explicit, verifiable age classification. Missing means "not classified". */
   ageRating?: string;
   minAge?: number;
