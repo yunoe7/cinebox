@@ -471,26 +471,42 @@
 }
 
 
-/* Desktop sidebar: make the favorites count a balanced, centered badge. */
+/* Desktop sidebar: refined, optically centered favorites counter. */
 @media (min-width: 761px) {
   .sidebar .primary-nav .nav-item > small {
     box-sizing: border-box;
     display: inline-grid;
     place-items: center;
-    flex: 0 0 22px;
-    width: 22px;
-    min-width: 22px;
-    height: 22px;
+    flex: 0 0 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    align-self: center;
     margin: 0 0 0 auto;
     padding: 0;
-    border: 1px solid rgba(211, 177, 125, .2);
+    border: 1px solid rgba(211, 177, 125, .24);
     border-radius: 50%;
-    background: rgba(211, 177, 125, .1);
-    color: var(--gold2);
-    font-size: 10px;
+    background: linear-gradient(145deg, rgba(211, 177, 125, .16), rgba(211, 177, 125, .07));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 1px 3px rgba(0, 0, 0, .2);
+    color: #e5c99e;
+    font-family: inherit;
+    font-size: 9px;
     font-weight: 700;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
     text-align: center;
+    transition: background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .sidebar .primary-nav .nav-item:hover > small {
+    border-color: rgba(211, 177, 125, .38);
+    background: rgba(211, 177, 125, .2);
+    color: #f2dcb8;
+  }
+  .sidebar .primary-nav .nav-item.active > small {
+    border-color: rgba(211, 177, 125, .34);
+    background: linear-gradient(145deg, rgba(211, 177, 125, .24), rgba(211, 177, 125, .12));
+    color: #f1d7ad;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 10px rgba(211, 177, 125, .08);
   }
 }
