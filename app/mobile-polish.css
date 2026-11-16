@@ -23,11 +23,6 @@
     margin-left: 0 !important;
   }
 
-  /* Keep the desktop rail out of the mobile composition. */
-  .sidebar {
-    display: none !important;
-  }
-
   .primary-nav-surface {
     display: none !important;
   }
@@ -340,4 +335,91 @@
     .topbar,
     .poster-image img { scroll-behavior: auto; transition: none !important; }
   }
+}
+
+
+/* Preserve the existing compact mobile header (brand, search and profile). */
+@media (max-width: 760px) {
+  .sidebar {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 0 auto 0 !important;
+    z-index: 60 !important;
+    width: 100% !important;
+    height: calc(64px + env(safe-area-inset-top)) !important;
+    padding: env(safe-area-inset-top) 0 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(211,177,125,.18) !important;
+    background: rgba(9,10,13,.97) !important;
+    -webkit-backdrop-filter: blur(22px);
+    backdrop-filter: blur(22px);
+  }
+  .sidebar .topbar {
+    position: relative !important;
+    width: 100% !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)) !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .sidebar .topbar-inner {
+    display: grid !important;
+    width: 100% !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    grid-template-columns: 40px minmax(0,1fr) !important;
+    gap: 8px !important;
+  }
+  .sidebar .brand.topbar-brand {
+    display: flex !important;
+    width: 40px !important;
+    height: 48px !important;
+    padding: 0 !important;
+  }
+  .sidebar .primary-nav-surface,
+  .sidebar .primary-nav { display: none !important; }
+  .main-area {
+    margin: 0 !important;
+    padding-top: calc(64px + env(safe-area-inset-top)) !important;
+    min-height: 100dvh;
+  }
+  .mobile-bottom-nav {
+    inset: auto 0 0 0 !important;
+    min-height: calc(62px + env(safe-area-inset-bottom)) !important;
+    padding: 7px max(5px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(5px, env(safe-area-inset-left)) !important;
+  }
+  .page-content {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+  }
+  .detail-page-modal .detail-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .detail-page-modal .detail-tabs::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 390px) {
+  .sidebar .topbar-inner {
+    grid-template-columns: 36px minmax(0,1fr) !important;
+    gap: 5px !important;
+  }
+  .sidebar .brand.topbar-brand { width: 36px !important; }
+  .sidebar .top-actions { gap: 5px !important; }
+  .sidebar .top-actions .search {
+    width: min(34vw,132px);
+    min-width: 96px;
+    padding-inline: 7px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 900px) {
+  .sidebar { height: calc(56px + env(safe-area-inset-top)) !important; }
+  .sidebar .topbar,
+  .sidebar .topbar-inner { height: 56px !important; min-height: 56px !important; }
+  .main-area { padding-top: calc(56px + env(safe-area-inset-top)) !important; }
 }
