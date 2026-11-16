@@ -444,3 +444,28 @@
     border-radius: 50%;
   }
 }
+
+
+/* Mobile favorites count: center the digit in both mobile nav variants. */
+@media (max-width: 760px) {
+  .sidebar .primary-nav .nav-item > small,
+  .mobile-bottom-nav button > i {
+    box-sizing: border-box !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    font-variant-numeric: tabular-nums;
+    border-radius: 50% !important;
+  }
+  .mobile-bottom-nav button > i {
+    top: 25px !important;
+    right: calc(50% - 31px) !important;
+  }
+}
