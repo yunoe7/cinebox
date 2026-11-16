@@ -247,8 +247,11 @@ test("enqueueLibraryWrite serializes real queued tasks and survives a rejection"
   let releaseFirst;
   const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
   const started = [];
+  let signalFirstStarted;
+  const firstStarted = new Promise((resolve) => { signalFirstStarted = resolve; });
   const first = enqueueLibraryWrite(queue, async () => {
     started.push("first");
+    signalFirstStarted();
     await firstGate;
     throw new Error("expected failure");
   });
@@ -256,7 +259,7 @@ test("enqueueLibraryWrite serializes real queued tasks and survives a rejection"
     started.push("second");
     return "saved";
   });
-  await Promise.resolve();
+  await firstStarted;
   assert.deepEqual(started, ["first"]);
   releaseFirst();
   await assert.rejects(first, /expected failure/);
